@@ -1,0 +1,25 @@
+{
+    "danh_sach_acc": [
+        "Player_Mod",
+        "becontata"
+    ],
+    "current_account": "becontata",
+    "thu_muc_game": "D:\\Minecraft_Cua_Toi",
+    "version_goc": "26.1.2",
+    "loai_game": "Quilt",
+    "config_ram": {
+        "max": 4,
+        "min": 2
+    },
+    "current_instance": "New_Version",
+    "danh_sach_instances": {
+        "New_Version": {
+            "version_goc": "26.1.2",
+            "loai_game": "Vanilla",
+            "version_mod": "Vanilla"
+        }
+    },
+    "ram_min": "2GB",
+    "ram_max": "4GB",
+    "do_phan_giai": "854x480 (Mặc định)"
+}

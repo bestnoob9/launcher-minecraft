@@ -1,44 +1,49 @@
 import os
 import json
-import core
+import minecraft_launcher_lib
+
+def _lay_phien_ban_moi_nhat():
+    try:
+        all_versions = minecraft_launcher_lib.utils.get_version_list()
+        releases = [v["id"] for v in all_versions if v["type"] == "release"]
+        return releases[0] if releases else "1.21.1"
+    except:
+        return "1.21.1"
 
 file_config_json = os.path.join(os.getcwd(), "launcher_config.json")
-def lay_phien_ban_moi_nhat():
-    versions = core.lay_danh_sach_phien_ban_chinh()
-    return versions[0]
 
-# Định dạng cấu hình mặc định sạch sẽ, đồng bộ hóa các biến RAM và Độ phân giải
+# Định dạng cấu hình mặc định
 config_mac_dinh = {
     "danh_sach_acc": [],
     "current_account": "",
     "thu_muc_game": os.path.normpath(os.path.join(os.getcwd(), "Minecraft_Cua_Toi")),
-    
-    # Chuẩn hóa biến RAM và Độ phân giải để cửa sổ Setting đọc trực tiếp dạng chuỗi Combobox
     "ram_min": "2GB",
     "ram_max": "4GB",
     "do_phan_giai": "854x480",
-    
-    "current_instance": "Latest_Version",
+    "current_instance": "Latest Version",
     "danh_sach_instances": {
         "Latest Version": {
-            "version_goc": lay_phien_ban_moi_nhat(),
+            "version_goc": _lay_phien_ban_moi_nhat(),
             "loai_game": "Vanilla",
             "version_mod": "Vanilla"
         }
     }
 }
 
-# Đổi tên hàm thành tai_toan_bo_cau_hinh để main.py gọi chính xác
 def tai_toan_bo_cau_hinh():
     global current_config
     if os.path.exists(file_config_json):
         try:
             with open(file_config_json, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # Tự động bù đắp các trường bị thiếu nếu người dùng xài file config cũ
                 for key in config_mac_dinh:
                     if key not in data:
                         data[key] = config_mac_dinh[key]
+                
+                # Tự động cập nhật version mới nhất cho "Latest Version"
+                if "Latest Version" in data.get("danh_sach_instances", {}):
+                    data["danh_sach_instances"]["Latest Version"]["version_goc"] = _lay_phien_ban_moi_nhat()
+                
                 return data
         except:
             pass
@@ -53,3 +58,4 @@ def luu_toan_bo_cau_hinh():
 
 # Khởi tạo biến cấu hình toàn cục khi import module
 current_config = tai_toan_bo_cau_hinh()
+

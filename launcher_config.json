@@ -4,15 +4,18 @@
     ],
     "current_account": "bacontete",
     "thu_muc_game": "D:/Minecraft_Cua_Toi",
-    "ram_min": "2GB",
-    "ram_max": "4GB",
-    "do_phan_giai": "854x480",
-    "current_instance": "New_Version",
+    "ram_min": "4GB",
+    "ram_max": "12GB",
+    "do_phan_giai": "1280x720",
+    "current_instance": "Latest Version",
     "danh_sach_instances": {
         "Latest Version": {
             "version_goc": "26.1.2",
             "loai_game": "Vanilla",
             "version_mod": "Vanilla"
         }
-    }
+    },
+    "jvm_mode": "default",
+    "preset_jvm_args": "aikar_optimized",
+    "custom_jvm_args": ""
 }

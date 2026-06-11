@@ -2,6 +2,8 @@ import os
 import json
 import urllib.request
 import minecraft_launcher_lib
+import subprocess
+import re
 
 def lay_danh_sach_phien_ban_chinh():
     try:
@@ -122,3 +124,41 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
 
     # Lấy lệnh chạy: Lõi đọc từ thu_muc_game nhưng thực thi lệnh với options đã hướng về thu_muc_instance_rieng
     return minecraft_launcher_lib.command.get_minecraft_command(id_phien_ban_chay, thu_muc_game, options)
+def chay_game_minecraft(tai_khoan, ten_instance, thong_tin_instance, thu_muc_game, lbl_status):
+    import config
+    
+    # Đọc RAM từ config
+    ram_min = config.current_config.get("ram_min", "2GB").replace("GB", "G").replace("MB", "M")
+    ram_max = config.current_config.get("ram_max", "4GB").replace("GB", "G").replace("MB", "M")
+    
+    # Đọc độ phân giải
+    do_phan_giai = config.current_config.get("do_phan_giai", "854x480")
+    match = re.search(r"(\d+)\s*x\s*(\d+)", do_phan_giai)
+    if match:
+        rong, cao = match.group(1), match.group(2)
+    else:
+        rong, cao = "854", "480"
+
+    options = {
+        "username": tai_khoan,
+        "uuid": "0",
+        "token": "",
+        "jvmArguments": [f"-Xms{ram_min}", f"-Xmx{ram_max}"],
+        "customResolution": True,
+        "resolutionWidth": rong,
+        "resolutionHeight": cao,
+    }
+
+    lbl_status.after(0, lambda: lbl_status.config(text="Đang cài đặt / kiểm tra phiên bản...", fg="#1E88E5"))
+
+    lenh = cai_dat_va_lay_lenh_chay(
+        thong_tin_instance["loai_game"],
+        thong_tin_instance["version_goc"],
+        thong_tin_instance["version_mod"],
+        thu_muc_game,
+        ten_instance.replace(" ", "_"),  # thư mục vật lý dùng _
+        options
+    )
+
+    lbl_status.after(0, lambda: lbl_status.config(text="Đang khởi động Minecraft...", fg="#1E88E5"))
+    subprocess.Popen(lenh)

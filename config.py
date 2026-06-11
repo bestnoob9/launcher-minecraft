@@ -1,23 +1,27 @@
 import os
 import json
+import core
 
 file_config_json = os.path.join(os.getcwd(), "launcher_config.json")
+def lay_phien_ban_moi_nhat():
+    versions = core.lay_danh_sach_phien_ban_chinh()
+    return versions[0]
 
 # Định dạng cấu hình mặc định sạch sẽ, đồng bộ hóa các biến RAM và Độ phân giải
 config_mac_dinh = {
-    "danh_sach_acc": ["Player_Mod"],
-    "current_account": "Player_Mod",
+    "danh_sach_acc": [],
+    "current_account": "",
     "thu_muc_game": os.path.normpath(os.path.join(os.getcwd(), "Minecraft_Cua_Toi")),
     
     # Chuẩn hóa biến RAM và Độ phân giải để cửa sổ Setting đọc trực tiếp dạng chuỗi Combobox
     "ram_min": "2GB",
     "ram_max": "4GB",
-    "do_phan_giai": "854x480 (Mặc định)",
+    "do_phan_giai": "854x480",
     
-    "current_instance": "New_Version",
+    "current_instance": "Latest_Version",
     "danh_sach_instances": {
-        "New_Version": {
-            "version_goc": "1.21.1",
+        "Latest Version": {
+            "version_goc": lay_phien_ban_moi_nhat(),
             "loai_game": "Vanilla",
             "version_mod": "Vanilla"
         }

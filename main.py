@@ -13,7 +13,7 @@ from components.setting_window import SettingWindow  # Module cài đặt mới 
 class MinecraftLauncherApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Minecraft Professional Instance Launcher")
+        self.root.title("Minecraft Launcher")
         self.root.geometry("480x520")
         self.root.resizable(False, False)
 
@@ -92,7 +92,7 @@ class MinecraftLauncherApp:
         """Xử lý xóa Instance đang chọn khỏi cấu hình và ổ đĩa"""
         ten_instance = self.instance_frame.get_current_instance()
         
-        if ten_instance == "New_Version":
+        if ten_instance == "Latest Version":
             messagebox.showwarning("Chú ý", "Không thể xóa phiên bản mặc định hệ thống!")
             return
             
@@ -130,7 +130,6 @@ class MinecraftLauncherApp:
         if not tai_khoan:
             messagebox.showwarning("Chú ý", "Vui lòng chọn hoặc thêm tài khoản trước khi chơi!")
             return
-
         self.btn_launch.config(state="disabled", text="ĐANG CHẠY...")
         self.lbl_status.config(text="Đang chuẩn bị dữ liệu game...", fg="#1E88E5")
         
@@ -146,13 +145,13 @@ class MinecraftLauncherApp:
                 
                 self.root.after(0, lambda: self.lbl_status.config(text="Game đã khởi động thành công!", fg="#2E7D32"))
             except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("Lỗi", f"Khởi động game thất bại:\n{str(e)}"))
+                loi = str(e)  # capture giá trị ngay lập tức
+                self.root.after(0, lambda: messagebox.showerror("Lỗi", f"Khởi động game thất bại:\n{loi}"))
             finally:
                 self.root.after(0, lambda: self.btn_launch.config(state="normal", text="VÀO GAME"))
                 self.root.after(0, lambda: self.lbl_status.config(text="Sẵn sàng", fg="gray"))
 
         threading.Thread(target=luong_khoi_dong, daemon=True).start()
-
 if __name__ == "__main__":
     root = tk.Tk()
     app = MinecraftLauncherApp(root)

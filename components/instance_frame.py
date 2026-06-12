@@ -128,20 +128,26 @@ class InstanceFrame(tk.Frame):
         changed = False
 
         for ten in them_moi:
-            # Đọc instance_info.json nếu có, không thì tự suy từ tên folder
             ten_folder = ten.replace(" ", "_")
             file_info = os.path.join(self.thu_muc_instances, ten_folder, "instance_info.json")
+
+            # Đợi tối đa 3 giây để cai_modpack_tu_file ghi xong instance_info.json
+            _waited = 0
+            while not os.path.exists(file_info) and _waited < 6:
+                time.sleep(0.5)
+                _waited += 1
+
             if os.path.exists(file_info):
                 try:
                     with open(file_info, "r", encoding="utf-8") as f:
                         data = json.load(f)
-                    loai_game = data.get("loai_game", "Vanilla")
+                    loai_game   = data.get("loai_game", "Vanilla")
                     version_goc = data.get("version_goc", "1.21.1")
                     version_mod = data.get("version_mod", "Vanilla")
                 except Exception:
                     loai_game, version_goc, version_mod = "Vanilla", "1.21.1", "Vanilla"
             else:
-                # Tự đoán từ tên folder
+                # Tự đoán từ tên folder nếu không có file info
                 ten_lower = ten_folder.lower()
                 loai_game = "Vanilla"
                 for loader in ["fabric", "neoforge", "forge", "quilt"]:
@@ -155,7 +161,6 @@ class InstanceFrame(tk.Frame):
                         version_goc = v
                         break
                 version_mod = "Vanilla"
-                # Tạo file instance_info.json để lần sau đọc được
                 try:
                     os.makedirs(os.path.join(self.thu_muc_instances, ten_folder), exist_ok=True)
                     with open(file_info, "w", encoding="utf-8") as f:
@@ -183,15 +188,19 @@ class InstanceFrame(tk.Frame):
             self.after(0, self._lam_moi_dropdown)
 
     def _lam_moi_dropdown(self):
-        """Cập nhật dropdown từ config, giữ nguyên lựa chọn hiện tại nếu còn tồn tại."""
+        """Cập nhật dropdown từ config, ưu tiên current_instance trong config."""
         ds_moi = list(config.current_config["danh_sach_instances"].keys())
         hien_tai = self.cbo_instance.get()
+        current_in_config = config.current_config.get("current_instance", "")
         self.cbo_instance["values"] = ds_moi
-        if hien_tai in ds_moi:
+
+        # Ưu tiên: current_instance trong config (mới nhất) > đang chọn > đầu danh sách
+        if current_in_config and current_in_config in ds_moi:
+            self.cbo_instance.set(current_in_config)
+        elif hien_tai in ds_moi:
             self.cbo_instance.set(hien_tai)
-        else:
-            fallback = config.current_config.get("current_instance", "Latest Version")
-            self.cbo_instance.set(fallback if fallback in ds_moi else ds_moi[0])
+        elif ds_moi:
+            self.cbo_instance.set(ds_moi[0])
         self.cap_nhat_nhan_thong_tin()
 
     def get_game_path(self):
@@ -432,3 +441,4 @@ class InstanceFrame(tk.Frame):
             width=18, height=2, command=xu_ly_tao
         )
         btn_confirm.pack(side=tk.BOTTOM, pady=15)
+

@@ -233,8 +233,16 @@ def _tai_file_don_gian(url, dest_path):
                 f.write(block)
 
 
+# Biến toàn cục theo dõi trạng thái đang cài modpack
+_dang_cai_modpack = False
+
+def dang_cai_modpack():
+    return _dang_cai_modpack
+
 def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=None):
     thu_muc_game     = config.current_config.get("thu_muc_game", "")
+    # ten_instance dùng cho key config (dấu cách), ten_folder dùng cho thư mục (gạch dưới)
+    ten_instance     = ten_instance.replace("_", " ").strip()
     ten_folder       = ten_instance.replace(" ", "_")
     thu_muc_instance = os.path.join(thu_muc_game, "Instances", ten_folder)
     os.makedirs(thu_muc_instance, exist_ok=True)
@@ -243,6 +251,8 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
         lbl_status.after(0, lambda: lbl_status.config(text=text, fg=mau))
 
     def _chay():
+        global _dang_cai_modpack
+        _dang_cai_modpack = True
         try:
             _cap("Dang giai nen modpack...", "#1E88E5")
             loai_game, version_goc, version_mod = "Vanilla", "1.21.1", "Vanilla"
@@ -254,24 +264,49 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                 if "modrinth.index.json" in names:
                     index_data  = json.loads(z.read("modrinth.index.json"))
                     deps        = index_data.get("dependencies", {})
-                    version_goc = deps.get("minecraft", "1.21.1")
-                    if "fabric-loader" in deps:     loai_game, version_mod = "Fabric",   deps["fabric-loader"]
-                    elif "quilt-loader" in deps:    loai_game, version_mod = "Quilt",    deps["quilt-loader"]
-                    elif "neoforge" in deps:        loai_game, version_mod = "NeoForge", deps["neoforge"]
-                    elif "forge" in deps:           loai_game, version_mod = "Forge",    deps["forge"]
+                    print(f"[mrpack] dependencies doc duoc: {deps}")
+
+                    # Lay version minecraft
+                    version_goc = deps.get("minecraft", "")
+                    if not version_goc:
+                        # Thu tim trong ten file
+                        import re as _re
+                        m = _re.search(r"(\d+\.\d+\.?\d*)", os.path.basename(duong_dan_zip))
+                        version_goc = m.group(1) if m else "1.21.1"
+
+                    # Detect loader — thu nhieu key co the co
+                    if "fabric-loader" in deps:
+                        loai_game, version_mod = "Fabric", deps["fabric-loader"]
+                    elif "quilt-loader" in deps:
+                        loai_game, version_mod = "Quilt", deps["quilt-loader"]
+                    elif "neoforge" in deps:
+                        loai_game, version_mod = "NeoForge", deps["neoforge"]
+                    elif "forge" in deps:
+                        loai_game, version_mod = "Forge", deps["forge"]
+                    elif "minecraftForge" in deps:
+                        loai_game, version_mod = "Forge", deps["minecraftForge"]
+                    # Neu van la Vanilla thi giu nguyen version_mod = "Vanilla"
+
+                    print(f"[mrpack] Ket qua: loai={loai_game}, mc={version_goc}, mod={version_mod}")
                     modrinth_files = index_data.get("files", [])
                     prefix = "overrides/"
 
                 elif "manifest.json" in names:
                     manifest    = json.loads(z.read("manifest.json"))
                     mc_info     = manifest.get("minecraft", {})
-                    version_goc = mc_info.get("version", "1.21.1")
+                    version_goc = mc_info.get("version", "")
+                    if not version_goc:
+                        import re as _re
+                        m = _re.search(r"(\d+\.\d+\.?\d*)", os.path.basename(duong_dan_zip))
+                        version_goc = m.group(1) if m else "1.21.1"
                     for loader in mc_info.get("modLoaders", []):
                         lid = loader.get("id", "")
                         if lid.startswith("fabric-"):     loai_game, version_mod = "Fabric",   lid[7:]
                         elif lid.startswith("quilt-"):    loai_game, version_mod = "Quilt",    lid[6:]
                         elif lid.startswith("neoforge-"): loai_game, version_mod = "NeoForge", lid[9:]
                         elif lid.startswith("forge-"):    loai_game, version_mod = "Forge",    lid[6:]
+                        elif lid.startswith("neoforge"):  loai_game, version_mod = "NeoForge", lid[8:]
+                    print(f"[manifest] Ket qua: loai={loai_game}, mc={version_goc}, mod={version_mod}")
                     prefix = "overrides/"
 
                 else:
@@ -330,18 +365,25 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                 else:
                     _cap(f"Da tai xong {tong_mod} mod!", "#2b8c54")
 
+            # Ghi instance_info.json trước
             with open(os.path.join(thu_muc_instance, "instance_info.json"), "w", encoding="utf-8") as f:
                 json.dump({"loai_game": loai_game, "version_goc": version_goc, "version_mod": version_mod},
                           f, indent=4, ensure_ascii=False)
+
+            # Cập nhật config với đúng tên key = ten_instance (có dấu cách)
             config.current_config["danh_sach_instances"][ten_instance] = {
                 "version_goc": version_goc, "loai_game": loai_game, "version_mod": version_mod}
             config.current_config["current_instance"] = ten_instance
             config.luu_toan_bo_cau_hinh()
+
+            print(f"[modpack] Da luu: {ten_instance} | {loai_game} {version_goc} | mod={version_mod}")
             _cap(f"Da cai dat: {ten_instance}  ({loai_game} {version_goc})", "#2b8c54")
             if callback_xong:
                 lbl_status.after(500, callback_xong)
         except Exception as e:
             _cap(f"Loi cai dat: {e}", "red")
+        finally:
+            _dang_cai_modpack = False
 
     threading.Thread(target=_chay, daemon=True).start()
 
@@ -1539,3 +1581,4 @@ class ModMcWindow(tk.Toplevel):
             self.callback_lam_moi()
         messagebox.showinfo("Thanh cong",
             "Da cai dat thanh cong!\nInstance moi da xuat hien trong danh sach.", parent=self)
+

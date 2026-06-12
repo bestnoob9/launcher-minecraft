@@ -9,6 +9,8 @@ from components.account_frame import AccountFrame
 from components.instance_frame import InstanceFrame
 from components.setting_window import SettingWindow
 from components.mod_mc import ModMcWindow
+from setup_wizard import kiem_tra_va_chay_wizard   # <-- import wizard
+
 
 class MinecraftLauncherApp:
     def __init__(self, root):
@@ -21,6 +23,7 @@ class MinecraftLauncherApp:
         self._game_process = None
 
         self.create_widgets()
+        self.root.protocol("WM_DELETE_WINDOW", self._xu_ly_thoat)
 
     def create_widgets(self):
         lbl_main_title = tk.Label(self.root, text="MINECRAFT LAUNCHER", font=("Arial", 16, "bold"), fg="#1E88E5")
@@ -82,6 +85,43 @@ class MinecraftLauncherApp:
         )
         self.btn_modpack.place(relx=1.0, rely=1.0, anchor="se", x=-95, y=-10)
 
+        self.btn_open_folder = tk.Button(
+            self.root,
+            text="📂 Thư mục game",
+            font=("Arial", 9, "bold"),
+            bg="#43A047",
+            fg="white",
+            padx=8,
+            pady=3,
+            command=self.mo_thu_muc_game
+        )
+        self.btn_open_folder.place(relx=0.0, rely=1.0, anchor="sw", x=10, y=-10)
+
+    def mo_thu_muc_game(self):
+        import subprocess, sys
+        thu_muc = config.current_config.get("thu_muc_game", "").strip()
+        if not thu_muc or not os.path.exists(thu_muc):
+            messagebox.showwarning("Chú ý", "Chưa có thư mục game hoặc thư mục không tồn tại!\nVui lòng kiểm tra lại trong Settings.")
+            return
+        if sys.platform == "win32":
+            os.startfile(thu_muc)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", thu_muc])
+        else:
+            subprocess.Popen(["xdg-open", thu_muc])
+
+    def _xu_ly_thoat(self):
+        import components.mod_mc as mod_mc
+        if mod_mc.dang_cai_modpack():
+            chon = messagebox.askyesno(
+                "Dang tai modpack",
+                "Modpack dang duoc cai dat!Neu thoat bay gio, du lieu co the bi hong.Ban co chac muon thoat khong?",
+                icon="warning"
+            )
+            if not chon:
+                return
+        self.root.destroy()
+
     def khi_thay_doi_instance(self):
         if hasattr(self, 'instance_frame'):
             self.instance_frame.cap_nhat_nhan_thong_tin()
@@ -131,9 +171,7 @@ class MinecraftLauncherApp:
             self.instance_frame.pack_configure(after=self.account_frame)
 
     def bat_dau_hoac_tat_game(self):
-        """Toggle: nếu game đang chạy thì kill, ngược lại thì launch."""
         if self._game_process is not None and self._game_process.poll() is None:
-            # Game đang chạy — kill
             try:
                 self._game_process.terminate()
             except Exception:
@@ -167,7 +205,7 @@ class MinecraftLauncherApp:
                     text="Minecraft đang chạy...", fg="#2E7D32"))
 
                 if proc:
-                    proc.wait()  # Chờ game thoát
+                    proc.wait()
 
                 self._game_process = None
                 self.root.after(0, lambda: self.btn_launch.config(
@@ -184,8 +222,20 @@ class MinecraftLauncherApp:
 
         threading.Thread(target=luong_khoi_dong, daemon=True).start()
 
+
 if __name__ == "__main__":
     root = tk.Tk()
+    root.withdraw()
+
+    kiem_tra_va_chay_wizard(root)
+
+    try:
+        root.deiconify()
+    except Exception:
+        # root bị hủy (người dùng tắt wizard) — thoát bình thường
+        import sys; sys.exit(0)
+
     app = MinecraftLauncherApp(root)
-    root.app = app  # Gắn app vào root để instance_frame gọi được xoa_instance_hien_tai
+    root.app = app
     root.mainloop()
+

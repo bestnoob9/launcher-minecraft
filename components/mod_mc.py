@@ -257,6 +257,7 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
             _cap("Dang giai nen modpack...", "#1E88E5")
             loai_game, version_goc, version_mod = "Vanilla", "1.21.1", "Vanilla"
             modrinth_files = []
+            cf_mods = []
 
             with zipfile.ZipFile(duong_dan_zip, "r") as z:
                 names = z.namelist()
@@ -307,6 +308,7 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                         elif lid.startswith("forge-"):    loai_game, version_mod = "Forge",    lid[6:]
                         elif lid.startswith("neoforge"):  loai_game, version_mod = "NeoForge", lid[8:]
                     print(f"[manifest] Ket qua: loai={loai_game}, mc={version_goc}, mod={version_mod}")
+                    cf_mods = manifest.get("files", [])  # list {projectID, fileID, required}
                     prefix = "overrides/"
 
                 else:
@@ -364,6 +366,52 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                     _cap(f"Hoan thanh (loi {len(loi_tai)} mod): {', '.join(loi_tai[:3])}...", "orange")
                 else:
                     _cap(f"Da tai xong {tong_mod} mod!", "#2b8c54")
+
+            # ── Tải mod từ CurseForge manifest (manifest.json → files[]) ──
+            if cf_mods:
+                thu_muc_mods = os.path.join(thu_muc_instance, "mods")
+                os.makedirs(thu_muc_mods, exist_ok=True)
+                tong_cf = len(cf_mods)
+                loi_cf  = []
+
+                for i, entry in enumerate(cf_mods):
+                    project_id = entry.get("projectID")
+                    file_id    = entry.get("fileID")
+                    required   = entry.get("required", True)
+                    if not required:
+                        continue
+                    if not project_id or not file_id:
+                        continue
+
+                    _cap(f"Dang tai mod CF  {i+1}/{tong_cf}  (id={file_id})...", "#1E88E5")
+                    try:
+                        # Lấy thông tin file từ CurseForge API
+                        url_info = f"https://api.curseforge.com/v1/mods/{project_id}/files/{file_id}"
+                        file_data = _request_json(url_info, {"x-api-key": CURSEFORGE_API_KEY})
+                        file_info = file_data.get("data", {})
+                        ten_file  = file_info.get("fileName", f"{file_id}.jar")
+                        dl_url    = file_info.get("downloadUrl", "")
+
+                        # CurseForge đôi khi trả downloadUrl = null → tự build URL
+                        if not dl_url:
+                            id_str = str(file_id)
+                            p1 = id_str[:4]
+                            p2 = id_str[4:].lstrip("0") or "0"
+                            dl_url = f"https://mediafilez.forgecdn.net/files/{p1}/{p2}/{urllib.parse.quote(ten_file)}"
+
+                        dest = os.path.join(thu_muc_mods, ten_file)
+                        if not os.path.exists(dest):
+                            _tai_file_don_gian(dl_url, dest)
+                        _cap(f"OK: {ten_file}  ({i+1}/{tong_cf})", "#2b8c54")
+
+                    except Exception as ex:
+                        loi_cf.append(str(file_id))
+                        print(f"[CF mod] Loi {file_id}: {ex}")
+
+                if loi_cf:
+                    _cap(f"Hoan thanh CF (loi {len(loi_cf)} mod). Kiem tra thu cong.", "orange")
+                else:
+                    _cap(f"Da tai xong {tong_cf} mod CurseForge!", "#2b8c54")
 
             # Ghi instance_info.json trước
             with open(os.path.join(thu_muc_instance, "instance_info.json"), "w", encoding="utf-8") as f:
@@ -1581,4 +1629,3 @@ class ModMcWindow(tk.Toplevel):
             self.callback_lam_moi()
         messagebox.showinfo("Thanh cong",
             "Da cai dat thanh cong!\nInstance moi da xuat hien trong danh sach.", parent=self)
-

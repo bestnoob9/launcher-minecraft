@@ -8,15 +8,17 @@ import core
 from components.account_frame import AccountFrame
 from components.instance_frame import InstanceFrame
 from components.setting_window import SettingWindow
+from components.mod_mc import ModMcWindow
 
 class MinecraftLauncherApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Minecraft Professional Instance Launcher")
+        self.root.title("Minecraft Launcher")
         self.root.geometry("480x520")
         self.root.resizable(False, False)
 
         config.current_config = config.tai_toan_bo_cau_hinh()
+        self._game_process = None
 
         self.create_widgets()
 
@@ -46,13 +48,13 @@ class MinecraftLauncherApp:
 
         self.btn_launch = tk.Button(
             self.root,
-            text="VÀO GAME",
+            text="▶ VÀO GAME",
             font=("Arial", 12, "bold"),
             bg="#1E88E5",
             fg="white",
             width=18,
             height=2,
-            command=self.bat_dau_chay_game
+            command=self.bat_dau_hoac_tat_game
         )
         self.btn_launch.pack(pady=(10, 20))
 
@@ -68,12 +70,34 @@ class MinecraftLauncherApp:
         )
         self.btn_setting.place(relx=1.0, rely=1.0, anchor="se", x=-10, y=-10)
 
+        self.btn_modpack = tk.Button(
+            self.root,
+            text="🧩 Modpack",
+            font=("Arial", 9, "bold"),
+            bg="#5C6BC0",
+            fg="white",
+            padx=8,
+            pady=3,
+            command=self.mo_cua_so_modpack
+        )
+        self.btn_modpack.place(relx=1.0, rely=1.0, anchor="se", x=-95, y=-10)
+
     def khi_thay_doi_instance(self):
         if hasattr(self, 'instance_frame'):
             self.instance_frame.cap_nhat_nhan_thong_tin()
 
     def mo_cua_so_setting(self):
         SettingWindow(self.root, self.khi_thay_doi_instance)
+
+    def mo_cua_so_modpack(self):
+        ModMcWindow(self.root, self._lam_moi_instance_frame)
+
+    def _lam_moi_instance_frame(self):
+        from components.instance_frame import InstanceFrame
+        self.instance_frame.destroy()
+        self.instance_frame = InstanceFrame(self.root, self.khi_thay_doi_instance)
+        self.instance_frame.pack(pady=10)
+        self.instance_frame.pack_configure(after=self.account_frame)
 
     def xoa_instance_hien_tai(self):
         ten_instance = self.instance_frame.get_current_instance()
@@ -106,13 +130,27 @@ class MinecraftLauncherApp:
             self.instance_frame.pack(pady=10)
             self.instance_frame.pack_configure(after=self.account_frame)
 
+    def bat_dau_hoac_tat_game(self):
+        """Toggle: nếu game đang chạy thì kill, ngược lại thì launch."""
+        if self._game_process is not None and self._game_process.poll() is None:
+            # Game đang chạy — kill
+            try:
+                self._game_process.terminate()
+            except Exception:
+                pass
+            self._game_process = None
+            self.btn_launch.config(text="▶ VÀO GAME", bg="#1E88E5", state="normal")
+            self.lbl_status.config(text="Đã tắt game.", fg="gray")
+            return
+        self.bat_dau_chay_game()
+
     def bat_dau_chay_game(self):
         tai_khoan = self.account_frame.get_current_account()
         if not tai_khoan:
             messagebox.showwarning("Chú ý", "Vui lòng chọn hoặc thêm tài khoản trước khi chơi!")
             return
 
-        self.btn_launch.config(state="disabled", text="ĐANG CHẠY...")
+        self.btn_launch.config(state="disabled", text="⏳ ĐANG TẢI...")
         self.lbl_status.config(text="Đang chuẩn bị dữ liệu game...", fg="#1E88E5")
 
         def luong_khoi_dong():
@@ -120,14 +158,28 @@ class MinecraftLauncherApp:
                 ten_instance = self.instance_frame.get_current_instance()
                 thu_muc_game = config.current_config.get("thu_muc_game")
 
-                core.chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, self.lbl_status)
+                proc = core.chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, self.lbl_status)
+                self._game_process = proc
 
-                self.root.after(0, lambda: self.lbl_status.config(text="Game đã khởi động thành công!", fg="#2E7D32"))
+                self.root.after(0, lambda: self.btn_launch.config(
+                    state="normal", text="⏹ TẮT GAME", bg="#E53935"))
+                self.root.after(0, lambda: self.lbl_status.config(
+                    text="Minecraft đang chạy...", fg="#2E7D32"))
+
+                if proc:
+                    proc.wait()  # Chờ game thoát
+
+                self._game_process = None
+                self.root.after(0, lambda: self.btn_launch.config(
+                    text="▶ VÀO GAME", bg="#1E88E5", state="normal"))
+                self.root.after(0, lambda: self.lbl_status.config(text="Sẵn sàng", fg="gray"))
+
             except Exception as e:
                 loi = str(e)
+                self._game_process = None
                 self.root.after(0, lambda: messagebox.showerror("Lỗi", f"Khởi động game thất bại:\n{loi}"))
-            finally:
-                self.root.after(0, lambda: self.btn_launch.config(state="normal", text="VÀO GAME"))
+                self.root.after(0, lambda: self.btn_launch.config(
+                    text="▶ VÀO GAME", bg="#1E88E5", state="normal"))
                 self.root.after(0, lambda: self.lbl_status.config(text="Sẵn sàng", fg="gray"))
 
         threading.Thread(target=luong_khoi_dong, daemon=True).start()
@@ -137,4 +189,3 @@ if __name__ == "__main__":
     app = MinecraftLauncherApp(root)
     root.app = app  # Gắn app vào root để instance_frame gọi được xoa_instance_hien_tai
     root.mainloop()
-

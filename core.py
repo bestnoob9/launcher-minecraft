@@ -31,17 +31,34 @@ def tai_danh_sach_mod(loai_game, version_goc):
         elif loai_game == "NeoForge":
             url = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=5) as response:
+            # --- ĐOẠN ĐƯỢC SỬA LẠI THỤT LỀ TỪ ĐÂY ---
+            with urllib.request.urlopen(req, timeout=10) as response:
                 data = json.loads(response.read().decode())
                 tat_ca_versions = data.get("versions", [])
+
                 parts = version_goc.split('.')
                 sub_ver = parts[1] if len(parts) > 1 else ""
+
+                # Lọc đúng prefix
                 ds_loader = [v for v in tat_ca_versions if v.startswith(f"{sub_ver}.")]
-                ds_loader.sort(key=lambda s: list(map(int, s.split('.'))), reverse=True)
+
+                # Sort an toàn — bỏ qua version không parse được
+                def safe_sort_key(s):
+                    try:
+                        return list(map(int, s.split('.')))
+                    except:
+                        return [0]
+
+                ds_loader.sort(key=safe_sort_key, reverse=True)
+
                 if ds_loader:
                     return ds_loader
-                else:
-                    return [f"{sub_ver}.1.0", f"{sub_ver}.0.0"]
+
+                # Fallback nếu không tìm thấy — lấy tất cả bản mới nhất
+                ds_loader = list(tat_ca_versions)
+                ds_loader.sort(key=safe_sort_key, reverse=True)
+                return ds_loader[:20]  # trả về 20 bản mới nhất
+            # --- KẾT THÚC ĐOẠN SỬA THỤT LỀ ---
 
         elif loai_game == "Forge":
             forge_list = minecraft_launcher_lib.forge.list_forge_versions()
@@ -252,8 +269,17 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status):
         lbl_status.after(0, lambda: lbl_status.config(text="Lỗi: Không thể đọc cấu hình Instance!", fg="red"))
         return
 
-    ram_min = config.current_config.get("ram_min", "1GB").replace("GB", "G").replace("MB", "M")
-    ram_max = config.current_config.get("ram_max", "4GB").replace("GB", "G").replace("MB", "M")
+    def _parse_ram(val, default):
+        import re as _re
+        val = str(val).strip().upper().replace(" ", "")
+        m = _re.match(r"^(\d+)\s*(GB|MB|G|M)?$", val)
+        if m:
+            num, unit = m.group(1), (m.group(2) or "G")
+            unit = unit.replace("GB", "G").replace("MB", "M")
+            return f"{num}{unit}"
+        return default
+    ram_min = _parse_ram(config.current_config.get("ram_min", "2GB"), "2G")
+    ram_max = _parse_ram(config.current_config.get("ram_max", "4GB"), "4G")
 
     do_phan_giai = config.current_config.get("do_phan_giai", "854x480")
     match = re.search(r"(\d+)\s*x\s*(\d+)", do_phan_giai)
@@ -285,7 +311,17 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status):
             ten_folder_instance,
             options
         )
-        lbl_status.after(0, lambda: lbl_status.config(text="Minecraft đang hoạt động...", fg="#2b8c54"))
-        subprocess.Popen(lenh)
+        lbl_status.after(0, lambda: lbl_status.config(text="Đang khởi động Minecraft...", fg="#2b8c54"))
+        proc = subprocess.Popen(lenh)
+        return proc
     except Exception as e:
-        lbl_status.after(0, lambda: lbl_status.config(text=f"Thất bại: {e}", fg="red"))
+        err = str(e)
+        lbl_status.after(0, lambda: lbl_status.config(text=f"Thất bại: {err}", fg="red"))
+        return None
+def lay_danh_sach_phien_ban_theo_loai(loai):
+    """loai: release | snapshot | old_beta | old_alpha"""
+    try:
+        all_versions = minecraft_launcher_lib.utils.get_version_list()
+        return [v["id"] for v in all_versions if v["type"] == loai]
+    except:
+        return []

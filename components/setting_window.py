@@ -21,6 +21,41 @@ class SettingWindow(tk.Toplevel):
             "Chơi Modpack nặng (Nhiều Mods)": "heavy_modded",
             "Siêu mượt Real-time (Shenandoah GC)": "shenandoah_ultra"
         }
+
+        # GC flags của từng preset (KHÔNG có -Xmx/-Xms — sẽ inject từ thanh kéo RAM)
+        self._preset_flags = {
+            "aikar_optimized": (
+                "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 "
+                "-XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch "
+                "-XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M "
+                "-XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 "
+                "-XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 "
+                "-XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 "
+                "-XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 "
+                "-Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true"
+            ),
+            "low_end": (
+                "-XX:+UseSerialGC -XX:+OptimizeStringConcat -XX:+UseStringDeduplication "
+                "-XX:MaxGCPauseMillis=50 -Xss512k -XX:MetaspaceSize=64m -XX:MaxMetaspaceSize=128m"
+            ),
+            "chunk_loading_heavy": (
+                "-XX:+UseZGC -XX:+UnlockExperimentalVMOptions -XX:+ZGenerational "
+                "-XX:+AlwaysPreTouch -XX:+DisableExplicitGC "
+                "-XX:ConcGCThreads=4 -XX:ParallelGCThreads=4"
+            ),
+            "heavy_modded": (
+                "-XX:+UseG1GC -XX:+UnlockExperimentalVMOptions -XX:+ParallelRefProcEnabled "
+                "-XX:MaxGCPauseMillis=200 -XX:+AlwaysPreTouch -XX:G1HeapRegionSize=32M "
+                "-XX:G1NewSizePercent=20 -XX:G1MaxNewSizePercent=50 -XX:G1ReservePercent=15 "
+                "-XX:InitiatingHeapOccupancyPercent=20 -XX:G1MixedGCLiveThresholdPercent=85 "
+                "-XX:MetaspaceSize=256m -XX:MaxMetaspaceSize=512m"
+            ),
+            "shenandoah_ultra": (
+                "-XX:+UseShenandoahGC -XX:+UnlockExperimentalVMOptions "
+                "-XX:ShenandoahGCMode=iu -XX:+AlwaysPreTouch -XX:+DisableExplicitGC "
+                "-XX:+UseTransparentHugePages -XX:ConcGCThreads=4"
+            ),
+        }
         
         self.create_widgets()
 
@@ -316,15 +351,20 @@ class SettingWindow(tk.Toplevel):
         frame_jvm_preset = tk.Frame(self)
         frame_jvm_preset.pack(fill="x", padx=20, pady=3)
         tk.Label(frame_jvm_preset, text="Gói tối ưu:", font=("Arial", 9)).pack(side=tk.LEFT)
-        
+
         self.cbo_jvm_presets = ttk.Combobox(frame_jvm_preset, values=list(self.preset_options.keys()), width=35, state="readonly")
         self.cbo_jvm_presets.pack(side=tk.LEFT, padx=10)
+        # Khi chọn preset → tự điền args vào ô bên dưới
+        self.cbo_jvm_presets.bind("<<ComboboxSelected>>", self._khi_chon_preset_jvm)
 
-        # Ô nhập tay Arguments Custom (Chỉ bật khi chọn Chế độ 3)
+        # Ô hiển thị JVM Arguments thực tế sẽ truyền vào launcher
+        # - Chế độ preset: tự điền (readonly, màu xám)
+        # - Chế độ custom:  người dùng nhập tay (normal)
+        # - Chế độ default: trống + disabled
         frame_jvm_custom = tk.Frame(self)
         frame_jvm_custom.pack(fill="x", padx=20, pady=3)
-        tk.Label(frame_jvm_custom, text="Nhập tay:", font=("Arial", 9)).pack(side=tk.LEFT)
-        
+        tk.Label(frame_jvm_custom, text="Arguments:", font=("Arial", 9)).pack(side=tk.LEFT)
+
         self.ent_jvm_custom = tk.Entry(frame_jvm_custom, font=("Arial", 9), width=45)
         self.ent_jvm_custom.pack(side=tk.LEFT, padx=10, fill="x", expand=True)
 
@@ -332,9 +372,66 @@ class SettingWindow(tk.Toplevel):
         self.dong_bo_du_lieu_jvm_cu()
         # =====================================================================
 
+        # =====================================================================
+        # KHU VỰC 5: JAVA PATH
+        # =====================================================================
+        lbl_java_title = tk.Label(self, text="Đường dẫn Java (Java Path):", font=("Arial", 10, "bold"))
+        lbl_java_title.pack(anchor="w", padx=20, pady=(15, 2))
+
+        frame_java = tk.Frame(self)
+        frame_java.pack(fill="x", padx=20)
+
+        self.ent_java_path = tk.Entry(frame_java, font=("Arial", 9), width=33)
+        self.ent_java_path.pack(side=tk.LEFT, ipady=2, fill="x", expand=True)
+        self.ent_java_path.insert(0, config.current_config.get("java_path", ""))
+
+        btn_browse_java = tk.Button(
+            frame_java, text="Chọn...", font=("Arial", 9),
+            command=self._chon_java_path
+        )
+        btn_browse_java.pack(side=tk.LEFT, padx=(5, 0))
+
+        lbl_java_hint = tk.Label(
+            self,
+            text="Để trống = dùng Java mặc định của hệ thống",
+            font=("Arial", 8), fg="#888"
+        )
+        lbl_java_hint.pack(anchor="w", padx=20)
+        # =====================================================================
+
         # NÚT LƯU CẤU HÌNH
         btn_save = tk.Button(self, text="LƯU CÀI ĐẶT", font=("Arial", 10, "bold"), bg="#2196F3", fg="white", width=15, height=2, command=self.luu_cau_hinh)
         btn_save.pack(side=tk.BOTTOM, pady=15)
+
+    def _lay_ram_hien_tai(self) -> str:
+        """Lấy RAM hiện tại từ ô MiB trên UI, trả về dạng JVM string (vd: '4G', '2048M')."""
+        try:
+            mb = int(self.var_ram_mib.get().strip())
+            mb = max(512, mb)
+        except Exception:
+            mb = 2048
+        if mb >= 1024 and mb % 1024 == 0:
+            return f"{mb // 1024}G"
+        return f"{mb}M"
+
+    def _xay_dung_args_preset(self, preset_key: str) -> str:
+        """Ghép -Xmx/-Xms (từ thanh kéo RAM) + GC flags của preset thành 1 chuỗi."""
+        xmx = self._lay_ram_hien_tai()
+        mb  = int(self.var_ram_mib.get().strip()) if self.var_ram_mib.get().strip().isdigit() else 2048
+        xms_mb = max(512, mb // 2)
+        xms = f"{xms_mb // 1024}G" if xms_mb >= 1024 and xms_mb % 1024 == 0 else f"{xms_mb}M"
+        gc_flags = self._preset_flags.get(preset_key, "")
+        return f"-Xmx{xmx} -Xms{xms} {gc_flags}".strip()
+
+    def _khi_chon_preset_jvm(self, event=None):
+        """Khi người dùng chọn preset → điền args thực tế vào ô Arguments."""
+        ten_vn = self.cbo_jvm_presets.get()
+        preset_key = self.preset_options.get(ten_vn, "aikar_optimized")
+        args = self._xay_dung_args_preset(preset_key)
+        self.ent_jvm_custom.configure(state="normal")
+        self.ent_jvm_custom.delete(0, tk.END)
+        self.ent_jvm_custom.insert(0, args)
+        self.ent_jvm_custom.configure(state="readonly")
 
     def dong_bo_du_lieu_jvm_cu(self):
         """Đọc file config hiện tại để hiển thị chính xác trạng thái JVM lên giao diện"""
@@ -354,8 +451,14 @@ class SettingWindow(tk.Toplevel):
         else:
             self.cbo_jvm_presets.set(list(self.preset_options.keys())[0])
 
-        current_custom = config.current_config.get("custom_jvm_args", "")
-        self.ent_jvm_custom.insert(0, current_custom)
+        # Điền ô Arguments theo chế độ đã lưu
+        if current_mode == "preset":
+            # Điền args preset (với RAM hiện tại) vào ô để thấy rõ
+            args = self._xay_dung_args_preset(current_preset)
+            self.ent_jvm_custom.insert(0, args)
+        else:
+            current_custom = config.current_config.get("custom_jvm_args", "")
+            self.ent_jvm_custom.insert(0, current_custom)
 
         # Khóa/mở khóa các ô nhập dựa theo chế độ tải lên
         self.khi_thay_doi_che_do_jvm()
@@ -365,13 +468,32 @@ class SettingWindow(tk.Toplevel):
         che_do = self.cbo_jvm_mode.get()
         if che_do == "Mặc định (Mojang)":
             self.cbo_jvm_presets.configure(state="disabled")
+            self.ent_jvm_custom.configure(state="normal")
+            self.ent_jvm_custom.delete(0, tk.END)
             self.ent_jvm_custom.configure(state="disabled")
         elif che_do == "Sử dụng gói tối ưu sẵn":
             self.cbo_jvm_presets.configure(state="readonly")
-            self.ent_jvm_custom.configure(state="disabled")
+            # Điền ngay args của preset đang chọn (readonly — xem được nhưng không sửa)
+            ten_vn = self.cbo_jvm_presets.get()
+            preset_key = self.preset_options.get(ten_vn, "aikar_optimized")
+            args = self._xay_dung_args_preset(preset_key)
+            self.ent_jvm_custom.configure(state="normal")
+            self.ent_jvm_custom.delete(0, tk.END)
+            self.ent_jvm_custom.insert(0, args)
+            self.ent_jvm_custom.configure(state="readonly")
         elif che_do == "Tự nhập tay (Custom)":
             self.cbo_jvm_presets.configure(state="disabled")
+            # Xóa args preset nếu đang có, để người dùng nhập tay
+            cur = self.ent_jvm_custom.get()
             self.ent_jvm_custom.configure(state="normal")
+            # Nếu ô đang chứa args từ preset thì xóa để nhập mới
+            is_preset = any(
+                f.split()[0] in cur
+                for f in self._preset_flags.values()
+                if f
+            )
+            if is_preset:
+                self.ent_jvm_custom.delete(0, tk.END)
 
     def khi_chon_preset(self, event=None):
         preset = self.cbo_res_preset.get()
@@ -387,6 +509,21 @@ class SettingWindow(tk.Toplevel):
         if thu_muc:
             self.ent_path.delete(0, tk.END)
             self.ent_path.insert(0, thu_muc)
+
+    def _chon_java_path(self):
+        """Mở hộp thoại chọn file java / java.exe"""
+        import sys
+        if sys.platform == "win32":
+            file_types = [("Java Executable", "java.exe"), ("All files", "*.*")]
+        else:
+            file_types = [("Java Executable", "java"), ("All files", "*.*")]
+        java_file = filedialog.askopenfilename(
+            title="Chọn file java hoặc java.exe",
+            filetypes=file_types
+        )
+        if java_file:
+            self.ent_java_path.delete(0, tk.END)
+            self.ent_java_path.insert(0, java_file)
 
     def luu_cau_hinh(self):
         path = self.ent_path.get().strip()
@@ -431,6 +568,7 @@ class SettingWindow(tk.Toplevel):
         config.current_config["ram_max"] = ram_max_val
         config.current_config.pop("ram_min", None)  # xoa ram_min neu con ton tai
         config.current_config["do_phan_giai"] = res_chuan_hoa
+        config.current_config["java_path"] = self.ent_java_path.get().strip()
         
         # --- LƯU CÁC TRƯỜNG JVM ARGUMENTS MỚI TÍCH HỢP ---
         jvm_ui_mode = self.cbo_jvm_mode.get()
@@ -443,7 +581,12 @@ class SettingWindow(tk.Toplevel):
 
         ten_goi_tieng_viet = self.cbo_jvm_presets.get()
         config.current_config["preset_jvm_args"] = self.preset_options.get(ten_goi_tieng_viet, "aikar_optimized")
+
+        # Luôn lưu nội dung ô Arguments vào custom_jvm_args
+        # (dù là preset hay nhập tay — launcher chỉ cần đọc key này)
+        self.ent_jvm_custom.configure(state="normal")
         config.current_config["custom_jvm_args"] = self.ent_jvm_custom.get().strip()
+        self.ent_jvm_custom.configure(state="readonly" if jvm_ui_mode == "Sử dụng gói tối ưu sẵn" else "normal")
         
         # Đồng bộ và ghi file
         config.luu_toan_bo_cau_hinh()

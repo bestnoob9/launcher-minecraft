@@ -137,3 +137,144 @@ def luu_toan_bo_cau_hinh():
 
 # Khởi tạo biến cấu hình toàn cục khi import module
 current_config = tai_toan_bo_cau_hinh()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# JVM ARGUMENTS BUILDER
+# Các preset chỉ chứa flags tối ưu, KHÔNG hardcode -Xmx/-Xms.
+# RAM luôn được lấy từ current_config["ram_max"] (thanh kéo setting).
+# ──────────────────────────────────────────────────────────────────────
+
+# Chỉ chứa GC flags & tối ưu, KHÔNG có -Xmx/-Xms (sẽ inject tự động)
+_PRESET_JVM_FLAGS = {
+    "aikar_optimized": (
+        "-XX:+UseG1GC "
+        "-XX:+ParallelRefProcEnabled "
+        "-XX:MaxGCPauseMillis=200 "
+        "-XX:+UnlockExperimentalVMOptions "
+        "-XX:+DisableExplicitGC "
+        "-XX:+AlwaysPreTouch "
+        "-XX:G1NewSizePercent=30 "
+        "-XX:G1MaxNewSizePercent=40 "
+        "-XX:G1HeapRegionSize=8M "
+        "-XX:G1ReservePercent=20 "
+        "-XX:G1HeapWastePercent=5 "
+        "-XX:G1MixedGCCountTarget=4 "
+        "-XX:InitiatingHeapOccupancyPercent=15 "
+        "-XX:G1MixedGCLiveThresholdPercent=90 "
+        "-XX:G1RSetUpdatingPauseTimePercent=5 "
+        "-XX:SurvivorRatio=32 "
+        "-XX:+PerfDisableSharedMem "
+        "-XX:MaxTenuringThreshold=1 "
+        "-Dusing.aikars.flags=https://mcflags.emc.gs "
+        "-Daikars.new.flags=true"
+    ),
+    "low_end": (
+        "-XX:+UseSerialGC "
+        "-XX:+OptimizeStringConcat "
+        "-XX:+UseStringDeduplication "
+        "-XX:MaxGCPauseMillis=50 "
+        "-Xss512k "
+        "-XX:MetaspaceSize=64m "
+        "-XX:MaxMetaspaceSize=128m"
+    ),
+    "chunk_loading_heavy": (
+        "-XX:+UseZGC "
+        "-XX:+UnlockExperimentalVMOptions "
+        "-XX:+ZGenerational "
+        "-XX:+AlwaysPreTouch "
+        "-XX:+DisableExplicitGC "
+        "-XX:ConcGCThreads=4 "
+        "-XX:ParallelGCThreads=4"
+    ),
+    "heavy_modded": (
+        "-XX:+UseG1GC "
+        "-XX:+UnlockExperimentalVMOptions "
+        "-XX:+ParallelRefProcEnabled "
+        "-XX:MaxGCPauseMillis=200 "
+        "-XX:+AlwaysPreTouch "
+        "-XX:G1HeapRegionSize=32M "
+        "-XX:G1NewSizePercent=20 "
+        "-XX:G1MaxNewSizePercent=50 "
+        "-XX:G1ReservePercent=15 "
+        "-XX:InitiatingHeapOccupancyPercent=20 "
+        "-XX:G1MixedGCLiveThresholdPercent=85 "
+        "-XX:MetaspaceSize=256m "
+        "-XX:MaxMetaspaceSize=512m"
+    ),
+    "shenandoah_ultra": (
+        "-XX:+UseShenandoahGC "
+        "-XX:+UnlockExperimentalVMOptions "
+        "-XX:ShenandoahGCMode=iu "
+        "-XX:+AlwaysPreTouch "
+        "-XX:+DisableExplicitGC "
+        "-XX:+UseTransparentHugePages "
+        "-XX:ConcGCThreads=4"
+    ),
+}
+
+
+def _parse_ram_to_mb(s: str) -> int:
+    """Chuyển chuỗi RAM (vd: '4GB', '2 GB', '2048MB') sang số MB."""
+    s = str(s).strip().upper().replace(" ", "")
+    if s.endswith("GB"):  return int(float(s[:-2]) * 1024)
+    if s.endswith("MB"):  return int(s[:-2])
+    if s.endswith("G"):   return int(float(s[:-1]) * 1024)
+    if s.endswith("M"):   return int(s[:-1])
+    try:    return int(s)
+    except: return 2048
+
+
+def _mb_to_jvm(mb: int) -> str:
+    """Chuyển MB sang chuỗi JVM gọn nhất: '4G' hoặc '512M'."""
+    if mb >= 1024 and mb % 1024 == 0:
+        return f"{mb // 1024}G"
+    return f"{mb}M"
+
+
+def build_jvm_args(cfg: dict | None = None) -> list[str]:
+    """
+    Trả về list JVM arguments dựa theo cấu hình hiện tại.
+
+    - RAM (-Xmx / -Xms) luôn lấy từ cfg["ram_max"] (thanh kéo).
+    - Preset chỉ cung cấp GC flags & tối ưu, không hardcode RAM.
+    - Chế độ "default": trả về [] để Mojang launcher tự xử lý.
+
+    Dùng:
+        jvm_args = config.build_jvm_args()
+        # hoặc
+        jvm_args = config.build_jvm_args(config.current_config)
+    """
+    if cfg is None:
+        cfg = current_config
+
+    ram_mb  = _parse_ram_to_mb(cfg.get("ram_max", "2GB"))
+    ram_mb  = max(512, ram_mb)                        # tối thiểu 512 MB
+    xmx     = _mb_to_jvm(ram_mb)
+    xms     = _mb_to_jvm(max(512, ram_mb // 2))      # Xms = 50% Xmx
+
+    mode = cfg.get("jvm_mode", "default")
+
+    # ── Chế độ 1: Mặc định Mojang ──────────────────────────────────
+    if mode == "default":
+        return []  # Để Mojang launcher tự inject RAM
+
+    # ── Chế độ 2: Gói tối ưu sẵn ──────────────────────────────────
+    if mode == "preset":
+        preset_key  = cfg.get("preset_jvm_args", "aikar_optimized")
+        gc_flags    = _PRESET_JVM_FLAGS.get(preset_key, _PRESET_JVM_FLAGS["aikar_optimized"])
+        full_args   = f"-Xmx{xmx} -Xms{xms} {gc_flags}"
+        return full_args.split()
+
+    # ── Chế độ 3: Nhập tay (Custom) ────────────────────────────────
+    if mode == "custom":
+        raw = cfg.get("custom_jvm_args", "").strip()
+        if not raw:
+            return []
+        # Nếu người dùng không tự nhập -Xmx thì tự inject vào đầu
+        import re
+        if not re.search(r"-Xmx", raw, re.IGNORECASE):
+            raw = f"-Xmx{xmx} -Xms{xms} {raw}"
+        return raw.split()
+
+    return []

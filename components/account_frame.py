@@ -26,11 +26,11 @@ class AccountFrame(tk.Frame):
         self.cbo_username.grid(row=0, column=0, padx=5)
         self.cbo_username.bind("<<ComboboxSelected>>", self._khi_chon_tai_khoan)
         
-        btn_add_acc = tk.Button(frame_inner, text="➕", font=("Arial", 9), bg="#4CAF50", fg="white", width=3, command=self.them_tai_khoan)
-        btn_add_acc.grid(row=0, column=1, padx=2)
+        self.btn_add_acc = tk.Button(frame_inner, text="➕", font=("Arial", 9), bg="#4CAF50", fg="white", width=3, command=self.them_tai_khoan)
+        self.btn_add_acc.grid(row=0, column=1, padx=2)
         
-        btn_del_acc = tk.Button(frame_inner, text="❌", font=("Arial", 9), bg="#F44336", fg="white", width=3, command=self.xoa_tai_khoan)
-        btn_del_acc.grid(row=0, column=2, padx=2)
+        self.btn_del_acc = tk.Button(frame_inner, text="❌", font=("Arial", 9), bg="#F44336", fg="white", width=3, command=self.xoa_tai_khoan)
+        self.btn_del_acc.grid(row=0, column=2, padx=2)
 
     def _khi_chon_tai_khoan(self, event=None):
         ten = self.cbo_username.get().strip()
@@ -43,6 +43,14 @@ class AccountFrame(tk.Frame):
         return self.cbo_username.get().strip()
     def get_current_account(self):
         return self.cbo_username.get().strip()
+
+    def khoa(self, tat: bool):
+        """Khóa/mở khóa toàn bộ UI tài khoản. tat=True → khóa, False → mở."""
+        trang_thai_cb = "disabled" if tat else "readonly"
+        trang_thai_btn = "disabled" if tat else "normal"
+        self.cbo_username.configure(state=trang_thai_cb)
+        self.btn_add_acc.configure(state=trang_thai_btn)
+        self.btn_del_acc.configure(state=trang_thai_btn)
 
     def them_tai_khoan(self):
         win_add = tk.Toplevel(self)

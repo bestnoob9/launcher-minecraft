@@ -81,12 +81,12 @@ class InstanceFrame(tk.Frame):
         self.cbo_instance.grid(row=0, column=0, padx=5)
         self.cbo_instance.bind("<<ComboboxSelected>>", self.khi_chuyen_instance)
 
-        btn_add_instance = tk.Button(
+        self.btn_add_instance = tk.Button(
             frame_inner, text="➕ Tạo phiên bản",
             font=("Arial", 9, "bold"), bg="#4CAF50", fg="white",
             command=self.mo_cua_so_tao_instance
         )
-        btn_add_instance.grid(row=0, column=1, padx=2)
+        self.btn_add_instance.grid(row=0, column=1, padx=2)
 
         self.lbl_info = tk.Label(self, text="", font=("Arial", 9, "italic"), fg="#2E7D32")
         self.lbl_info.pack(pady=2)
@@ -202,6 +202,13 @@ class InstanceFrame(tk.Frame):
         elif ds_moi:
             self.cbo_instance.set(ds_moi[0])
         self.cap_nhat_nhan_thong_tin()
+
+    def khoa(self, tat: bool):
+        """Khóa/mở khóa toàn bộ UI instance. tat=True → khóa, False → mở."""
+        trang_thai_cb  = "disabled" if tat else "readonly"
+        trang_thai_btn = "disabled" if tat else "normal"
+        self.cbo_instance.configure(state=trang_thai_cb)
+        self.btn_add_instance.configure(state=trang_thai_btn)
 
     def get_game_path(self):
         return self.thu_muc_goc
@@ -445,5 +452,3 @@ class InstanceFrame(tk.Frame):
             width=18, height=2, command=xu_ly_tao
         )
         btn_confirm.pack(side=tk.BOTTOM, pady=15)
-
-

@@ -366,6 +366,20 @@ class MinecraftLauncherApp:
         if mo_ta:
             self.lbl_progress.config(text=mo_ta)
 
+    def _khoa_ui(self):
+        """Khóa toàn bộ UI khi game đang tải/chạy."""
+        # Khóa chọn tài khoản
+        self.account_frame.khoa(True)
+        # Khóa chọn/thêm/xóa/đổi tên phiên bản
+        self.instance_frame.khoa(True)
+        self.btn_delete_instance.config(state="disabled")
+
+    def _mo_khoa_ui(self):
+        """Mở khóa toàn bộ UI khi game dừng."""
+        self.account_frame.khoa(False)
+        self.instance_frame.khoa(False)
+        self.btn_delete_instance.config(state="normal")
+
     def bat_dau_hoac_tat_game(self):
         # Dang tai -> huy tai
         if self._dang_tai:
@@ -395,6 +409,7 @@ class MinecraftLauncherApp:
         self.btn_launch.config(state="normal", text="🟥 HỦY", bg="#E53935")
         self.lbl_status.config(text="Đang chuẩn bị dữ liệu game...", fg="#1E88E5")
         self.hien_thi_progress(True)
+        self._khoa_ui()
 
         def luong_khoi_dong():
             try:
@@ -405,6 +420,7 @@ class MinecraftLauncherApp:
                     self.root.after(0, lambda: self.btn_launch.config(text="▶ VÀO GAME", bg="#1E88E5", state="normal"))
                     self.root.after(0, lambda: self.lbl_status.config(text="Sẵn sàng", fg="gray"))
                     self.root.after(0, lambda: self.hien_thi_progress(False))
+                    self.root.after(0, self._mo_khoa_ui)
                     return
                 thu_muc_game = config.current_config.get("thu_muc_game")
 
@@ -437,6 +453,7 @@ class MinecraftLauncherApp:
                 self.root.after(0, lambda: self.btn_launch.config(
                     text="▶ VÀO GAME", bg="#1E88E5", state="normal"))
                 self.root.after(0, lambda: self.lbl_status.config(text="Sẵn sàng", fg="gray"))
+                self.root.after(0, self._mo_khoa_ui)
 
             except Exception as e:
                 loi = str(e)
@@ -448,6 +465,7 @@ class MinecraftLauncherApp:
                     text="▶ VÀO GAME", bg="#1E88E5", state="normal"))
                 self.root.after(0, lambda: self.lbl_status.config(text="Sẵn sàng", fg="gray"))
                 self.root.after(0, lambda: self.hien_thi_progress(False))
+                self.root.after(0, self._mo_khoa_ui)
 
         threading.Thread(target=luong_khoi_dong, daemon=True).start()
 

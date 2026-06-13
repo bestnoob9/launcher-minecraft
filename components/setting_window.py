@@ -110,8 +110,8 @@ class SettingWindow(tk.Toplevel):
 
         RAM_STEP   = 256
         RAM_MIN_MB = 512
-        # Giới hạn tối đa = RAM thực tế - 2GB dành cho HĐH (tối thiểu 1GB)
-        RAM_MAX_MB = max(1024, _total_mb - 2048)
+        #RAM_MAX_MB = max(1024, int(_total_mb * 0.95))
+        RAM_MAX_MB = max(1024, int(_total_mb))
 
         # --- Hàm tiện ích ---
         def parse_ram_to_mb(s):
@@ -209,7 +209,7 @@ class SettingWindow(tk.Toplevel):
                 self.ent_ram_mib.config(state="normal")
 
         khi_thay_doi_auto()
-
+        """
         # --- Nhãn mốc tick theo RAM máy thực tế ---
         # Chia đều các mốc GB từ 0 đến RAM_MAX
         canvas_ticks = tk.Canvas(frame_ram, height=14, bg=self.cget("bg"), highlightthickness=0)
@@ -240,7 +240,7 @@ class SettingWindow(tk.Toplevel):
                                          font=("Arial", 7), fill="#888888")
 
         canvas_ticks.bind("<Configure>", ve_tick_labels)
-        canvas_ticks.after(150, ve_tick_labels)
+        canvas_ticks.after(150, ve_tick_labels) """
 
         # Lưu hàm tiện ích để dùng lại trong luu_cau_hinh
         self._mb_to_display = mb_to_display

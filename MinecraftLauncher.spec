@@ -3,8 +3,10 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [('components', 'components')]
 binaries = []
-hiddenimports = ['minecraft_launcher_lib', 'minecraft_launcher_lib.utils', 'minecraft_launcher_lib.install', 'minecraft_launcher_lib.command', 'minecraft_launcher_lib.fabric', 'minecraft_launcher_lib.quilt', 'minecraft_launcher_lib.forge', 'minecraft_launcher_lib.neoforge', 'tkinter', 'tkinter.ttk', 'tkinter.messagebox', 'tkinter.filedialog']
+hiddenimports = ['minecraft_launcher_lib', 'minecraft_launcher_lib.utils', 'minecraft_launcher_lib.install', 'minecraft_launcher_lib.command', 'minecraft_launcher_lib.fabric', 'minecraft_launcher_lib.quilt', 'minecraft_launcher_lib.forge', 'minecraft_launcher_lib.neoforge', 'tkinter', 'tkinter.ttk', 'tkinter.messagebox', 'tkinter.filedialog', 'psutil']
 tmp_ret = collect_all('minecraft_launcher_lib')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('psutil')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 

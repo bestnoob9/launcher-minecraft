@@ -29,7 +29,7 @@ if errorlevel 1 (
 echo Bat dau build...
 echo.
 
-"%THONNY_PY%" -m PyInstaller --onefile --windowed --name "MinecraftLauncher" --icon "icon.ico" --add-data "components;components" --hidden-import "minecraft_launcher_lib" --hidden-import "minecraft_launcher_lib.utils" --hidden-import "minecraft_launcher_lib.install" --hidden-import "minecraft_launcher_lib.command" --hidden-import "minecraft_launcher_lib.fabric" --hidden-import "minecraft_launcher_lib.quilt" --hidden-import "minecraft_launcher_lib.forge" --hidden-import "minecraft_launcher_lib.neoforge" --hidden-import "tkinter" --hidden-import "tkinter.ttk" --hidden-import "tkinter.messagebox" --hidden-import "tkinter.filedialog" --collect-all "minecraft_launcher_lib" main.py
+"%THONNY_PY%" -m PyInstaller --onefile --windowed --name "MinecraftLauncher" --icon "icon.ico" --add-data "components;components" --hidden-import "minecraft_launcher_lib" --hidden-import "minecraft_launcher_lib.utils" --hidden-import "minecraft_launcher_lib.install" --hidden-import "minecraft_launcher_lib.command" --hidden-import "minecraft_launcher_lib.fabric" --hidden-import "minecraft_launcher_lib.quilt" --hidden-import "minecraft_launcher_lib.forge" --hidden-import "minecraft_launcher_lib.neoforge" --hidden-import "tkinter" --hidden-import "tkinter.ttk" --hidden-import "tkinter.messagebox" --hidden-import "tkinter.filedialog" --collect-all "minecraft_launcher_lib" --hidden-import "psutil" --collect-all "psutil" main.py
 
 echo.
 if exist "dist\MinecraftLauncher.exe" (

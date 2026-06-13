@@ -43,6 +43,71 @@ from components.widgets import (
 
 
 # =====================================================================
+# PAGINATION BAR (kieu Modrinth: < 1 2 ... N >)
+# =====================================================================
+
+class PaginationBar(tk.Frame):
+    """
+    Thanh chuyen trang dang: <  1  2  ...  N  >
+    on_page(page) duoc goi voi page bat dau tu 1.
+    """
+    def __init__(self, parent, on_page, accent_color="#1E88E5", bg=None, **kw):
+        bg = bg or (parent["bg"] if isinstance(parent, (tk.Frame, tk.Toplevel)) else "#f5f5f7")
+        super().__init__(parent, bg=bg, **kw)
+        self.on_page      = on_page
+        self.accent_color = accent_color
+        self.bg           = bg
+        self.page         = 1
+        self.total_pages  = 1
+
+    def set_total(self, total_items, page_size, current_page=1):
+        self.total_pages = max(1, (total_items + page_size - 1) // page_size) if page_size else 1
+        self.page = max(1, min(current_page, self.total_pages))
+        self._render()
+
+    def _btn(self, text, cmd=None, active=False):
+        if active:
+            b = tk.Button(self, text=text, font=("Arial", 9, "bold"),
+                           bg=self.accent_color, fg="white",
+                           activebackground=self.accent_color, activeforeground="white",
+                           relief="flat", width=3, state="disabled")
+        elif cmd is None:
+            b = tk.Label(self, text=text, font=("Arial", 9), bg=self.bg, fg="#888", width=3)
+        else:
+            b = tk.Button(self, text=text, font=("Arial", 9), bg="#e1e4ea", fg="#1a1a1a",
+                           activebackground="#cfd3da", relief="flat", width=3, command=cmd)
+        b.pack(side="left", padx=2)
+        return b
+
+    def _go(self, p):
+        if 1 <= p <= self.total_pages and p != self.page:
+            self.page = p
+            self.on_page(p)
+            self._render()
+
+    def _render(self):
+        for w in self.winfo_children():
+            w.destroy()
+
+        if self.total_pages <= 1:
+            return
+
+        self._btn("<", (lambda: self._go(self.page - 1)) if self.page > 1 else None)
+
+        tp, cur = self.total_pages, self.page
+        # Danh sach so trang can hien: 1, cur-1, cur, cur+1, tp (+ "...")
+        pages = sorted(set([1, tp, cur]))
+        last  = 0
+        for p in pages:
+            if p - last > 1:
+                self._btn("...")
+            self._btn(str(p), (lambda pp=p: self._go(pp)), active=(p == cur))
+            last = p
+
+        self._btn(">", (lambda: self._go(self.page + 1)) if self.page < tp else None)
+
+
+# =====================================================================
 # CUA SO CHINH
 # =====================================================================
 
@@ -53,7 +118,7 @@ class ModMcWindow(tk.Toplevel):
         self.geometry("860x660")
         self.resizable(True, True)
         self.minsize(760, 500)
-        self.grab_set()
+        # self.grab_set()  # Đã bỏ để main vẫn dùng được khi mở Modpack
         self.callback_lam_moi = callback_lam_moi
 
         # Debounce IDs
@@ -63,6 +128,10 @@ class ModMcWindow(tk.Toplevel):
         self._debounce_modcf = None
         self._debounce_rsp   = None
         self._debounce_sh    = None
+
+        # Map tu vi tri hien thi (sau khi loc) -> vi tri thuc trong data goc
+        self._modmr_ver_idx_map = []
+        self._modcf_ver_idx_map = []
 
         self._build_ui()
 
@@ -146,6 +215,11 @@ class ModMcWindow(tk.Toplevel):
             except: pass
         setattr(self, attr, self.after(ms, fn))
 
+    def _get_inst_mc_loader(self, ten_inst):
+        """Tra ve (mc_version, loader) cua mot instance, vd ('1.21.1', 'Fabric')."""
+        info = config.current_config.get("danh_sach_instances", {}).get(ten_inst, {})
+        return info.get("version_goc", ""), info.get("loai_game", "")
+
     # ------------------------------------------------------------------
     # TAB: MODPACK MODRINTH
     # ------------------------------------------------------------------
@@ -174,6 +248,9 @@ class ModMcWindow(tk.Toplevel):
         self.list_mr = ContentTableWidget(f, "modrinth", self._select_mr)
         self.list_mr.pack(fill="both", expand=True, padx=10)
 
+        self.pg_mr = PaginationBar(f, self._goto_mr_page, accent_color="#1E88E5", bg=BG)
+        self.pg_mr.pack(fill="x", padx=10, pady=(2, 0))
+
         bp = tk.Frame(f, bg=BG)
         bp.pack(fill="x", padx=10, pady=(4, 8))
         tk.Label(bp, text="Phien ban:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
@@ -188,33 +265,50 @@ class ModMcWindow(tk.Toplevel):
 
         self._mr_data     = []
         self._mr_vers_raw = []
+        self._mr_page     = 1
+        self._mr_total    = 0
+        self._mr_last_kw  = ("", "", "", "")  # (kw, mc, ld, cat); ("","","","") => top
 
-    def _load_mr_top(self):
+    def _load_mr_top(self, page=1):
+        self._mr_page    = page
+        self._mr_last_kw = None  # None => top
         try:
-            r = lay_modrinth_popular("modpack", 50)
-            self._mr_data = r
+            r, total = lay_modrinth_popular("modpack", 50, offset=(page - 1) * 50)
+            self._mr_data  = r
+            self._mr_total = total
             self.after(0, lambda: (
                 self.list_mr.load(r),
-                self.lbl_status.config(text=f"Top {len(r)} Modpack (Modrinth)", fg="#2b8c54"),
+                self.pg_mr.set_total(total, 50, page),
+                self.lbl_status.config(text=f"Top Modpack (Modrinth) - trang {page}", fg="#2b8c54"),
             ))
         except Exception as e:
             self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi MR: {e}", fg="red"))
 
-    def _search_mr(self):
+    def _search_mr(self, page=1):
         kw          = self.ent_mr.get().strip()
         mc, ld, cat = self.fb_mr.get()
+        self._mr_page    = page
+        self._mr_last_kw = (kw, mc, ld, cat)
         self.lbl_status.config(text="Dang tim...", fg="#1E88E5")
         def _t():
             try:
-                r = tim_kiem_modrinth("modpack", kw, mc, ld, cat)
-                self._mr_data = r
+                r, total = tim_kiem_modrinth("modpack", kw, mc, ld, cat, 50, offset=(page - 1) * 50)
+                self._mr_data  = r
+                self._mr_total = total
                 self.after(0, lambda: (
                     self.list_mr.load(r),
-                    self.lbl_status.config(text=f"{len(r)} modpack", fg="#2b8c54"),
+                    self.pg_mr.set_total(total, 50, page),
+                    self.lbl_status.config(text=f"{total} modpack - trang {page}", fg="#2b8c54"),
                 ))
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
         threading.Thread(target=_t, daemon=True).start()
+
+    def _goto_mr_page(self, page):
+        if self._mr_last_kw is None:
+            threading.Thread(target=self._load_mr_top, args=(page,), daemon=True).start()
+        else:
+            self._search_mr(page)
 
     def _select_mr(self, idx, install=False):
         if idx >= len(self._mr_data): return
@@ -304,6 +398,9 @@ class ModMcWindow(tk.Toplevel):
         self.list_cf = ContentTableWidget(f, "curseforge", self._select_cf)
         self.list_cf.pack(fill="both", expand=True, padx=10)
 
+        self.pg_cf = PaginationBar(f, self._goto_cf_page, accent_color="#E64A19", bg=BG)
+        self.pg_cf.pack(fill="x", padx=10, pady=(2, 0))
+
         bp = tk.Frame(f, bg=BG)
         bp.pack(fill="x", padx=10, pady=(4, 8))
         tk.Label(bp, text="Phien ban:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
@@ -318,33 +415,50 @@ class ModMcWindow(tk.Toplevel):
 
         self._cf_data  = []
         self._cf_files = []
+        self._cf_page    = 1
+        self._cf_total   = 0
+        self._cf_last_kw = None
 
-    def _load_cf_top(self):
+    def _load_cf_top(self, page=1):
+        self._cf_page    = page
+        self._cf_last_kw = None
         try:
-            r = lay_curseforge_popular(class_id=4471, limit=50)
-            self._cf_data = r
+            r, total = lay_curseforge_popular(class_id=4471, limit=50, offset=(page - 1) * 50)
+            self._cf_data  = r
+            self._cf_total = total
             self.after(0, lambda: (
                 self.list_cf.load(r),
-                self.lbl_status.config(text=f"Top {len(r)} Modpack (CurseForge)", fg="#2b8c54"),
+                self.pg_cf.set_total(total, 50, page),
+                self.lbl_status.config(text=f"Top Modpack (CurseForge) - trang {page}", fg="#2b8c54"),
             ))
         except Exception as e:
             self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi CF: {e}", fg="red"))
 
-    def _search_cf(self):
+    def _search_cf(self, page=1):
         kw         = self.ent_cf.get().strip()
         mc, ld, _c = self.fb_cf.get()
+        self._cf_page    = page
+        self._cf_last_kw = (kw, mc, ld)
         self.lbl_status.config(text="Dang tim CF...", fg="#E64A19")
         def _t():
             try:
-                r = tim_kiem_curseforge(kw, mc, ld, class_id=4471)
-                self._cf_data = r
+                r, total = tim_kiem_curseforge(kw, mc, ld, limit=50, class_id=4471, offset=(page - 1) * 50)
+                self._cf_data  = r
+                self._cf_total = total
                 self.after(0, lambda: (
                     self.list_cf.load(r),
-                    self.lbl_status.config(text=f"{len(r)} modpack", fg="#2b8c54"),
+                    self.pg_cf.set_total(total, 50, page),
+                    self.lbl_status.config(text=f"{total} modpack - trang {page}", fg="#2b8c54"),
                 ))
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi CF: {e}", fg="red"))
         threading.Thread(target=_t, daemon=True).start()
+
+    def _goto_cf_page(self, page):
+        if self._cf_last_kw is None:
+            threading.Thread(target=self._load_cf_top, args=(page,), daemon=True).start()
+        else:
+            self._search_cf(page)
 
     def _select_cf(self, idx, install=False):
         if idx >= len(self._cf_data): return
@@ -422,6 +536,9 @@ class ModMcWindow(tk.Toplevel):
     def _build_mod_modrinth(self):
         self._modmr_data     = []
         self._modmr_vers_raw = []
+        self._modmr_page     = 1
+        self._modmr_total    = 0
+        self._modmr_last_kw  = None
         f  = self.tab_modmr
         BG = f["bg"]
 
@@ -445,6 +562,9 @@ class ModMcWindow(tk.Toplevel):
         self.list_modmr = ContentTableWidget(f, "modrinth", self._select_modmr)
         self.list_modmr.pack(fill="both", expand=True, padx=10)
 
+        self.pg_modmr = PaginationBar(f, self._goto_modmr_page, accent_color="#00897B", bg=BG)
+        self.pg_modmr.pack(fill="x", padx=10, pady=(2, 0))
+
         bp = tk.Frame(f, bg=BG)
         bp.pack(fill="x", padx=10, pady=(4, 8))
         tk.Label(bp, text="Phien ban mod:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
@@ -457,36 +577,51 @@ class ModMcWindow(tk.Toplevel):
         if cur in ds_inst:  self.cbo_modmr_inst.set(cur)
         elif ds_inst:       self.cbo_modmr_inst.set(ds_inst[0])
         self.cbo_modmr_inst.grid(row=1, column=1, padx=6)
+        self.cbo_modmr_inst.bind("<<ComboboxSelected>>", lambda e: self._filter_modmr_ver())
         tk.Button(bp, text="Cai Mod", font=("Arial", 9, "bold"),
                   bg="#00897B", fg="white", activebackground="#00897B", activeforeground="white",
                   width=14, pady=4, command=self._install_modmr).grid(row=0, column=2, rowspan=2, padx=8)
 
-    def _load_modmr_top(self):
+    def _load_modmr_top(self, page=1):
+        self._modmr_page    = page
+        self._modmr_last_kw = None
         try:
-            r = lay_modrinth_popular("mod", 50)
-            self._modmr_data = r
+            r, total = lay_modrinth_popular("mod", 50, offset=(page - 1) * 50)
+            self._modmr_data  = r
+            self._modmr_total = total
             self.after(0, lambda: (
                 self.list_modmr.load(r),
-                self.lbl_status.config(text=f"Top {len(r)} Mod (Modrinth)", fg="#2b8c54"),
+                self.pg_modmr.set_total(total, 50, page),
+                self.lbl_status.config(text=f"Top Mod (Modrinth) - trang {page}", fg="#2b8c54"),
             ))
         except Exception as e:
             self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi ModMR: {e}", fg="red"))
 
-    def _search_modmr(self):
+    def _search_modmr(self, page=1):
         kw         = self.ent_modmr.get().strip()
         mc, ld, _c = self.fb_modmr.get()
+        self._modmr_page    = page
+        self._modmr_last_kw = (kw, mc, ld)
         self.lbl_status.config(text="Dang tim Mod Modrinth...", fg="#00897B")
         def _t():
             try:
-                r = tim_kiem_modrinth("mod", kw, mc, ld)
-                self._modmr_data = r
+                r, total = tim_kiem_modrinth("mod", kw, mc, ld, "", 50, offset=(page - 1) * 50)
+                self._modmr_data  = r
+                self._modmr_total = total
                 self.after(0, lambda: (
                     self.list_modmr.load(r),
-                    self.lbl_status.config(text=f"{len(r)} mod", fg="#2b8c54"),
+                    self.pg_modmr.set_total(total, 50, page),
+                    self.lbl_status.config(text=f"{total} mod - trang {page}", fg="#2b8c54"),
                 ))
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
         threading.Thread(target=_t, daemon=True).start()
+
+    def _goto_modmr_page(self, page):
+        if self._modmr_last_kw is None:
+            threading.Thread(target=self._load_modmr_top, args=(page,), daemon=True).start()
+        else:
+            self._search_modmr(page)
 
     def _select_modmr(self, idx, install=False):
         if idx >= len(self._modmr_data): return
@@ -497,17 +632,60 @@ class ModMcWindow(tk.Toplevel):
             try:
                 vs = lay_phien_ban_modrinth(pid)
                 self._modmr_vers_raw = vs
-                ds = [f"{v.get('name','?')}  -  MC {', '.join(v.get('game_versions',[]))}  [{', '.join(v.get('loaders',[]))}]"
-                      for v in vs]
                 self.after(0, lambda: (
-                    self.cbo_modmr_ver.config(values=ds),
-                    self.cbo_modmr_ver.set(ds[0]) if ds else None,
-                    self.lbl_status.config(text="Chon phien ban roi nhan Cai Mod.", fg="gray"),
+                    self._filter_modmr_ver(),
                 ))
                 if install: self.after(200, self._install_modmr)
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
         threading.Thread(target=_t, daemon=True).start()
+
+    def _filter_modmr_ver(self):
+        """Loc combobox phien ban mod theo MC version / loader cua Instance dang chon."""
+        vs = self._modmr_vers_raw
+        ds_all = [f"{v.get('name','?')}  -  MC {', '.join(v.get('game_versions',[]))}  [{', '.join(v.get('loaders',[]))}]"
+                  for v in vs]
+
+        ten_inst = self.cbo_modmr_inst.get().strip()
+        mcv, loader = self._get_inst_mc_loader(ten_inst) if ten_inst else ("", "")
+
+        if mcv:
+            idxs = [
+                i for i, v in enumerate(vs)
+                if mcv in v.get("game_versions", [])
+                and (
+                    not loader or loader == "Vanilla"
+                    or loader.lower() in [l.lower() for l in v.get("loaders", [])]
+                )
+            ]
+        else:
+            idxs = list(range(len(vs)))
+
+        if idxs:
+            ds = [ds_all[i] for i in idxs]
+            self._modmr_ver_idx_map = idxs
+            self.cbo_modmr_ver.config(values=ds)
+            self.cbo_modmr_ver.set(ds[0])
+            if mcv:
+                self.lbl_status.config(
+                    text=f"Da loc {len(ds)} phien ban phu hop voi {ten_inst} (MC {mcv}"
+                         + (f", {loader}" if loader and loader != "Vanilla" else "") + ").",
+                    fg="gray")
+            else:
+                self.lbl_status.config(text="Chon phien ban roi nhan Cai Mod.", fg="gray")
+        else:
+            self._modmr_ver_idx_map = list(range(len(vs)))
+            self.cbo_modmr_ver.config(values=ds_all)
+            if ds_all:
+                self.cbo_modmr_ver.set(ds_all[0])
+            else:
+                self.cbo_modmr_ver.set("")
+            if mcv:
+                self.lbl_status.config(
+                    text=f"Khong co phien ban khop voi {ten_inst} (MC {mcv}"
+                         + (f", {loader}" if loader and loader != "Vanilla" else "")
+                         + "). Hien thi tat ca - kiem tra ky truoc khi cai.",
+                    fg="#E64A19")
 
     def _install_modmr(self):
         ten_inst = self.cbo_modmr_inst.get().strip()
@@ -516,6 +694,8 @@ class ModMcWindow(tk.Toplevel):
         iv = self.cbo_modmr_ver.current()
         if iv < 0 or not self._modmr_vers_raw:
             messagebox.showwarning("Chu y", "Chon phien ban!", parent=self); return
+        if iv < len(self._modmr_ver_idx_map):
+            iv = self._modmr_ver_idx_map[iv]
         vd    = self._modmr_vers_raw[iv]
         files = vd.get("files", [])
         prim  = next((fi for fi in files if fi.get("primary")), files[0] if files else None)
@@ -551,6 +731,9 @@ class ModMcWindow(tk.Toplevel):
     def _build_mod_curseforge(self):
         self._modcf_data  = []
         self._modcf_files = []
+        self._modcf_page    = 1
+        self._modcf_total   = 0
+        self._modcf_last_kw = None
         f  = self.tab_modcf
         BG = f["bg"]
 
@@ -574,6 +757,9 @@ class ModMcWindow(tk.Toplevel):
         self.list_modcf = ContentTableWidget(f, "curseforge", self._select_modcf)
         self.list_modcf.pack(fill="both", expand=True, padx=10)
 
+        self.pg_modcf = PaginationBar(f, self._goto_modcf_page, accent_color="#F9A825", bg=BG)
+        self.pg_modcf.pack(fill="x", padx=10, pady=(2, 0))
+
         bp = tk.Frame(f, bg=BG)
         bp.pack(fill="x", padx=10, pady=(4, 8))
         tk.Label(bp, text="Phien ban mod:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
@@ -586,36 +772,51 @@ class ModMcWindow(tk.Toplevel):
         if cur in ds_inst:  self.cbo_modcf_inst.set(cur)
         elif ds_inst:       self.cbo_modcf_inst.set(ds_inst[0])
         self.cbo_modcf_inst.grid(row=1, column=1, padx=6)
+        self.cbo_modcf_inst.bind("<<ComboboxSelected>>", lambda e: self._filter_modcf_ver())
         tk.Button(bp, text="Cai Mod", font=("Arial", 9, "bold"),
                   bg="#F9A825", fg="white", activebackground="#F9A825", activeforeground="white",
                   width=14, pady=4, command=self._install_modcf).grid(row=0, column=2, rowspan=2, padx=8)
 
-    def _load_modcf_top(self):
+    def _load_modcf_top(self, page=1):
+        self._modcf_page    = page
+        self._modcf_last_kw = None
         try:
-            r = lay_curseforge_popular(class_id=6, limit=50)
-            self._modcf_data = r
+            r, total = lay_curseforge_popular(class_id=6, limit=50, offset=(page - 1) * 50)
+            self._modcf_data  = r
+            self._modcf_total = total
             self.after(0, lambda: (
                 self.list_modcf.load(r),
-                self.lbl_status.config(text=f"Top {len(r)} Mod (CurseForge)", fg="#2b8c54"),
+                self.pg_modcf.set_total(total, 50, page),
+                self.lbl_status.config(text=f"Top Mod (CurseForge) - trang {page}", fg="#2b8c54"),
             ))
         except Exception as e:
             self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi ModCF: {e}", fg="red"))
 
-    def _search_modcf(self):
+    def _search_modcf(self, page=1):
         kw         = self.ent_modcf.get().strip()
         mc, ld, _c = self.fb_modcf.get()
+        self._modcf_page    = page
+        self._modcf_last_kw = (kw, mc, ld)
         self.lbl_status.config(text="Dang tim Mod CurseForge...", fg="#F9A825")
         def _t():
             try:
-                r = tim_kiem_curseforge(kw, mc, ld, class_id=6)
-                self._modcf_data = r
+                r, total = tim_kiem_curseforge(kw, mc, ld, limit=50, class_id=6, offset=(page - 1) * 50)
+                self._modcf_data  = r
+                self._modcf_total = total
                 self.after(0, lambda: (
                     self.list_modcf.load(r),
-                    self.lbl_status.config(text=f"{len(r)} mod", fg="#2b8c54"),
+                    self.pg_modcf.set_total(total, 50, page),
+                    self.lbl_status.config(text=f"{total} mod - trang {page}", fg="#2b8c54"),
                 ))
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi CF: {e}", fg="red"))
         threading.Thread(target=_t, daemon=True).start()
+
+    def _goto_modcf_page(self, page):
+        if self._modcf_last_kw is None:
+            threading.Thread(target=self._load_modcf_top, args=(page,), daemon=True).start()
+        else:
+            self._search_modcf(page)
 
     def _select_modcf(self, idx, install=False):
         if idx >= len(self._modcf_data): return
@@ -627,17 +828,61 @@ class ModMcWindow(tk.Toplevel):
             try:
                 files = lay_phien_ban_curseforge(mid)
                 self._modcf_files = files
-                ds = [f"{fi.get('displayName', fi.get('fileName',''))}  -  MC {', '.join(fi.get('gameVersions',[]))}"
-                      for fi in files]
                 self.after(0, lambda: (
-                    self.cbo_modcf_ver.config(values=ds),
-                    self.cbo_modcf_ver.set(ds[0]) if ds else None,
-                    self.lbl_status.config(text="Chon phien ban roi nhan Cai Mod.", fg="gray"),
+                    self._filter_modcf_ver(),
                 ))
                 if install: self.after(200, self._install_modcf)
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi CF ver: {e}", fg="red"))
         threading.Thread(target=_t, daemon=True).start()
+
+    def _filter_modcf_ver(self):
+        """Loc combobox phien ban mod (CurseForge) theo MC version / loader cua Instance dang chon."""
+        files = self._modcf_files
+        ds_all = [f"{fi.get('displayName', fi.get('fileName',''))}  -  MC {', '.join(fi.get('gameVersions',[]))}"
+                  for fi in files]
+
+        ten_inst = self.cbo_modcf_inst.get().strip()
+        mcv, loader = self._get_inst_mc_loader(ten_inst) if ten_inst else ("", "")
+
+        if mcv:
+            idxs = []
+            for i, fi in enumerate(files):
+                gvs = fi.get("gameVersions", [])
+                gvs_lower = [g.lower() for g in gvs]
+                if mcv not in gvs:
+                    continue
+                if loader and loader != "Vanilla" and loader.lower() not in gvs_lower:
+                    continue
+                idxs.append(i)
+        else:
+            idxs = list(range(len(files)))
+
+        if idxs:
+            ds = [ds_all[i] for i in idxs]
+            self._modcf_ver_idx_map = idxs
+            self.cbo_modcf_ver.config(values=ds)
+            self.cbo_modcf_ver.set(ds[0])
+            if mcv:
+                self.lbl_status.config(
+                    text=f"Da loc {len(ds)} phien ban phu hop voi {ten_inst} (MC {mcv}"
+                         + (f", {loader}" if loader and loader != "Vanilla" else "") + ").",
+                    fg="gray")
+            else:
+                self.lbl_status.config(text="Chon phien ban roi nhan Cai Mod.", fg="gray")
+        else:
+            self._modcf_ver_idx_map = list(range(len(files)))
+            self.cbo_modcf_ver.config(values=ds_all)
+            if ds_all:
+                self.cbo_modcf_ver.set(ds_all[0])
+            else:
+                self.cbo_modcf_ver.set("")
+            if mcv:
+                self.lbl_status.config(
+                    text=f"Khong co phien ban khop voi {ten_inst} (MC {mcv}"
+                         + (f", {loader}" if loader and loader != "Vanilla" else "")
+                         + "). Hien thi tat ca - kiem tra ky truoc khi cai.",
+                    fg="#E64A19")
 
     def _install_modcf(self):
         ten_inst = self.cbo_modcf_inst.get().strip()
@@ -646,6 +891,8 @@ class ModMcWindow(tk.Toplevel):
         iv = self.cbo_modcf_ver.current()
         if iv < 0 or not self._modcf_files:
             messagebox.showwarning("Chu y", "Chon phien ban!", parent=self); return
+        if iv < len(self._modcf_ver_idx_map):
+            iv = self._modcf_ver_idx_map[iv]
         fd  = self._modcf_files[iv]
         url = fd.get("downloadUrl", "")
         if not url:
@@ -689,6 +936,9 @@ class ModMcWindow(tk.Toplevel):
     def _build_rsp_tab(self):
         self._rsp_data     = []
         self._rsp_vers_raw = []
+        self._rsp_page     = 1
+        self._rsp_total    = 0
+        self._rsp_last_kw  = None
         f  = self.tab_rsp
         BG = f["bg"]
 
@@ -712,6 +962,9 @@ class ModMcWindow(tk.Toplevel):
         self.list_rsp = ContentTableWidget(f, "modrinth", self._select_rsp)
         self.list_rsp.pack(fill="both", expand=True, padx=10)
 
+        self.pg_rsp = PaginationBar(f, self._goto_rsp_page, accent_color="#8E24AA", bg=BG)
+        self.pg_rsp.pack(fill="x", padx=10, pady=(2, 0))
+
         bp = tk.Frame(f, bg=BG)
         bp.pack(fill="x", padx=10, pady=(4, 8))
         tk.Label(bp, text="Phien ban:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
@@ -728,32 +981,46 @@ class ModMcWindow(tk.Toplevel):
                   bg="#8E24AA", fg="white", activebackground="#8E24AA", activeforeground="white",
                   width=14, pady=4, command=self._install_rsp).grid(row=0, column=2, rowspan=2, padx=8)
 
-    def _load_rsp_top(self):
+    def _load_rsp_top(self, page=1):
+        self._rsp_page    = page
+        self._rsp_last_kw = None
         try:
-            r = lay_modrinth_popular("resourcepack", 50)
-            self._rsp_data = r
+            r, total = lay_modrinth_popular("resourcepack", 50, offset=(page - 1) * 50)
+            self._rsp_data  = r
+            self._rsp_total = total
             self.after(0, lambda: (
                 self.list_rsp.load(r),
-                self.lbl_status.config(text=f"Top {len(r)} Resource Pack", fg="#2b8c54"),
+                self.pg_rsp.set_total(total, 50, page),
+                self.lbl_status.config(text=f"Top Resource Pack - trang {page}", fg="#2b8c54"),
             ))
         except Exception as e:
             self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi RSP: {e}", fg="red"))
 
-    def _search_rsp(self):
+    def _search_rsp(self, page=1):
         kw        = self.ent_rsp.get().strip()
         mc, _, _c = self.fb_rsp.get()
+        self._rsp_page    = page
+        self._rsp_last_kw = (kw, mc)
         self.lbl_status.config(text="Dang tim RSP...", fg="#8E24AA")
         def _t():
             try:
-                r = tim_kiem_modrinth("resourcepack", kw, mc)
-                self._rsp_data = r
+                r, total = tim_kiem_modrinth("resourcepack", kw, mc, "", "", 50, offset=(page - 1) * 50)
+                self._rsp_data  = r
+                self._rsp_total = total
                 self.after(0, lambda: (
                     self.list_rsp.load(r),
-                    self.lbl_status.config(text=f"{len(r)} resource pack", fg="#2b8c54"),
+                    self.pg_rsp.set_total(total, 50, page),
+                    self.lbl_status.config(text=f"{total} resource pack - trang {page}", fg="#2b8c54"),
                 ))
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
         threading.Thread(target=_t, daemon=True).start()
+
+    def _goto_rsp_page(self, page):
+        if self._rsp_last_kw is None:
+            threading.Thread(target=self._load_rsp_top, args=(page,), daemon=True).start()
+        else:
+            self._search_rsp(page)
 
     def _select_rsp(self, idx, install=False):
         if idx >= len(self._rsp_data): return
@@ -817,6 +1084,9 @@ class ModMcWindow(tk.Toplevel):
     def _build_shader_tab(self):
         self._sh_data     = []
         self._sh_vers_raw = []
+        self._sh_page     = 1
+        self._sh_total    = 0
+        self._sh_last_kw  = None
         f  = self.tab_sh
         BG = f["bg"]
 
@@ -840,6 +1110,9 @@ class ModMcWindow(tk.Toplevel):
         self.list_sh = ContentTableWidget(f, "modrinth", self._select_sh)
         self.list_sh.pack(fill="both", expand=True, padx=10)
 
+        self.pg_sh = PaginationBar(f, self._goto_sh_page, accent_color="#F57C00", bg=BG)
+        self.pg_sh.pack(fill="x", padx=10, pady=(2, 0))
+
         bp = tk.Frame(f, bg=BG)
         bp.pack(fill="x", padx=10, pady=(4, 8))
         tk.Label(bp, text="Phien ban:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
@@ -857,32 +1130,46 @@ class ModMcWindow(tk.Toplevel):
                   width=14, pady=4, command=self._install_sh).grid(row=0, column=2, rowspan=2, padx=8)
         self._debounce_sh = None
 
-    def _load_sh_top(self):
+    def _load_sh_top(self, page=1):
+        self._sh_page    = page
+        self._sh_last_kw = None
         try:
-            r = lay_modrinth_popular("shader", 50)
-            self._sh_data = r
+            r, total = lay_modrinth_popular("shader", 50, offset=(page - 1) * 50)
+            self._sh_data  = r
+            self._sh_total = total
             self.after(0, lambda: (
                 self.list_sh.load(r),
-                self.lbl_status.config(text=f"Top {len(r)} Shader", fg="#2b8c54"),
+                self.pg_sh.set_total(total, 50, page),
+                self.lbl_status.config(text=f"Top Shader - trang {page}", fg="#2b8c54"),
             ))
         except Exception as e:
             self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi Shader: {e}", fg="red"))
 
-    def _search_sh(self):
+    def _search_sh(self, page=1):
         kw        = self.ent_sh.get().strip()
         mc, _, _c = self.fb_sh.get()
+        self._sh_page    = page
+        self._sh_last_kw = (kw, mc)
         self.lbl_status.config(text="Dang tim Shader...", fg="#F57C00")
         def _t():
             try:
-                r = tim_kiem_modrinth("shader", kw, mc)
-                self._sh_data = r
+                r, total = tim_kiem_modrinth("shader", kw, mc, "", "", 50, offset=(page - 1) * 50)
+                self._sh_data  = r
+                self._sh_total = total
                 self.after(0, lambda: (
                     self.list_sh.load(r),
-                    self.lbl_status.config(text=f"{len(r)} shader", fg="#2b8c54"),
+                    self.pg_sh.set_total(total, 50, page),
+                    self.lbl_status.config(text=f"{total} shader - trang {page}", fg="#2b8c54"),
                 ))
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
         threading.Thread(target=_t, daemon=True).start()
+
+    def _goto_sh_page(self, page):
+        if self._sh_last_kw is None:
+            threading.Thread(target=self._load_sh_top, args=(page,), daemon=True).start()
+        else:
+            self._search_sh(page)
 
     def _select_sh(self, idx, install=False):
         if idx >= len(self._sh_data): return
@@ -1021,4 +1308,3 @@ class ModMcWindow(tk.Toplevel):
             self.callback_lam_moi()
         messagebox.showinfo("Thanh cong",
             "Da cai dat thanh cong!\nInstance moi da xuat hien trong danh sach.", parent=self)
-

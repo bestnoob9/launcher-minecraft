@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul
-echo ============================================
-echo   BUILD MINECRAFT LAUNCHER - PyInstaller
-echo ============================================
-echo.
+	echo ============================================
+	echo   BUILD MINECRAFT LAUNCHER - PyInstaller
+	echo ============================================
+	echo.
 
 set THONNY_PY=C:\Users\%USERNAME%\AppData\Local\Programs\Thonny\python.exe
 

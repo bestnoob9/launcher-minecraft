@@ -9,7 +9,7 @@ class SettingWindow(tk.Toplevel):
         self.title("Cài đặt cấu hình")
         self.geometry("460x640")  # Chiều cao tăng để vừa thanh kéo RAM + JVM Arguments
         self.resizable(False, False)
-        self.grab_set()  # Khóa màn hình chính khi đang mở setting
+        #self.grab_set()  # Khóa màn hình chính khi đang mở setting
         
         self.on_save_callback = on_save_callback
         

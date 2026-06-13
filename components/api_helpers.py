@@ -80,15 +80,15 @@ def _modrinth_search(project_type, tu_khoa="", mc_version="", loader="", categor
         "index": "relevance" if tu_khoa else "downloads",
     })
     data = _request_json(f"https://api.modrinth.com/v2/search?{params}")
-    return data.get("hits", [])
+    return data.get("hits", []), data.get("total_hits", 0)
 
 
-def lay_modrinth_popular(project_type="modpack", limit=50):
-    return _modrinth_search(project_type, limit=limit)
+def lay_modrinth_popular(project_type="modpack", limit=50, offset=0):
+    return _modrinth_search(project_type, limit=limit, offset=offset)
 
 
-def tim_kiem_modrinth(project_type, tu_khoa, mc_version="", loader="", category="", limit=50):
-    return _modrinth_search(project_type, tu_khoa, mc_version, loader, category, limit)
+def tim_kiem_modrinth(project_type, tu_khoa, mc_version="", loader="", category="", limit=50, offset=0):
+    return _modrinth_search(project_type, tu_khoa, mc_version, loader, category, limit, offset)
 
 
 def lay_phien_ban_modrinth(project_id):
@@ -99,22 +99,23 @@ def lay_phien_ban_modrinth(project_id):
 # CURSEFORGE API
 # =====================================================================
 
-def lay_curseforge_popular(class_id=4471, limit=50):
+def lay_curseforge_popular(class_id=4471, limit=50, offset=0):
     """class_id: 4471=modpack, 6=mod"""
     params = urllib.parse.urlencode({
         "gameId": 432, "classId": class_id,
-        "pageSize": limit, "index": 0, "sortField": 2, "sortOrder": "desc",
+        "pageSize": limit, "index": offset, "sortField": 2, "sortOrder": "desc",
     })
     data = _request_json(
         f"https://api.curseforge.com/v1/mods/search?{params}",
         {"x-api-key": CURSEFORGE_API_KEY})
-    return data.get("data", [])
+    total = data.get("pagination", {}).get("totalCount", 0)
+    return data.get("data", []), total
 
 
-def tim_kiem_curseforge(tu_khoa, mc_version="", loader="", limit=50, class_id=4471):
+def tim_kiem_curseforge(tu_khoa, mc_version="", loader="", limit=50, class_id=4471, offset=0):
     """class_id: 4471=modpack, 6=mod"""
     p = {"gameId": 432, "classId": class_id, "searchFilter": tu_khoa,
-         "pageSize": limit, "index": 0, "sortField": 2, "sortOrder": "desc"}
+         "pageSize": limit, "index": offset, "sortField": 2, "sortOrder": "desc"}
     if mc_version:
         p["gameVersion"] = mc_version
     if loader and loader != "Tat ca":
@@ -124,7 +125,8 @@ def tim_kiem_curseforge(tu_khoa, mc_version="", loader="", limit=50, class_id=44
     data = _request_json(
         f"https://api.curseforge.com/v1/mods/search?{urllib.parse.urlencode(p)}",
         {"x-api-key": CURSEFORGE_API_KEY})
-    return data.get("data", [])
+    total = data.get("pagination", {}).get("totalCount", 0)
+    return data.get("data", []), total
 
 
 def lay_phien_ban_curseforge(mod_id):
@@ -132,3 +134,4 @@ def lay_phien_ban_curseforge(mod_id):
         f"https://api.curseforge.com/v1/mods/{mod_id}/files?pageSize=30",
         {"x-api-key": CURSEFORGE_API_KEY})
     return data.get("data", [])
+

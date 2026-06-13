@@ -95,6 +95,55 @@ def _doc_cau_hinh_may():
     config.current_config["_system_info"] = info
     #print(f"[System] RAM phat hien: {info['ram_total_gb']} GB ({info['ram_total_mb']} MB)")
 
+class ConsoleWindow(tk.Toplevel):
+    """Cửa sổ hiển thị stdout/stderr từ Minecraft process."""
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Console — Minecraft Log")
+        self.geometry("780x420")
+        self.resizable(True, True)
+        self.protocol("WM_DELETE_WINDOW", self.withdraw)  # Ẩn thay vì đóng hẳn
+
+        self.txt = tk.Text(self, font=("Consolas", 9), bg="#1e1e1e", fg="#d4d4d4",
+                           wrap="word", state="disabled", relief="flat", bd=0)
+        sb = ttk.Scrollbar(self, orient="vertical", command=self.txt.yview)
+        self.txt.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        self.txt.pack(fill="both", expand=True)
+
+        btn_frame = tk.Frame(self, bg="#2d2d2d")
+        btn_frame.pack(fill="x")
+        tk.Button(btn_frame, text="Xóa log", font=("Arial", 8),
+                  bg="#3c3c3c", fg="white", relief="flat", padx=8,
+                  command=self.clear).pack(side="left", padx=4, pady=4)
+        self.lbl_count = tk.Label(btn_frame, text="0 dòng", font=("Arial", 8),
+                                  bg="#2d2d2d", fg="#888")
+        self.lbl_count.pack(side="right", padx=8)
+
+        self._line_count = 0
+        self.withdraw()  # Ẩn lúc đầu
+
+    def append(self, text):
+        """Thêm text vào console (thread-safe qua after)."""
+        self.txt.config(state="normal")
+        self.txt.insert("end", text)
+        self.txt.see("end")
+        self.txt.config(state="disabled")
+        self._line_count += text.count("\n")
+        self.lbl_count.config(text=f"{self._line_count} dòng")
+
+    def clear(self):
+        self.txt.config(state="normal")
+        self.txt.delete("1.0", "end")
+        self.txt.config(state="disabled")
+        self._line_count = 0
+        self.lbl_count.config(text="0 dòng")
+
+    def show(self):
+        self.deiconify()
+        self.lift()
+
+
 class MinecraftLauncherApp:
     def __init__(self, root):
         self.root = root
@@ -107,6 +156,7 @@ class MinecraftLauncherApp:
         self._dang_tai = False
         self._huy_tai = False
 
+        self.console = ConsoleWindow(root)
         self.create_widgets()
         self.root.protocol("WM_DELETE_WINDOW", self._xu_ly_thoat)
 
@@ -166,6 +216,18 @@ class MinecraftLauncherApp:
             command=self.bat_dau_hoac_tat_game
         )
         self.btn_launch.pack(pady=(10, 20))
+
+        self.btn_console = tk.Button(
+            self.root,
+            text="🖥 Console",
+            font=("Arial", 9, "bold"),
+            bg="#37474F",
+            fg="white",
+            padx=8,
+            pady=3,
+            command=self.console.show
+        )
+        self.btn_console.place(relx=1.0, rely=1.0, anchor="se", x=-10, y=-40)
 
         self.btn_setting = tk.Button(
             self.root,
@@ -358,6 +420,17 @@ class MinecraftLauncherApp:
                 self.root.after(0, lambda: self.hien_thi_progress(False))
 
                 if proc:
+                    # Stream stdout/stderr vào console
+                    def _stream_log(p):
+                        try:
+                            for line in p.stdout:
+                                self.root.after(0, lambda l=line: self.console.append(l))
+                        except Exception:
+                            pass
+
+                    if proc.stdout:
+                        threading.Thread(target=_stream_log, args=(proc,), daemon=True).start()
+
                     proc.wait()
 
                 self._game_process = None

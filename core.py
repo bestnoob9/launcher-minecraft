@@ -4,7 +4,6 @@ import urllib.request
 import minecraft_launcher_lib
 import subprocess
 import re
-import uuid as _uuid_mod
 
 def lay_danh_sach_phien_ban_chinh():
     try:
@@ -327,8 +326,10 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
     rong, cao = (match.group(1), match.group(2)) if match else ("854", "480")
 
     danh_sach_jvm_args = build_jvm_arguments(config.current_config, ram_min, ram_max)
-    
-    offline_uuid = str(_uuid_mod.uuid3(_uuid_mod.NAMESPACE_DNS, f"OfflinePlayer:{tai_khoan}"))
+
+    import uuid as _uuid
+    offline_uuid = str(_uuid.uuid3(_uuid.NAMESPACE_DNS, f"OfflinePlayer:{tai_khoan}"))
+
     options = {
         "username": tai_khoan,
         "uuid": offline_uuid,
@@ -367,7 +368,17 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
             _startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             _startupinfo.wShowWindow = subprocess.SW_HIDE
             _creationflags = subprocess.CREATE_NO_WINDOW
-        proc = subprocess.Popen(lenh, startupinfo=_startupinfo, creationflags=_creationflags)
+        proc = subprocess.Popen(
+            lenh,
+            startupinfo=_startupinfo,
+            creationflags=_creationflags,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
         return proc
     except InterruptedError:
         lbl_status.after(0, lambda: lbl_status.config(text="Sẵn sàng", fg="gray"))
@@ -383,5 +394,3 @@ def lay_danh_sach_phien_ban_theo_loai(loai):
         return [v["id"] for v in all_versions if v["type"] == loai]
     except:
         return []
-
-

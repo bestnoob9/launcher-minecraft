@@ -176,11 +176,14 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                     deps        = index_data.get("dependencies", {})
                     print(f"[mrpack] dependencies doc duoc: {deps}")
 
-                    version_goc = deps.get("minecraft", "")
+                    version_goc = deps.get("minecraft", "").strip()
+                    # Chuan hoa: bo ky tu la o cuoi (vd: "1.21.1 " hoac "1.21.11" do nham)
+                    # Uu tien lay chinh xac tu dependencies, khong fallback regex neu da co
                     if not version_goc:
                         import re as _re
-                        m = _re.search(r"(\d+\.\d+\.?\d*)", os.path.basename(duong_dan_zip))
+                        m = _re.search(r"(\d+\.\d+\.\d+|\d+\.\d+)", os.path.basename(duong_dan_zip))
                         version_goc = m.group(1) if m else "1.21.1"
+                    print(f"[mrpack] version_goc chinh xac: '{version_goc}'")
 
                     if "fabric-loader" in deps:
                         loai_game, version_mod = "Fabric",   deps["fabric-loader"]
@@ -201,11 +204,12 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                 elif "manifest.json" in names:
                     manifest    = json.loads(z.read("manifest.json"))
                     mc_info     = manifest.get("minecraft", {})
-                    version_goc = mc_info.get("version", "")
+                    version_goc = mc_info.get("version", "").strip()
                     if not version_goc:
                         import re as _re
-                        m = _re.search(r"(\d+\.\d+\.?\d*)", os.path.basename(duong_dan_zip))
+                        m = _re.search(r"(\d+\.\d+\.\d+|\d+\.\d+)", os.path.basename(duong_dan_zip))
                         version_goc = m.group(1) if m else "1.21.1"
+                    print(f"[manifest] version_goc chinh xac: '{version_goc}'")
                     for loader in mc_info.get("modLoaders", []):
                         lid = loader.get("id", "")
                         if lid.startswith("fabric-"):     loai_game, version_mod = "Fabric",   lid[7:]

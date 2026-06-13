@@ -4,6 +4,7 @@ import urllib.request
 import minecraft_launcher_lib
 import subprocess
 import re
+import uuid as _uuid_mod
 
 def lay_danh_sach_phien_ban_chinh():
     try:
@@ -215,18 +216,33 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
     if loai_game == "Fabric" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
         minecraft_launcher_lib.fabric.install_fabric(version_goc, thu_muc_game, loader_version=version_mod_da_chon, callback=_callbacks)
         if os.path.exists(thu_muc_versions):
+            # Uu tien khop chinh xac ca version_goc lan version_mod (tranh lay sai loader version)
+            best = None
             for folder in os.listdir(thu_muc_versions):
                 if "fabric" in folder.lower() and version_goc in folder:
-                    id_phien_ban_chay = folder
-                    break
+                    if version_mod_da_chon in folder:
+                        id_phien_ban_chay = folder
+                        best = folder
+                        break
+                    elif best is None:
+                        best = folder
+            if id_phien_ban_chay == version_goc and best:
+                id_phien_ban_chay = best
 
     elif loai_game == "Quilt" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
         minecraft_launcher_lib.quilt.install_quilt(version_goc, thu_muc_game, loader_version=version_mod_da_chon, callback=_callbacks)
         if os.path.exists(thu_muc_versions):
+            best = None
             for folder in os.listdir(thu_muc_versions):
                 if "quilt" in folder.lower() and version_goc in folder:
-                    id_phien_ban_chay = folder
-                    break
+                    if version_mod_da_chon in folder:
+                        id_phien_ban_chay = folder
+                        best = folder
+                        break
+                    elif best is None:
+                        best = folder
+            if id_phien_ban_chay == version_goc and best:
+                id_phien_ban_chay = best
 
     elif loai_game == "NeoForge" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
         try:
@@ -311,10 +327,11 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
     rong, cao = (match.group(1), match.group(2)) if match else ("854", "480")
 
     danh_sach_jvm_args = build_jvm_arguments(config.current_config, ram_min, ram_max)
-
+    
+    offline_uuid = str(_uuid_mod.uuid3(_uuid_mod.NAMESPACE_DNS, f"OfflinePlayer:{tai_khoan}"))
     options = {
         "username": tai_khoan,
-        "uuid": "0",
+        "uuid": offline_uuid,
         "token": "",
         "jvmArguments": danh_sach_jvm_args,
         "customResolution": True,
@@ -341,7 +358,16 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
         lbl_status.after(0, lambda: lbl_status.config(text="Đang khởi động Minecraft...", fg="#2b8c54"))
         if callback_progress:
             callback_progress(100.0, "Hoàn tất!")
-        proc = subprocess.Popen(lenh)
+        # An cua so CMD den tren Windows
+        import sys as _sys
+        _startupinfo = None
+        _creationflags = 0
+        if _sys.platform == "win32":
+            _startupinfo = subprocess.STARTUPINFO()
+            _startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            _startupinfo.wShowWindow = subprocess.SW_HIDE
+            _creationflags = subprocess.CREATE_NO_WINDOW
+        proc = subprocess.Popen(lenh, startupinfo=_startupinfo, creationflags=_creationflags)
         return proc
     except InterruptedError:
         lbl_status.after(0, lambda: lbl_status.config(text="Sẵn sàng", fg="gray"))
@@ -357,4 +383,5 @@ def lay_danh_sach_phien_ban_theo_loai(loai):
         return [v["id"] for v in all_versions if v["type"] == loai]
     except:
         return []
+
 

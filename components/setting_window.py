@@ -39,49 +39,96 @@ class SettingWindow(tk.Toplevel):
         btn_browse = tk.Button(frame_path, text="Chọn...", font=("Arial", 9), command=self.chon_duong_dan)
         btn_browse.pack(side=tk.LEFT, padx=5)
 
-        # 2. CÀI ĐẶT RAM JVM — Thanh kéo đơn + ô MiB + Auto checkbox
+        # 2. CÀI ĐẶT RAM JVM — Thanh kéo đơn, giới hạn theo RAM máy
         lbl_ram_title = tk.Label(self, text="Bộ Nhớ Sử Dụng:", font=("Arial", 10, "bold"))
         lbl_ram_title.pack(anchor="w", padx=20, pady=(15, 2))
 
         frame_ram = tk.Frame(self)
         frame_ram.pack(fill="x", padx=20)
 
+        # --- Đọc RAM vật lý từ _system_info (đã đọc 1 lần khi khởi động) ---
+        _sys = config.current_config.get("_system_info", {})
+        _total_mb = _sys.get("ram_total_mb", 0)
+        _gb       = _sys.get("ram_total_gb", 0)
+
+        # Nếu _system_info chưa được đọc (lần đầu hoặc không có psutil), tự đọc lại
+        if not _total_mb or _total_mb < 1024:
+            import math
+
+            def _lam_tron_ram_gb(total_mb):
+                """Lam tron sang moc GB thuong gap thay vi math.ceil don thuan."""
+                cac_moc = [4, 8, 12, 16, 24, 32, 48, 64, 128]
+                total_gb_thuc = total_mb / 1024
+                for moc in cac_moc:
+                    if total_gb_thuc <= moc * 1.05:
+                        return moc
+                return math.ceil(total_gb_thuc)
+
+            _total_mb = 0
+
+            # Phuong phap 1: psutil
+            try:
+                import psutil
+                _total_mb = psutil.virtual_memory().total // (1024 * 1024)
+            except Exception as e:
+                print(f"[SettingWindow] psutil that bai: {e}")
+
+            # Phuong phap 2: ctypes WinAPI (khong can thu vien ngoai)
+            if not _total_mb:
+                try:
+                    import ctypes
+                    class MEMORYSTATUSEX(ctypes.Structure):
+                        _fields_ = [
+                            ("dwLength",                 ctypes.c_ulong),
+                            ("dwMemoryLoad",             ctypes.c_ulong),
+                            ("ullTotalPhys",             ctypes.c_ulonglong),
+                            ("ullAvailPhys",             ctypes.c_ulonglong),
+                            ("ullTotalPageFile",         ctypes.c_ulonglong),
+                            ("ullAvailPageFile",         ctypes.c_ulonglong),
+                            ("ullTotalVirtual",          ctypes.c_ulonglong),
+                            ("ullAvailVirtual",          ctypes.c_ulonglong),
+                            ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+                        ]
+                    stat = MEMORYSTATUSEX()
+                    stat.dwLength = ctypes.sizeof(stat)
+                    ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+                    if stat.ullTotalPhys > 0:
+                        _total_mb = stat.ullTotalPhys // (1024 * 1024)
+                except Exception as e:
+                    print(f"[SettingWindow] ctypes that bai: {e}")
+
+            if not _total_mb:
+                _total_mb = 8192  # fallback cuoi cung
+
+            _gb = _lam_tron_ram_gb(_total_mb)
+            # Luu lai vao _system_info de lan sau khong phai doc lai
+            config.current_config["_system_info"] = {
+                "ram_total_mb": _total_mb,
+                "ram_total_gb": _gb,
+            }
+            print(f"[SettingWindow] Doc lai RAM: {_gb} GB ({_total_mb} MB)")
+
+        RAM_STEP   = 256
+        RAM_MIN_MB = 512
+        # Giới hạn tối đa = RAM thực tế - 2GB dành cho HĐH (tối thiểu 1GB)
+        RAM_MAX_MB = max(1024, _total_mb - 2048)
+
         # --- Hàm tiện ích ---
         def parse_ram_to_mb(s):
             s = str(s).strip().upper().replace(" ", "")
-            if s.endswith("GB"):
-                return int(float(s[:-2]) * 1024)
-            elif s.endswith("MB"):
-                return int(s[:-2])
-            elif s.endswith("G"):
-                return int(float(s[:-1]) * 1024)
-            elif s.endswith("M"):
-                return int(s[:-1])
-            try:
-                return int(s)
-            except:
-                return 2048
+            if s.endswith("GB"): return int(float(s[:-2]) * 1024)
+            elif s.endswith("MB"): return int(s[:-2])
+            elif s.endswith("G"): return int(float(s[:-1]) * 1024)
+            elif s.endswith("M"): return int(s[:-1])
+            try: return int(s)
+            except: return 2048
 
         def mb_to_display(mb):
             if mb >= 1024 and mb % 1024 == 0:
                 return f"{mb // 1024} GB"
             elif mb >= 1024:
                 return f"{mb / 1024:.1f} GB"
-            else:
-                return f"{mb} MB"
-
-        # Các mốc tick trên thanh kéo (MiB / MB)
-        # Thanh kéo từ 512 MB đến 16384 MB (liên tục theo bước 256 MB)
-        RAM_MIN_MB = 512
-        RAM_MAX_MB = 16384
-        RAM_STEP = 256  # bước nhảy mỗi tick
-
-        # Tải giá trị ram_max đã lưu (thanh kéo đơn = max RAM)
-        saved_max_mb = parse_ram_to_mb(config.current_config.get("ram_max", "4GB"))
-        saved_max_mb = max(RAM_MIN_MB, min(RAM_MAX_MB, saved_max_mb))
-
-        # Tính số bước
-        num_steps = (RAM_MAX_MB - RAM_MIN_MB) // RAM_STEP  # = 63 bước
+            return f"{mb} MB"
 
         def mb_to_step(mb):
             return round((mb - RAM_MIN_MB) / RAM_STEP)
@@ -89,7 +136,11 @@ class SettingWindow(tk.Toplevel):
         def step_to_mb(step):
             return RAM_MIN_MB + int(step) * RAM_STEP
 
-        tick_marks = {}
+        num_steps = (RAM_MAX_MB - RAM_MIN_MB) // RAM_STEP
+
+        # Tải giá trị đã lưu, clamp vào [min, max máy thực tế]
+        saved_mb = parse_ram_to_mb(config.current_config.get("ram_max", "2GB"))
+        saved_mb = max(RAM_MIN_MB, min(RAM_MAX_MB, saved_mb))
 
         # --- Hàng thanh kéo + ô MiB + Auto ---
         frame_slider_row = tk.Frame(frame_ram)
@@ -107,18 +158,13 @@ class SettingWindow(tk.Toplevel):
             highlightthickness=0,
             bd=0
         )
-        self.sld_ram.set(mb_to_step(saved_max_mb))
+        self.sld_ram.set(mb_to_step(saved_mb))
         self.sld_ram.pack(side=tk.LEFT, fill="x", expand=True, padx=(0, 6))
 
-        # Ô nhập MiB (hiển thị giá trị MB thô, như ảnh)
-        self.var_ram_mib = tk.StringVar(value=str(saved_max_mb))
+        self.var_ram_mib = tk.StringVar(value=str(saved_mb))
         self.ent_ram_mib = tk.Entry(
-            frame_slider_row,
-            textvariable=self.var_ram_mib,
-            font=("Arial", 9),
-            width=6,
-            justify="center",
-            relief="groove"
+            frame_slider_row, textvariable=self.var_ram_mib,
+            font=("Arial", 9), width=6, justify="center", relief="groove"
         )
         self.ent_ram_mib.pack(side=tk.LEFT, padx=(0, 2))
         tk.Label(frame_slider_row, text="MiB", font=("Arial", 9), fg="#555").pack(side=tk.LEFT, padx=(0, 8))
@@ -126,25 +172,21 @@ class SettingWindow(tk.Toplevel):
         # Checkbox Auto
         self.var_ram_auto = tk.BooleanVar(value=config.current_config.get("ram_auto", False))
         chk_auto = tk.Checkbutton(
-            frame_slider_row,
-            text="Auto",
-            variable=self.var_ram_auto,
-            font=("Arial", 9),
+            frame_slider_row, text="Auto",
+            variable=self.var_ram_auto, font=("Arial", 9),
             command=lambda: khi_thay_doi_auto()
         )
         chk_auto.pack(side=tk.LEFT)
 
-        # --- Đồng bộ 2 chiều: thanh kéo <-> ô nhập ---
+        # --- Đồng bộ thanh kéo <-> ô nhập ---
         def khi_keo_ram(val):
-            mb = step_to_mb(int(float(val)))
-            self.var_ram_mib.set(str(mb))
+            self.var_ram_mib.set(str(step_to_mb(int(float(val)))))
 
         self.sld_ram.config(command=khi_keo_ram)
 
         def khi_nhap_mib(event=None):
-            raw = self.var_ram_mib.get().strip()
             try:
-                mb = int(raw)
+                mb = int(self.var_ram_mib.get().strip())
                 mb = max(RAM_MIN_MB, min(RAM_MAX_MB, mb))
                 self.sld_ram.set(mb_to_step(mb))
             except ValueError:
@@ -155,14 +197,9 @@ class SettingWindow(tk.Toplevel):
 
         def khi_thay_doi_auto():
             if self.var_ram_auto.get():
-                # Auto: tự set về 50% RAM hệ thống hoặc 4096 MB mặc định
-                try:
-                    import psutil
-                    total_mb = psutil.virtual_memory().total // (1024 * 1024)
-                    auto_mb = max(2048, min(total_mb // 2, RAM_MAX_MB))
-                    auto_mb = round(auto_mb / RAM_STEP) * RAM_STEP
-                except:
-                    auto_mb = 4096
+                # Auto: 50% RAM vật lý, tối thiểu 2 GB
+                auto_mb = max(2048, min(RAM_MAX_MB // 2, RAM_MAX_MB))
+                auto_mb = round(auto_mb / RAM_STEP) * RAM_STEP
                 self.sld_ram.set(mb_to_step(auto_mb))
                 self.var_ram_mib.set(str(auto_mb))
                 self.sld_ram.config(state="disabled")
@@ -171,10 +208,10 @@ class SettingWindow(tk.Toplevel):
                 self.sld_ram.config(state="normal")
                 self.ent_ram_mib.config(state="normal")
 
-        # Khởi tạo trạng thái Auto khi mở
         khi_thay_doi_auto()
 
-        # --- Canvas vẽ nhãn mốc tick bên dưới thanh kéo ---
+        # --- Nhãn mốc tick theo RAM máy thực tế ---
+        # Chia đều các mốc GB từ 0 đến RAM_MAX
         canvas_ticks = tk.Canvas(frame_ram, height=14, bg=self.cget("bg"), highlightthickness=0)
         canvas_ticks.pack(fill="x", pady=(0, 4))
 
@@ -183,27 +220,31 @@ class SettingWindow(tk.Toplevel):
             w = canvas_ticks.winfo_width()
             if w < 10:
                 return
-            items = list(tick_marks.items())
-            for i, (mb_val, label) in enumerate(items):
+            # Tạo nhãn theo từng GB từ 1 GB đến RAM_MAX
+            mocs = []
+            gb = _gb
+            step_gb = max(1, gb // 6)  # tối đa ~6 nhãn
+            cur = step_gb
+            while cur * 1024 <= RAM_MAX_MB:
+                mocs.append(cur * 1024)
+                cur += step_gb
+            if not mocs or mocs[-1] < RAM_MAX_MB:
+                mocs.append(RAM_MAX_MB)
+
+            for i, mb_val in enumerate(mocs):
                 pct = (mb_val - RAM_MIN_MB) / (RAM_MAX_MB - RAM_MIN_MB)
-                x = int(pct * w)
-                # Căn lề: nhãn đầu tiên dùng "nw", cuối cùng "ne", còn lại "n"
-                if i == 0:
-                    anchor = "nw"
-                elif i == len(items) - 1:
-                    anchor = "ne"
-                else:
-                    anchor = "n"
-                canvas_ticks.create_text(x, 2, text=label, anchor=anchor, font=("Arial", 7), fill="#888888")
+                x   = int(pct * w)
+                lbl = f"{mb_val // 1024}G"
+                anchor = "nw" if i == 0 else ("ne" if i == len(mocs) - 1 else "n")
+                canvas_ticks.create_text(x, 2, text=lbl, anchor=anchor,
+                                         font=("Arial", 7), fill="#888888")
 
         canvas_ticks.bind("<Configure>", ve_tick_labels)
         canvas_ticks.after(150, ve_tick_labels)
 
         # Lưu hàm tiện ích để dùng lại trong luu_cau_hinh
-        self._parse_ram_to_mb = parse_ram_to_mb
         self._mb_to_display = mb_to_display
-        self._RAM_STEPS = list(range(RAM_MIN_MB, RAM_MAX_MB + RAM_STEP, RAM_STEP))
-        self._step_to_mb = step_to_mb
+        self._step_to_mb    = step_to_mb
 
         # 3. CÀI ĐẶT ĐỘ PHÂN GIẢI
         lbl_res_title = tk.Label(self, text="Độ phân giải màn hình game:", font=("Arial", 10, "bold"))
@@ -373,26 +414,22 @@ class SettingWindow(tk.Toplevel):
         res_chuan_hoa = f"{int_rong}x{int_cao}"
             
         # --- Đọc RAM từ ô nhập MiB (ưu tiên) hoặc thanh kéo ---
-        raw_mib = self.var_ram_mib.get().strip()
         try:
-            max_mb = int(raw_mib)
+            max_mb = int(self.var_ram_mib.get().strip())
             if max_mb < 256:
                 raise ValueError
         except ValueError:
             max_mb = self._step_to_mb(int(self.sld_ram.get()))
 
-        # min = 50% của max, tối thiểu 512 MB
-        min_mb = max(512, max_mb // 2)
-        ram_min_val = self._mb_to_display(min_mb)
         ram_max_val = self._mb_to_display(max_mb)
 
         # Lưu trạng thái Auto
         config.current_config["ram_auto"] = self.var_ram_auto.get()
 
-        # --- Lưu các trường cơ bản cũ ---
+        # --- Lưu các trường cơ bản ---
         config.current_config["thu_muc_game"] = path
-        config.current_config["ram_min"] = ram_min_val
         config.current_config["ram_max"] = ram_max_val
+        config.current_config.pop("ram_min", None)  # xoa ram_min neu con ton tai
         config.current_config["do_phan_giai"] = res_chuan_hoa
         
         # --- LƯU CÁC TRƯỜNG JVM ARGUMENTS MỚI TÍCH HỢP ---

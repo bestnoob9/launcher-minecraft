@@ -64,7 +64,6 @@ config_mac_dinh = {
     "danh_sach_acc": [],
     "current_account": "",
     "thu_muc_game": "",
-    "ram_min": "2GB",
     "ram_max": "4GB",
     "do_phan_giai": "854x480",
     "current_instance": "Latest Version",
@@ -138,4 +137,3 @@ def luu_toan_bo_cau_hinh():
 
 # Khởi tạo biến cấu hình toàn cục khi import module
 current_config = tai_toan_bo_cau_hinh()
-

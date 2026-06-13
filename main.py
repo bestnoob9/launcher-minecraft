@@ -12,6 +12,89 @@ from components.mod_mc import ModMcWindow
 from setup_wizard import kiem_tra_va_chay_wizard   # <-- import wizard
 
 
+def _doc_cau_hinh_may():
+    """
+    Doc dung luong RAM vat ly mot lan khi khoi dong.
+    Luu vao config.current_config["_system_info"] de cac module khac dung.
+    Khong luu xuong file (chi luu trong bo nho phien lam viec).
+    Thu tu uu tien: psutil -> ctypes (Windows) -> wmi (Windows) -> fallback.
+    """
+    import math
+
+    def _lam_tron_ram_gb(total_mb):
+        """Lam tron MB sang GB theo cac moc thuong gap: 4/8/12/16/24/32/48/64/128."""
+        cac_moc = [4, 8, 12, 16, 24, 32, 48, 64, 128]
+        total_gb_thuc = total_mb / 1024
+        for moc in cac_moc:
+            # Neu nam trong khoang 85% cua moc do thi lam tron len
+            if total_gb_thuc <= moc * 1.05:
+                return moc
+        return math.ceil(total_gb_thuc)
+
+    info = {
+        "ram_total_mb": 8192,   # fallback cuoi cung
+        "ram_total_gb": 8,
+    }
+
+    total_mb = None
+
+    # --- Phuong phap 1: psutil (da nen tang) ---
+    try:
+        import psutil
+        total_bytes = psutil.virtual_memory().total
+        if total_bytes > 0:
+            total_mb = total_bytes // (1024 * 1024)
+            #print(f"[System] Doc RAM bang psutil: {total_mb} MB")
+    except Exception as e:
+        print(f"[System] psutil that bai: {e}")
+
+    # --- Phuong phap 2: ctypes Windows (GlobalMemoryStatusEx) ---
+    if total_mb is None:
+        try:
+            import ctypes
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength",                ctypes.c_ulong),
+                    ("dwMemoryLoad",            ctypes.c_ulong),
+                    ("ullTotalPhys",            ctypes.c_ulonglong),
+                    ("ullAvailPhys",            ctypes.c_ulonglong),
+                    ("ullTotalPageFile",        ctypes.c_ulonglong),
+                    ("ullAvailPageFile",        ctypes.c_ulonglong),
+                    ("ullTotalVirtual",         ctypes.c_ulonglong),
+                    ("ullAvailVirtual",         ctypes.c_ulonglong),
+                    ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+            stat = MEMORYSTATUSEX()
+            stat.dwLength = ctypes.sizeof(stat)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+            if stat.ullTotalPhys > 0:
+                total_mb = stat.ullTotalPhys // (1024 * 1024)
+                print(f"[System] Doc RAM bang ctypes/WinAPI: {total_mb} MB")
+        except Exception as e:
+            print(f"[System] ctypes that bai: {e}")
+
+    # --- Phuong phap 3: wmi (Windows) ---
+    if total_mb is None:
+        try:
+            import wmi
+            c = wmi.WMI()
+            tong = sum(int(cs.TotalPhysicalMemory) for cs in c.Win32_ComputerSystem())
+            if tong > 0:
+                total_mb = tong // (1024 * 1024)
+                print(f"[System] Doc RAM bang wmi: {total_mb} MB")
+        except Exception as e:
+            print(f"[System] wmi that bai: {e}")
+
+    # --- Ap dung ket qua ---
+    if total_mb and total_mb > 0:
+        info["ram_total_mb"] = total_mb
+        info["ram_total_gb"] = _lam_tron_ram_gb(total_mb)
+    else:
+        print("[System] Khong doc duoc RAM thuc te, dung fallback 8 GB.")
+
+    config.current_config["_system_info"] = info
+    #print(f"[System] RAM phat hien: {info['ram_total_gb']} GB ({info['ram_total_mb']} MB)")
+
 class MinecraftLauncherApp:
     def __init__(self, root):
         self.root = root
@@ -21,6 +104,8 @@ class MinecraftLauncherApp:
 
         config.current_config = config.tai_toan_bo_cau_hinh()
         self._game_process = None
+        self._dang_tai = False
+        self._huy_tai = False
 
         self.create_widgets()
         self.root.protocol("WM_DELETE_WINDOW", self._xu_ly_thoat)
@@ -47,7 +132,28 @@ class MinecraftLauncherApp:
         self.btn_delete_instance.pack(pady=10)
 
         self.lbl_status = tk.Label(self.root, text="Sẵn sàng", font=("Arial", 10, "italic"), fg="gray")
-        self.lbl_status.pack(pady=5)
+        self.lbl_status.pack(pady=(5, 2))
+
+        # --- Thanh tiến độ tải xuống ---
+        self.frame_progress = tk.Frame(self.root)
+        self.frame_progress.pack(fill="x", padx=40, pady=(0, 4))
+
+        self.progress_bar = ttk.Progressbar(
+            self.frame_progress,
+            orient="horizontal",
+            mode="determinate",
+            length=400
+        )
+        self.progress_bar.pack(fill="x")
+
+        self.lbl_progress = tk.Label(
+            self.root, text="", font=("Arial", 8), fg="#555"
+        )
+        self.lbl_progress.pack(pady=(0, 2))
+
+        # Ẩn thanh tiến độ ban đầu
+        self.frame_progress.pack_forget()
+        self.lbl_progress.pack_forget()
 
         self.btn_launch = tk.Button(
             self.root,
@@ -170,7 +276,42 @@ class MinecraftLauncherApp:
             self.instance_frame.pack(pady=10)
             self.instance_frame.pack_configure(after=self.account_frame)
 
+    def hien_thi_progress(self, hien=True):
+        """Hien / an khu vuc thanh tien do."""
+        if hien:
+            # Hien thanh progress sau btn_launch
+            self.frame_progress.pack(fill="x", padx=40, pady=(0, 2),
+                                     after=self.btn_launch)
+            self.lbl_progress.pack(pady=(0, 4), after=self.frame_progress)
+        else:
+            self.frame_progress.pack_forget()
+            self.lbl_progress.pack_forget()
+            self.progress_bar["value"] = 0
+            self.lbl_progress.config(text="")
+
+    def cap_nhat_progress(self, phan_tram: float, mo_ta: str = ""):
+        """
+        Callback truyen vao core.chay_game_minecraft de cap nhat tien do.
+        phan_tram: 0.0 -> 100.0
+        mo_ta    : chuoi hien thi ben duoi thanh (ten file dang tai, ...)
+        """
+        self.root.after(0, lambda: self._cap_nhat_progress_ui(phan_tram, mo_ta))
+
+    def _cap_nhat_progress_ui(self, phan_tram, mo_ta: str):
+        # phan_tram=None nghia la chi cap nhat text, khong doi thanh keo
+        if phan_tram is not None:
+            self.progress_bar["value"] = max(0.0, min(100.0, phan_tram))
+        if mo_ta:
+            self.lbl_progress.config(text=mo_ta)
+
     def bat_dau_hoac_tat_game(self):
+        # Dang tai -> huy tai
+        if self._dang_tai:
+            self._huy_tai = True
+            self.btn_launch.config(state="disabled", text="⏳ Đang hủy...")
+            self.lbl_status.config(text="Đang hủy tải xuống...", fg="#E53935")
+            return
+        # Dang chay game -> tat game
         if self._game_process is not None and self._game_process.poll() is None:
             try:
                 self._game_process.terminate()
@@ -188,21 +329,33 @@ class MinecraftLauncherApp:
             messagebox.showwarning("Chú ý", "Vui lòng chọn hoặc thêm tài khoản trước khi chơi!")
             return
 
-        self.btn_launch.config(state="disabled", text="⏳ ĐANG TẢI...")
+        self._dang_tai = True
+        self.btn_launch.config(state="normal", text="🟥 HỦY", bg="#E53935")
         self.lbl_status.config(text="Đang chuẩn bị dữ liệu game...", fg="#1E88E5")
+        self.hien_thi_progress(True)
 
         def luong_khoi_dong():
             try:
                 ten_instance = self.instance_frame.get_current_instance()
+                if self._huy_tai:
+                    self._dang_tai = False
+                    self._huy_tai = False
+                    self.root.after(0, lambda: self.btn_launch.config(text="▶ VÀO GAME", bg="#1E88E5", state="normal"))
+                    self.root.after(0, lambda: self.lbl_status.config(text="Sẵn sàng", fg="gray"))
+                    self.root.after(0, lambda: self.hien_thi_progress(False))
+                    return
                 thu_muc_game = config.current_config.get("thu_muc_game")
 
-                proc = core.chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, self.lbl_status)
+                proc = core.chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, self.lbl_status, self.cap_nhat_progress, lambda: self._huy_tai)
                 self._game_process = proc
 
+                self._dang_tai = False
+                self._huy_tai = False
                 self.root.after(0, lambda: self.btn_launch.config(
                     state="normal", text="⏹ TẮT GAME", bg="#E53935"))
                 self.root.after(0, lambda: self.lbl_status.config(
                     text="Minecraft đang chạy...", fg="#2E7D32"))
+                self.root.after(0, lambda: self.hien_thi_progress(False))
 
                 if proc:
                     proc.wait()
@@ -216,9 +369,12 @@ class MinecraftLauncherApp:
                 loi = str(e)
                 self._game_process = None
                 self.root.after(0, lambda: messagebox.showerror("Lỗi", f"Khởi động game thất bại:\n{loi}"))
+                self._dang_tai = False
+                self._huy_tai = False
                 self.root.after(0, lambda: self.btn_launch.config(
                     text="▶ VÀO GAME", bg="#1E88E5", state="normal"))
                 self.root.after(0, lambda: self.lbl_status.config(text="Sẵn sàng", fg="gray"))
+                self.root.after(0, lambda: self.hien_thi_progress(False))
 
         threading.Thread(target=luong_khoi_dong, daemon=True).start()
 
@@ -227,6 +383,7 @@ if __name__ == "__main__":
     root = tk.Tk()
     root.withdraw()
 
+    _doc_cau_hinh_may()       # Đọc RAM/CPU/GPU thực tế trước khi mở bất kỳ cửa sổ nào
     kiem_tra_va_chay_wizard(root)
 
     try:
@@ -238,4 +395,3 @@ if __name__ == "__main__":
     app = MinecraftLauncherApp(root)
     root.app = app
     root.mainloop()
-

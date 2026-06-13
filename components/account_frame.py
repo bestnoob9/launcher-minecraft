@@ -22,20 +22,22 @@ class AccountFrame(tk.Frame):
             state="readonly", 
             width=22
         )
-        current = config.current_config["current_account"]
-        if current:
-            self.cbo_username.set(current)
-        else:
-            self.cbo_username.set("-- Nhập tên tài khoản --")
-        self.cbo_username.set(config.current_config["current_account"])
+        self.cbo_username.set(config.current_config.get("current_account", ""))
         self.cbo_username.grid(row=0, column=0, padx=5)
-        self.cbo_username.bind("<<ComboboxSelected>>", lambda e: self.on_change_callback())
+        self.cbo_username.bind("<<ComboboxSelected>>", self._khi_chon_tai_khoan)
         
         btn_add_acc = tk.Button(frame_inner, text="➕", font=("Arial", 9), bg="#4CAF50", fg="white", width=3, command=self.them_tai_khoan)
         btn_add_acc.grid(row=0, column=1, padx=2)
         
         btn_del_acc = tk.Button(frame_inner, text="❌", font=("Arial", 9), bg="#F44336", fg="white", width=3, command=self.xoa_tai_khoan)
         btn_del_acc.grid(row=0, column=2, padx=2)
+
+    def _khi_chon_tai_khoan(self, event=None):
+        ten = self.cbo_username.get().strip()
+        if ten:
+            config.current_config["current_account"] = ten
+            config.luu_toan_bo_cau_hinh()
+        self.on_change_callback()
 
     def get_username(self):
         return self.cbo_username.get().strip()

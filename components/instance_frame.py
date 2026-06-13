@@ -235,6 +235,10 @@ class InstanceFrame(tk.Frame):
         self.lbl_info.config(text=text_hien_thi)
 
     def khi_chuyen_instance(self, event=None):
+        ten = self.cbo_instance.get()
+        if ten:
+            config.current_config["current_instance"] = ten
+            config.luu_toan_bo_cau_hinh()
         self.cap_nhat_nhan_thong_tin()
         self.on_change_callback()
 
@@ -441,4 +445,5 @@ class InstanceFrame(tk.Frame):
             width=18, height=2, command=xu_ly_tao
         )
         btn_confirm.pack(side=tk.BOTTOM, pady=15)
+
 

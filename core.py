@@ -134,7 +134,7 @@ def get_all_jvm_presets():
             "-XX:+UseG1GC", "-XX:+ParallelRefProcEnabled", "-XX:MaxGCPauseMillis=200",
             "-XX:+UnlockExperimentalVMOptions", "-XX:+DisableExplicitGC", "-XX:+AlwaysPreTouch",
             "-XX:G1NewSizePercent=30", "-XX:G1MaxNewSizePercent=40", "-XX:G1HeapRegionSize=8m",
-            "-XX:G1ReservePercent=20", "-XX:G1ThreadsAtGC=4", "-XX:InitiatingHeapOccupancyPercent=15",
+            "-XX:G1ReservePercent=20", "-XX:InitiatingHeapOccupancyPercent=15",
             "-XX:G1MixedGCLiveThresholdPercent=90", "-XX:G1RSetUpdatingPauseTimePercent=5",
             "-XX:SurvivorRatio=32", "-XX:+PerfDisableSharedMem", "-XX:MaxTenuringThreshold=1"
         ],
@@ -178,17 +178,42 @@ def build_jvm_arguments(current_config, ram_min, ram_max):
 # =====================================================================
 # CÀI ĐẶT VÀ TIẾN TRÌNH GAME
 # =====================================================================
-def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_muc_game, ten_instance, options):
+def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_muc_game, ten_instance, options, callback_progress=None, should_cancel=None):
     thu_muc_instance_rieng = os.path.join(thu_muc_game, "Instances", ten_instance)
     os.makedirs(thu_muc_instance_rieng, exist_ok=True)
     options["gameDirectory"] = thu_muc_instance_rieng
 
-    minecraft_launcher_lib.install.install_minecraft_version(version_goc, thu_muc_game)
+    # --- Tao CallbackDict de cap nhat tien do ---
+    _max = [100]  # dung list de co the thay doi ben trong lambda
+
+    def _set_max(val):
+        if val and val > 0:
+            _max[0] = val
+
+    def _set_progress(val):
+        if should_cancel and should_cancel():
+            raise InterruptedError("Nguoi dung huy tai xuong")
+        if callback_progress and _max[0] > 0:
+            phan_tram = min(99.0, val / _max[0] * 100)
+            callback_progress(phan_tram, "")
+
+    def _set_status(msg):
+        if callback_progress:
+            # Giu nguyen phan tram hien tai, chi cap nhat mo ta
+            callback_progress(None, str(msg))
+
+    _callbacks = {
+        "setStatus":   _set_status,
+        "setProgress": _set_progress,
+        "setMax":      _set_max,
+    }
+
+    minecraft_launcher_lib.install.install_minecraft_version(version_goc, thu_muc_game, _callbacks)
     id_phien_ban_chay = version_goc
     thu_muc_versions = os.path.join(thu_muc_game, "versions")
 
     if loai_game == "Fabric" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
-        minecraft_launcher_lib.fabric.install_fabric(version_goc, thu_muc_game, loader_version=version_mod_da_chon)
+        minecraft_launcher_lib.fabric.install_fabric(version_goc, thu_muc_game, loader_version=version_mod_da_chon, callback=_callbacks)
         if os.path.exists(thu_muc_versions):
             for folder in os.listdir(thu_muc_versions):
                 if "fabric" in folder.lower() and version_goc in folder:
@@ -196,7 +221,7 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
                     break
 
     elif loai_game == "Quilt" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
-        minecraft_launcher_lib.quilt.install_quilt(version_goc, thu_muc_game, loader_version=version_mod_da_chon)
+        minecraft_launcher_lib.quilt.install_quilt(version_goc, thu_muc_game, loader_version=version_mod_da_chon, callback=_callbacks)
         if os.path.exists(thu_muc_versions):
             for folder in os.listdir(thu_muc_versions):
                 if "quilt" in folder.lower() and version_goc in folder:
@@ -205,7 +230,7 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
 
     elif loai_game == "NeoForge" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
         try:
-            minecraft_launcher_lib.neoforge.install_neoforge_version(version_mod_da_chon, thu_muc_game)
+            minecraft_launcher_lib.neoforge.install_neoforge_version(version_mod_da_chon, thu_muc_game, callback=_callbacks)
         except AttributeError:
             raise Exception("NeoForge chưa được hỗ trợ. Hãy chạy: pip install --upgrade minecraft-launcher-lib")
         if os.path.exists(thu_muc_versions):
@@ -215,7 +240,7 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
                     break
 
     elif loai_game == "Forge" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
-        minecraft_launcher_lib.forge.install_forge_version(version_mod_da_chon, thu_muc_game)
+        minecraft_launcher_lib.forge.install_forge_version(version_mod_da_chon, thu_muc_game, callback=_callbacks)
         if os.path.exists(thu_muc_versions):
             for folder in os.listdir(thu_muc_versions):
                 if "forge" in folder.lower() and version_goc in folder:
@@ -231,7 +256,7 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
     return minecraft_launcher_lib.command.get_minecraft_command(id_phien_ban_chay, thu_muc_game, options)
 
 
-def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status):
+def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callback_progress=None, should_cancel=None):
     import config
 
     if not ten_instance:
@@ -309,11 +334,18 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status):
             thong_tin_instance["version_mod"],
             thu_muc_game,
             ten_folder_instance,
-            options
+            options,
+            callback_progress,
+            should_cancel
         )
         lbl_status.after(0, lambda: lbl_status.config(text="Đang khởi động Minecraft...", fg="#2b8c54"))
+        if callback_progress:
+            callback_progress(100.0, "Hoàn tất!")
         proc = subprocess.Popen(lenh)
         return proc
+    except InterruptedError:
+        lbl_status.after(0, lambda: lbl_status.config(text="Sẵn sàng", fg="gray"))
+        return None
     except Exception as e:
         err = str(e)
         lbl_status.after(0, lambda: lbl_status.config(text=f"Thất bại: {err}", fg="red"))
@@ -325,3 +357,4 @@ def lay_danh_sach_phien_ban_theo_loai(loai):
         return [v["id"] for v in all_versions if v["type"] == loai]
     except:
         return []
+

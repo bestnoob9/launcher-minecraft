@@ -77,7 +77,7 @@ def _mo_cua_so_wizard(root) -> bool:
     frame_path = tk.Frame(win)
     frame_path.pack(padx=28, fill="x")
 
-    var_path = tk.StringVar(value=os.path.normpath(os.path.join(os.path.expanduser("~"), ".Minecraftfile")))
+    var_path = tk.StringVar(value=os.path.normpath(os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), ".Minecraftfile")))
 
     ent_path = tk.Entry(frame_path, textvariable=var_path, font=("Arial", 10), width=42)
     ent_path.pack(side="left", ipady=4)

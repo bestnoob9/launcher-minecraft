@@ -6,38 +6,12 @@ import sys
 
 import config
 import core
+from icon_utils import gan_icon_app as _gan_icon_app
 from components.account_frame import AccountFrame
 from components.instance_frame import InstanceFrame
 from components.setting_window import SettingWindow
 from components.mod_mc import ModMcWindow
 from setup_wizard import kiem_tra_va_chay_wizard   # <-- import wizard
-
-
-def _gan_icon_app(window):
-    """
-    Gan icon cho cua so (titlebar + taskbar).
-
-    Cach dung:
-      - Tao thu muc "assets" nam cung cap voi main.py.
-      - Bo file icon vao do:
-          assets/icon.ico   (uu tien dung tren Windows - taskbar/titlebar)
-          assets/icon.png   (du phong, dung cho moi he dieu hanh)
-      - Khong can sua code gi them, ham nay tu dong tim va gan icon.
-    """
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        duong_dan_ico = os.path.join(base_dir, "assets", "icon.ico")
-        duong_dan_png = os.path.join(base_dir, "assets", "icon.png")
-
-        if sys.platform == "win32" and os.path.exists(duong_dan_ico):
-            window.iconbitmap(duong_dan_ico)
-        elif os.path.exists(duong_dan_png):
-            icon_img = tk.PhotoImage(file=duong_dan_png)
-            window.iconphoto(True, icon_img)
-            # Giu tham chieu de Python khong don rac (garbage-collect) anh icon
-            window._icon_img_ref = icon_img
-    except Exception as e:
-        print(f"[Icon] Khong the gan icon: {e}")
 
 
 def _doc_cau_hinh_may():

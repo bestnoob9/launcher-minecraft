@@ -17,6 +17,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
 import config
+from icon_utils import gan_icon_app
 
 # Import tu cac module da tach
 from components.api_helpers import (
@@ -40,6 +41,11 @@ from components.widgets import (
     FilterBar,
     ContentTableWidget,
 )
+
+
+class TacVuBiHuy(Exception):
+    """Duoc nem ra khi nguoi dung nhan nut 'Huy' trong khi dang tai/cai dat."""
+    pass
 
 
 # =====================================================================
@@ -120,6 +126,15 @@ class ModMcWindow(tk.Toplevel):
         self.minsize(760, 500)
         # self.grab_set()  # Đã bỏ để main vẫn dùng được khi mở Modpack
         self.callback_lam_moi = callback_lam_moi
+        gan_icon_app(self)
+
+        # So tac vu tai/cai dat dang chay (mod, modpack, resource pack, shader, ...)
+        # > 0 nghia la dang co tac vu chay nen -> khong cho dong cua so nay.
+        self._so_tac_vu_dang_chay = 0
+        # Co bao "huy" - khi nguoi dung nhan nut Huy, cac vong lap tai file se
+        # kiem tra co nay va nem TacVuBiHuy de dung lai som.
+        self._cancel_event = threading.Event()
+        self.protocol("WM_DELETE_WINDOW", self._xu_ly_dong_cua_so)
 
         # Debounce IDs
         self._debounce_mr    = None
@@ -134,6 +149,55 @@ class ModMcWindow(tk.Toplevel):
         self._modcf_ver_idx_map = []
 
         self._build_ui()
+
+    # ------------------------------------------------------------------
+    # CHAN DONG CUA SO KHI DANG TAI / CAI DAT
+    # ------------------------------------------------------------------
+
+    def _tang_tac_vu(self):
+        """Goi truoc khi bat dau mot tac vu tai/cai dat (mod, modpack, rsp, shader, ...)."""
+        self._so_tac_vu_dang_chay += 1
+        self._cancel_event.clear()
+        self.after(0, lambda: self.btn_huy.config(state="normal"))
+
+    def _giam_tac_vu(self):
+        """Goi khi mot tac vu tai/cai dat ket thuc (thanh cong hoac loi)."""
+        self._so_tac_vu_dang_chay = max(0, self._so_tac_vu_dang_chay - 1)
+        if self._so_tac_vu_dang_chay == 0:
+            self._cancel_event.clear()
+            self.after(0, lambda: self.btn_huy.config(state="disabled"))
+
+    def _huy_tac_vu(self):
+        """Nguoi dung nhan nut 'Huy' - bao cho tac vu dang chay dung lai."""
+        if self._so_tac_vu_dang_chay <= 0:
+            return
+        if messagebox.askyesno(
+            "Huy tac vu",
+            "Ban co chac muon huy tac vu dang tai/cai dat?",
+            parent=self
+        ):
+            self._cancel_event.set()
+            self.lbl_status.config(text="Dang huy...", fg="#E53935")
+
+    def _dang_co_tac_vu(self):
+        dang_chay_local = self._so_tac_vu_dang_chay > 0
+        try:
+            dang_chay_global = dang_cai_modpack()
+        except Exception:
+            dang_chay_global = False
+        return dang_chay_local or dang_chay_global
+
+    def _xu_ly_dong_cua_so(self):
+        """Chan nut X khi dang tai/cai Mod, Modpack, Resource Pack hoac Shader."""
+        if self._dang_co_tac_vu():
+            messagebox.showwarning(
+                "Dang cai dat",
+                "Dang tai/cai dat Mod, Modpack, Resource Pack hoac Shader.\n"
+                "Vui long doi cho den khi hoan tat truoc khi dong cua so nay!",
+                parent=self
+            )
+            return
+        self.destroy()
 
     # ------------------------------------------------------------------
     # BUILD UI
@@ -186,9 +250,18 @@ class ModMcWindow(tk.Toplevel):
         self._build_shader_tab()
         self._build_file()
 
-        self.lbl_status = tk.Label(self, text="Dang tai...",
+        status_bar = tk.Frame(self)
+        status_bar.pack(fill="x", padx=14, pady=(2, 6))
+
+        self.lbl_status = tk.Label(status_bar, text="Dang tai...",
                                    font=("Arial", 9, "italic"), fg="#1E88E5", anchor="w")
-        self.lbl_status.pack(fill="x", padx=14, pady=(2, 6))
+        self.lbl_status.pack(side="left", fill="x", expand=True)
+
+        self.btn_huy = tk.Button(status_bar, text="Huy", font=("Arial", 9, "bold"),
+                                  bg="#E53935", fg="white",
+                                  activebackground="#E53935", activeforeground="white",
+                                  width=8, state="disabled", command=self._huy_tac_vu)
+        self.btn_huy.pack(side="right", padx=(8, 0))
 
         threading.Thread(target=self._load_mr_top,  daemon=True).start()
         threading.Thread(target=self._load_cf_top,  daemon=True).start()
@@ -351,23 +424,34 @@ class ModMcWindow(tk.Toplevel):
         fname = prim.get("filename", "modpack.mrpack")
         self.lbl_status.config(text="Dang tai...", fg="#1E88E5")
 
+        self._tang_tac_vu()
         def _t():
             try:
                 tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
                 os.makedirs(tmp, exist_ok=True)
                 pz  = os.path.join(tmp, fname)
                 def prog(da, tong):
+                    if self._cancel_event.is_set():
+                        raise TacVuBiHuy("Da huy tai modpack")
                     pct = int(da / tong * 100)
                     self.after(0, lambda: self.lbl_status.config(
                         text=f"Dang tai: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#1E88E5"))
                 tai_file(url, pz, prog)
+                if self._cancel_event.is_set():
+                    raise TacVuBiHuy("Da huy cai modpack")
                 def _done_va_xoa():
                     try: shutil.rmtree(tmp)
                     except: pass
                     self._done()
                 cai_modpack_tu_file(pz, ten, self.lbl_status, _done_va_xoa)
+            except TacVuBiHuy:
+                try: shutil.rmtree(tmp)
+                except: pass
+                self.after(0, lambda: self.lbl_status.config(text="Da huy cai dat Modpack.", fg="#E53935"))
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
+            finally:
+                self._giam_tac_vu()
         threading.Thread(target=_t, daemon=True).start()
 
     # ------------------------------------------------------------------
@@ -510,23 +594,34 @@ class ModMcWindow(tk.Toplevel):
         fname = fd.get("fileName", "modpack.zip")
         self.lbl_status.config(text="Dang tai tu CurseForge...", fg="#E64A19")
 
+        self._tang_tac_vu()
         def _t():
             try:
                 tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
                 os.makedirs(tmp, exist_ok=True)
                 pz  = os.path.join(tmp, fname)
                 def prog(da, tong):
+                    if self._cancel_event.is_set():
+                        raise TacVuBiHuy("Da huy tai modpack")
                     pct = int(da / tong * 100)
                     self.after(0, lambda: self.lbl_status.config(
                         text=f"Dang tai: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#E64A19"))
                 tai_file(url, pz, prog, extra_headers={"x-api-key": CURSEFORGE_API_KEY})
+                if self._cancel_event.is_set():
+                    raise TacVuBiHuy("Da huy cai modpack")
                 def _done_va_xoa():
                     try: shutil.rmtree(tmp)
                     except: pass
                     self._done()
                 cai_modpack_tu_file(pz, ten, self.lbl_status, _done_va_xoa)
+            except TacVuBiHuy:
+                try: shutil.rmtree(tmp)
+                except: pass
+                self.after(0, lambda: self.lbl_status.config(text="Da huy cai dat Modpack.", fg="#E53935"))
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
+            finally:
+                self._giam_tac_vu()
         threading.Thread(target=_t, daemon=True).start()
 
     # ------------------------------------------------------------------
@@ -705,23 +800,34 @@ class ModMcWindow(tk.Toplevel):
         fname = prim.get("filename", "mod.jar")
         self.lbl_status.config(text="Dang tai Mod...", fg="#00897B")
 
+        self._tang_tac_vu()
         def _t():
             try:
                 tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
                 os.makedirs(tmp, exist_ok=True)
                 pz  = os.path.join(tmp, fname)
                 def prog(da, tong):
+                    if self._cancel_event.is_set():
+                        raise TacVuBiHuy("Da huy tai mod")
                     pct = int(da / tong * 100)
                     self.after(0, lambda: self.lbl_status.config(text=f"Dang tai mod: {pct}%", fg="#00897B"))
                 tai_file(url, pz, prog)
+                if self._cancel_event.is_set():
+                    raise TacVuBiHuy("Da huy cai mod")
                 def _done():
                     try: shutil.rmtree(tmp)
                     except: pass
                     self.lbl_status.after(0, lambda: self.lbl_status.config(
                         text=f"Da cai mod '{fname}' vao {ten_inst}!", fg="#2b8c54"))
                 cai_mod_tu_file(pz, ten_inst, self.lbl_status, _done)
+            except TacVuBiHuy:
+                try: shutil.rmtree(tmp)
+                except: pass
+                self.after(0, lambda: self.lbl_status.config(text="Da huy cai dat Mod.", fg="#E53935"))
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
+            finally:
+                self._giam_tac_vu()
         threading.Thread(target=_t, daemon=True).start()
 
     # ------------------------------------------------------------------
@@ -909,24 +1015,35 @@ class ModMcWindow(tk.Toplevel):
         fname = fd.get("fileName", "mod.jar")
         self.lbl_status.config(text="Dang tai Mod tu CurseForge...", fg="#F9A825")
 
+        self._tang_tac_vu()
         def _t():
             try:
                 tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
                 os.makedirs(tmp, exist_ok=True)
                 pz  = os.path.join(tmp, fname)
                 def prog(da, tong):
+                    if self._cancel_event.is_set():
+                        raise TacVuBiHuy("Da huy tai mod")
                     pct = int(da / tong * 100)
                     self.after(0, lambda: self.lbl_status.config(
                         text=f"Dang tai mod: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#F9A825"))
                 tai_file(url, pz, prog, extra_headers={"x-api-key": CURSEFORGE_API_KEY})
+                if self._cancel_event.is_set():
+                    raise TacVuBiHuy("Da huy cai mod")
                 def _done():
                     try: shutil.rmtree(tmp)
                     except: pass
                     self.lbl_status.after(0, lambda: self.lbl_status.config(
                         text=f"Da cai mod '{fname}' vao {ten_inst}!", fg="#2b8c54"))
                 cai_mod_tu_file(pz, ten_inst, self.lbl_status, _done)
+            except TacVuBiHuy:
+                try: shutil.rmtree(tmp)
+                except: pass
+                self.after(0, lambda: self.lbl_status.config(text="Da huy cai dat Mod.", fg="#E53935"))
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
+            finally:
+                self._giam_tac_vu()
         threading.Thread(target=_t, daemon=True).start()
 
     # ------------------------------------------------------------------
@@ -1058,23 +1175,34 @@ class ModMcWindow(tk.Toplevel):
         fname = prim.get("filename", "resourcepack.zip")
         self.lbl_status.config(text="Dang tai RSP...", fg="#8E24AA")
 
+        self._tang_tac_vu()
         def _t():
             try:
                 tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
                 os.makedirs(tmp, exist_ok=True)
                 pz  = os.path.join(tmp, fname)
                 def prog(da, tong):
+                    if self._cancel_event.is_set():
+                        raise TacVuBiHuy("Da huy tai RSP")
                     pct = int(da / tong * 100)
                     self.after(0, lambda: self.lbl_status.config(text=f"Dang tai: {pct}%", fg="#8E24AA"))
                 tai_file(url, pz, prog)
+                if self._cancel_event.is_set():
+                    raise TacVuBiHuy("Da huy cai RSP")
                 def _done():
                     try: shutil.rmtree(tmp)
                     except: pass
                     self.lbl_status.after(0, lambda: self.lbl_status.config(
                         text=f"Da cai RSP vao {ten_inst}!", fg="#2b8c54"))
                 cai_rsp_shader_tu_file(pz, ten_inst, "rsp", self.lbl_status, _done)
+            except TacVuBiHuy:
+                try: shutil.rmtree(tmp)
+                except: pass
+                self.after(0, lambda: self.lbl_status.config(text="Da huy cai dat Resource Pack.", fg="#E53935"))
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
+            finally:
+                self._giam_tac_vu()
         threading.Thread(target=_t, daemon=True).start()
 
     # ------------------------------------------------------------------
@@ -1207,23 +1335,34 @@ class ModMcWindow(tk.Toplevel):
         fname = prim.get("filename", "shader.zip")
         self.lbl_status.config(text="Dang tai Shader...", fg="#F57C00")
 
+        self._tang_tac_vu()
         def _t():
             try:
                 tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
                 os.makedirs(tmp, exist_ok=True)
                 pz  = os.path.join(tmp, fname)
                 def prog(da, tong):
+                    if self._cancel_event.is_set():
+                        raise TacVuBiHuy("Da huy tai Shader")
                     pct = int(da / tong * 100)
                     self.after(0, lambda: self.lbl_status.config(text=f"Dang tai: {pct}%", fg="#F57C00"))
                 tai_file(url, pz, prog)
+                if self._cancel_event.is_set():
+                    raise TacVuBiHuy("Da huy cai Shader")
                 def _done():
                     try: shutil.rmtree(tmp)
                     except: pass
                     self.lbl_status.after(0, lambda: self.lbl_status.config(
                         text=f"Da cai Shader vao {ten_inst}!", fg="#2b8c54"))
                 cai_rsp_shader_tu_file(pz, ten_inst, "shader", self.lbl_status, _done)
+            except TacVuBiHuy:
+                try: shutil.rmtree(tmp)
+                except: pass
+                self.after(0, lambda: self.lbl_status.config(text="Da huy cai dat Shader.", fg="#E53935"))
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
+            finally:
+                self._giam_tac_vu()
         threading.Thread(target=_t, daemon=True).start()
 
     # ------------------------------------------------------------------
@@ -1292,12 +1431,18 @@ class ModMcWindow(tk.Toplevel):
         if loai == "Modpack":
             if ten in config.current_config["danh_sach_instances"]:
                 messagebox.showwarning("Chu y", "Ten Instance da ton tai!", parent=self); return
-            cai_modpack_tu_file(path, ten, self.lbl_status, self._done)
-        elif loai == "Mod":
-            cai_mod_tu_file(path, ten, self.lbl_status)
-        else:
-            map_loai = {"Resource Pack": "rsp", "Shader": "shader"}
-            cai_rsp_shader_tu_file(path, ten, map_loai[loai], self.lbl_status)
+
+        self._tang_tac_vu()
+        try:
+            if loai == "Modpack":
+                cai_modpack_tu_file(path, ten, self.lbl_status, self._done)
+            elif loai == "Mod":
+                cai_mod_tu_file(path, ten, self.lbl_status)
+            else:
+                map_loai = {"Resource Pack": "rsp", "Shader": "shader"}
+                cai_rsp_shader_tu_file(path, ten, map_loai[loai], self.lbl_status)
+        finally:
+            self._giam_tac_vu()
 
     # ------------------------------------------------------------------
     # CALLBACK CHUNG

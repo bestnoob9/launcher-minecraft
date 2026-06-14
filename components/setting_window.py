@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import re
 import config
+from icon_utils import gan_icon_app
 
 class SettingWindow(tk.Toplevel):
     def __init__(self, parent, on_save_callback):
@@ -10,6 +11,7 @@ class SettingWindow(tk.Toplevel):
         self.geometry("460x640")  # Chiều cao tăng để vừa thanh kéo RAM + JVM Arguments
         self.resizable(False, False)
         #self.grab_set()  # Khóa màn hình chính khi đang mở setting
+        gan_icon_app(self)
         
         self.on_save_callback = on_save_callback
         

@@ -7,6 +7,7 @@ import unicodedata
 import json
 import config
 import core
+from icon_utils import gan_icon_app
 
 
 def kiem_tra_ten_hop_le(ten):
@@ -258,6 +259,7 @@ class InstanceFrame(tk.Frame):
         win_create.geometry("420x480")
         win_create.resizable(False, False)
         win_create.grab_set()
+        gan_icon_app(win_create)
 
         # 1. Nhập tên phiên bản
         tk.Label(win_create, text="Tên thư mục phiên bản (Instance):", font=("Arial", 10, "bold")).pack(pady=(15, 2))

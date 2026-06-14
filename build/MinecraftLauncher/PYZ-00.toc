@@ -386,6 +386,7 @@
   ('http.cookies',
    'C:\\Users\\vubet\\AppData\\Local\\Programs\\Thonny\\lib\\http\\cookies.py',
    'PYMODULE'),
+  ('icon_utils', 'D:\\Minecraft launcher\\icon_utils.py', 'PYMODULE'),
   ('idna',
    'C:\\Users\\vubet\\AppData\\Local\\Programs\\Thonny\\lib\\site-packages\\idna\\__init__.py',
    'PYMODULE'),

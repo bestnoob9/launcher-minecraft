@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import config
+from icon_utils import gan_icon_app
 
 class AccountFrame(tk.Frame):
     def __init__(self, parent, on_change_callback):
@@ -58,6 +59,7 @@ class AccountFrame(tk.Frame):
         win_add.geometry("300x150")
         win_add.resizable(False, False)
         win_add.grab_set()
+        gan_icon_app(win_add)
         
         tk.Label(win_add, text="Nhập tên tài khoản mới:", font=("Arial", 10)).pack(pady=10)
         ent_new_name = tk.Entry(win_add, font=("Arial", 11), width=20)

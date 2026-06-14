@@ -143,8 +143,10 @@ def get_all_jvm_presets():
             "-XX:+UseCondCardMark", "-XX:MaxGCPauseMillis=100"
         ],
         "chunk_loading_heavy": [
-            "-XX:+UseG1GC", "-XX:+AlwaysPreTouch", "-XX:+UseNUMA", "-XX:+UseFastAccessorMethods",
-            "-XX:+ThreadPriorityPolicy=4", "-XX:+EmitSync=0", "-XX:MaxGCPauseMillis=50"
+            "-XX:+UseG1GC",
+            "-XX:+AlwaysPreTouch",
+            "-XX:+UseNUMA",
+            "-XX:MaxGCPauseMillis=50"
         ],
         "heavy_modded": [
             "-XX:+UseG1GC", "-XX:+ParallelRefProcEnabled", "-XX:MaxGCPauseMillis=200",

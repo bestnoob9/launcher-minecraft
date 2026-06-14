@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('components', 'components')]
+datas = [('components', 'components'), ('assets', 'assets')]
 binaries = []
 hiddenimports = ['minecraft_launcher_lib', 'minecraft_launcher_lib.utils', 'minecraft_launcher_lib.install', 'minecraft_launcher_lib.command', 'minecraft_launcher_lib.fabric', 'minecraft_launcher_lib.quilt', 'minecraft_launcher_lib.forge', 'minecraft_launcher_lib.neoforge', 'tkinter', 'tkinter.ttk', 'tkinter.messagebox', 'tkinter.filedialog', 'psutil']
 tmp_ret = collect_all('minecraft_launcher_lib')
@@ -44,5 +44,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['icon.ico'],
+    icon=['assets\\icon.ico'],
 )

@@ -62,7 +62,7 @@ def tai_danh_sach_mod(loai_game, version_goc):
 
         elif loai_game == "Forge":
             forge_list = minecraft_launcher_lib.forge.list_forge_versions()
-            return [f for f in forge_list if str(version_goc) in str(f)][::-1]
+            return [f for f in forge_list if _khop_chinh_xac_version(str(version_goc), str(f))][::-1]
 
     except Exception as e:
         print(f"Lỗi tải API Mod cho {loai_game}: {e}")
@@ -180,6 +180,64 @@ def build_jvm_arguments(current_config, ram_min, ram_max):
 # =====================================================================
 # CÀI ĐẶT VÀ TIẾN TRÌNH GAME
 # =====================================================================
+
+def _da_cai_minecraft_co_ban(thu_muc_game, version_id):
+    """
+    Kiem tra nhanh xem version Minecraft goc (vanilla) da co day du
+    file .json + .jar trong thu muc versions/ chua.
+    Neu da co -> bo qua goi install_minecraft_version (do nhanh) de
+    khong phai quet/kiem tra lai toan bo assets/libraries moi lan vao game.
+    """
+    vdir = os.path.join(thu_muc_game, "versions", version_id)
+    return (
+        os.path.exists(os.path.join(vdir, f"{version_id}.json"))
+        and os.path.exists(os.path.join(vdir, f"{version_id}.jar"))
+    )
+
+
+def _tim_phien_ban_loader_da_cai(thu_muc_versions, tu_khoa, dieu_kien_phu=None):
+    """
+    Quet thu_muc_versions, tim folder co ten chua `tu_khoa` (vd 'fabric',
+    'quilt', 'forge', 'neoforge') va da co file .json (nghia la profile
+    da duoc cai dat hoan tat truoc do).
+    dieu_kien_phu(folder) -> bool: dieu kien loc them (vd khop version goc / loader).
+    Tra ve ten folder neu tim thay, None neu chua cai.
+    """
+    if not os.path.exists(thu_muc_versions):
+        return None
+    for folder in os.listdir(thu_muc_versions):
+        if tu_khoa not in folder.lower():
+            continue
+        ver_json = os.path.join(thu_muc_versions, folder, f"{folder}.json")
+        if not os.path.exists(ver_json):
+            continue
+        if dieu_kien_phu and not dieu_kien_phu(folder):
+            continue
+        return folder
+    return None
+
+
+def _khop_chinh_xac_version(ver, text):
+    """
+    Kiem tra 'ver' co xuat hien trong 'text' nhu mot token phien ban day du,
+    KHONG bi nham voi mot phien ban dai hon chua no.
+    Vd: _khop_chinh_xac_version("1.21.1", "1.21.1-forge-52.0.11") -> True
+        _khop_chinh_xac_version("1.21.1", "1.21.11-forge-52.0.11") -> False
+    Cach lam: tim moi vi tri xuat hien cua 'ver' trong 'text', chap nhan
+    chi khi ky tu ngay truoc/sau (neu co) khong phai la chu so (tuc 'ver'
+    khong bi noi dai them boi cac chu so khac).
+    """
+    if not ver:
+        return False
+    for m in re.finditer(re.escape(ver), text):
+        start, end = m.start(), m.end()
+        truoc_ok = start == 0 or not text[start - 1].isdigit()
+        sau_ok   = end == len(text) or not text[end].isdigit()
+        if truoc_ok and sau_ok:
+            return True
+    return False
+
+
 def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_muc_game, ten_instance, options, callback_progress=None, should_cancel=None):
     thu_muc_instance_rieng = os.path.join(thu_muc_game, "Instances", ten_instance)
     os.makedirs(thu_muc_instance_rieng, exist_ok=True)
@@ -210,59 +268,94 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
         "setMax":      _set_max,
     }
 
-    minecraft_launcher_lib.install.install_minecraft_version(version_goc, thu_muc_game, _callbacks)
+    if _da_cai_minecraft_co_ban(thu_muc_game, version_goc):
+        _set_status(f"Da co Minecraft {version_goc}, bo qua kiem tra lai...")
+    else:
+        minecraft_launcher_lib.install.install_minecraft_version(version_goc, thu_muc_game, _callbacks)
     id_phien_ban_chay = version_goc
     thu_muc_versions = os.path.join(thu_muc_game, "versions")
 
     if loai_game == "Fabric" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
-        minecraft_launcher_lib.fabric.install_fabric(version_goc, thu_muc_game, loader_version=version_mod_da_chon, callback=_callbacks)
-        if os.path.exists(thu_muc_versions):
-            # Uu tien khop chinh xac ca version_goc lan version_mod (tranh lay sai loader version)
-            best = None
-            for folder in os.listdir(thu_muc_versions):
-                if "fabric" in folder.lower() and version_goc in folder:
-                    if version_mod_da_chon in folder:
-                        id_phien_ban_chay = folder
-                        best = folder
-                        break
-                    elif best is None:
-                        best = folder
-            if id_phien_ban_chay == version_goc and best:
-                id_phien_ban_chay = best
+        da_cai = _tim_phien_ban_loader_da_cai(
+            thu_muc_versions, "fabric",
+            lambda f: _khop_chinh_xac_version(version_goc, f) and _khop_chinh_xac_version(version_mod_da_chon, f)
+        )
+        if da_cai:
+            id_phien_ban_chay = da_cai
+            _set_status(f"Da cai Fabric {version_mod_da_chon}, bo qua cai dat lai...")
+        else:
+            minecraft_launcher_lib.fabric.install_fabric(version_goc, thu_muc_game, loader_version=version_mod_da_chon, callback=_callbacks)
+            if os.path.exists(thu_muc_versions):
+                # Uu tien khop chinh xac ca version_goc lan version_mod (tranh lay sai loader version)
+                best = None
+                for folder in os.listdir(thu_muc_versions):
+                    if "fabric" in folder.lower() and _khop_chinh_xac_version(version_goc, folder):
+                        if _khop_chinh_xac_version(version_mod_da_chon, folder):
+                            id_phien_ban_chay = folder
+                            best = folder
+                            break
+                        elif best is None:
+                            best = folder
+                if id_phien_ban_chay == version_goc and best:
+                    id_phien_ban_chay = best
 
     elif loai_game == "Quilt" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
-        minecraft_launcher_lib.quilt.install_quilt(version_goc, thu_muc_game, loader_version=version_mod_da_chon, callback=_callbacks)
-        if os.path.exists(thu_muc_versions):
-            best = None
-            for folder in os.listdir(thu_muc_versions):
-                if "quilt" in folder.lower() and version_goc in folder:
-                    if version_mod_da_chon in folder:
-                        id_phien_ban_chay = folder
-                        best = folder
-                        break
-                    elif best is None:
-                        best = folder
-            if id_phien_ban_chay == version_goc and best:
-                id_phien_ban_chay = best
+        da_cai = _tim_phien_ban_loader_da_cai(
+            thu_muc_versions, "quilt",
+            lambda f: _khop_chinh_xac_version(version_goc, f) and _khop_chinh_xac_version(version_mod_da_chon, f)
+        )
+        if da_cai:
+            id_phien_ban_chay = da_cai
+            _set_status(f"Da cai Quilt {version_mod_da_chon}, bo qua cai dat lai...")
+        else:
+            minecraft_launcher_lib.quilt.install_quilt(version_goc, thu_muc_game, loader_version=version_mod_da_chon, callback=_callbacks)
+            if os.path.exists(thu_muc_versions):
+                best = None
+                for folder in os.listdir(thu_muc_versions):
+                    if "quilt" in folder.lower() and _khop_chinh_xac_version(version_goc, folder):
+                        if _khop_chinh_xac_version(version_mod_da_chon, folder):
+                            id_phien_ban_chay = folder
+                            best = folder
+                            break
+                        elif best is None:
+                            best = folder
+                if id_phien_ban_chay == version_goc and best:
+                    id_phien_ban_chay = best
 
     elif loai_game == "NeoForge" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
-        try:
-            minecraft_launcher_lib.neoforge.install_neoforge_version(version_mod_da_chon, thu_muc_game, callback=_callbacks)
-        except AttributeError:
-            raise Exception("NeoForge chưa được hỗ trợ. Hãy chạy: pip install --upgrade minecraft-launcher-lib")
-        if os.path.exists(thu_muc_versions):
-            for folder in os.listdir(thu_muc_versions):
-                if "neoforge" in folder.lower() and version_mod_da_chon in folder:
-                    id_phien_ban_chay = folder
-                    break
+        da_cai = _tim_phien_ban_loader_da_cai(
+            thu_muc_versions, "neoforge",
+            lambda f: _khop_chinh_xac_version(version_mod_da_chon, f)
+        )
+        if da_cai:
+            id_phien_ban_chay = da_cai
+            _set_status(f"Da cai NeoForge {version_mod_da_chon}, bo qua cai dat lai...")
+        else:
+            try:
+                minecraft_launcher_lib.neoforge.install_neoforge_version(version_mod_da_chon, thu_muc_game, callback=_callbacks)
+            except AttributeError:
+                raise Exception("NeoForge chưa được hỗ trợ. Hãy chạy: pip install --upgrade minecraft-launcher-lib")
+            if os.path.exists(thu_muc_versions):
+                for folder in os.listdir(thu_muc_versions):
+                    if "neoforge" in folder.lower() and _khop_chinh_xac_version(version_mod_da_chon, folder):
+                        id_phien_ban_chay = folder
+                        break
 
     elif loai_game == "Forge" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
-        minecraft_launcher_lib.forge.install_forge_version(version_mod_da_chon, thu_muc_game, callback=_callbacks)
-        if os.path.exists(thu_muc_versions):
-            for folder in os.listdir(thu_muc_versions):
-                if "forge" in folder.lower() and version_goc in folder:
-                    id_phien_ban_chay = folder
-                    break
+        da_cai = _tim_phien_ban_loader_da_cai(
+            thu_muc_versions, "forge",
+            lambda f: _khop_chinh_xac_version(version_goc, f)
+        )
+        if da_cai:
+            id_phien_ban_chay = da_cai
+            _set_status(f"Da cai Forge cho {version_goc}, bo qua cai dat lai...")
+        else:
+            minecraft_launcher_lib.forge.install_forge_version(version_mod_da_chon, thu_muc_game, callback=_callbacks)
+            if os.path.exists(thu_muc_versions):
+                for folder in os.listdir(thu_muc_versions):
+                    if "forge" in folder.lower() and _khop_chinh_xac_version(version_goc, folder):
+                        id_phien_ban_chay = folder
+                        break
 
     file_info = os.path.join(thu_muc_instance_rieng, "instance_info.json")
     if not os.path.exists(file_info):

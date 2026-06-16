@@ -6,41 +6,33 @@ import sys
 
 import config
 import core
+import theme
 from icon_utils import gan_icon_app as _gan_icon_app
 from components.account_frame import AccountFrame
 from components.instance_frame import InstanceFrame
 from components.setting_window import SettingWindow
 from components.mod_mc import ModMcWindow
-from setup_wizard import kiem_tra_va_chay_wizard   # <-- import wizard
+from setup_wizard import kiem_tra_va_chay_wizard
 
 
 def _doc_cau_hinh_may():
-    """
-    Doc dung luong RAM vat ly mot lan khi khoi dong.
-    Luu vao config.current_config["_system_info"] de cac module khac dung.
-    Khong luu xuong file (chi luu trong bo nho phien lam viec).
-    Thu tu uu tien: psutil -> ctypes (Windows) -> wmi (Windows) -> fallback.
-    """
     import math
 
     def _lam_tron_ram_gb(total_mb):
-        """Lam tron MB sang GB theo cac moc thuong gap: 4/8/12/16/24/32/48/64/128."""
         cac_moc = [4, 8, 12, 16, 24, 32, 48, 64, 128]
         total_gb_thuc = total_mb / 1024
         for moc in cac_moc:
-            # Neu nam trong khoang 85% cua moc do thi lam tron len
             if total_gb_thuc <= moc * 1.05:
                 return moc
         return math.ceil(total_gb_thuc)
 
     info = {
-        "ram_total_mb": 8192,   # fallback cuoi cung
+        "ram_total_mb": 8192,   
         "ram_total_gb": 8,
     }
 
     total_mb = None
 
-    # --- Phuong phap 1: psutil (da nen tang) ---
     try:
         import psutil
         total_bytes = psutil.virtual_memory().total
@@ -50,7 +42,6 @@ def _doc_cau_hinh_may():
     except Exception as e:
         print(f"[System] psutil that bai: {e}")
 
-    # --- Phuong phap 2: ctypes Windows (GlobalMemoryStatusEx) ---
     if total_mb is None:
         try:
             import ctypes
@@ -71,11 +62,10 @@ def _doc_cau_hinh_may():
             ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
             if stat.ullTotalPhys > 0:
                 total_mb = stat.ullTotalPhys // (1024 * 1024)
-                print(f"[System] Doc RAM bang ctypes/WinAPI: {total_mb} MB")
+                #print(f"[System] Doc RAM bang ctypes/WinAPI: {total_mb} MB")
         except Exception as e:
             print(f"[System] ctypes that bai: {e}")
 
-    # --- Phuong phap 3: wmi (Windows) ---
     if total_mb is None:
         try:
             import wmi
@@ -83,28 +73,25 @@ def _doc_cau_hinh_may():
             tong = sum(int(cs.TotalPhysicalMemory) for cs in c.Win32_ComputerSystem())
             if tong > 0:
                 total_mb = tong // (1024 * 1024)
-                print(f"[System] Doc RAM bang wmi: {total_mb} MB")
+                #print(f"[System] Doc RAM bang wmi: {total_mb} MB")
         except Exception as e:
             print(f"[System] wmi that bai: {e}")
 
-    # --- Ap dung ket qua ---
     if total_mb and total_mb > 0:
         info["ram_total_mb"] = total_mb
         info["ram_total_gb"] = _lam_tron_ram_gb(total_mb)
     else:
-        print("[System] Khong doc duoc RAM thuc te, dung fallback 8 GB.")
+        print("[System] lỗi à ko thấy ram, dùng tạm 8 GB.")
 
     config.current_config["_system_info"] = info
-    #print(f"[System] RAM phat hien: {info['ram_total_gb']} GB ({info['ram_total_mb']} MB)")
 
 class ConsoleWindow(tk.Toplevel):
-    """Cửa sổ hiển thị stdout/stderr từ Minecraft process."""
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Console — Minecraft Log")
         self.geometry("780x420")
         self.resizable(True, True)
-        self.protocol("WM_DELETE_WINDOW", self.withdraw)  # Ẩn thay vì đóng hẳn
+        self.protocol("WM_DELETE_WINDOW", self.withdraw)
         _gan_icon_app(self)
 
         self.txt = tk.Text(self, font=("Consolas", 9), bg="#1e1e1e", fg="#d4d4d4",
@@ -124,8 +111,7 @@ class ConsoleWindow(tk.Toplevel):
         self.lbl_count.pack(side="right", padx=8)
 
         self._line_count = 0
-        self.withdraw()  # Ẩn lúc đầu
-
+        self.withdraw()
     def append(self, text):
         """Thêm text vào console (thread-safe qua after)."""
         self.txt.config(state="normal")
@@ -150,9 +136,10 @@ class ConsoleWindow(tk.Toplevel):
 class MinecraftLauncherApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Minecraft Launcher")
+        self.root.title("Bacontete MCL")
         self.root.geometry("480x520")
-        self.root.resizable(False, False)
+        self.root.minsize(480, 520)
+        self.root.resizable(True, True)
         _gan_icon_app(self.root)
 
         config.current_config = config.tai_toan_bo_cau_hinh()
@@ -162,10 +149,11 @@ class MinecraftLauncherApp:
 
         self.console = ConsoleWindow(root)
         self.create_widgets()
+        theme.apply_theme(self.root)
         self.root.protocol("WM_DELETE_WINDOW", self._xu_ly_thoat)
 
     def create_widgets(self):
-        lbl_main_title = tk.Label(self.root, text="MINECRAFT LAUNCHER", font=("Arial", 16, "bold"), fg="#1E88E5")
+        lbl_main_title = tk.Label(self.root, text="Bacontete MCL", font=("Arial", 16, "bold"), fg="#1E88E5")
         lbl_main_title.pack(pady=(20, 15))
 
         self.account_frame = AccountFrame(self.root, self.khi_thay_doi_instance)
@@ -174,21 +162,9 @@ class MinecraftLauncherApp:
         self.instance_frame = InstanceFrame(self.root, self.khi_thay_doi_instance)
         self.instance_frame.pack(pady=10)
 
-        self.btn_delete_instance = tk.Button(
-            self.root,
-            text="❌ Xóa phiên bản đang chọn",
-            font=("Arial", 10, "bold"),
-            bg="#E53935",
-            fg="white",
-            pady=3,
-            command=self.xoa_instance_hien_tai
-        )
-        self.btn_delete_instance.pack(pady=10)
-
         self.lbl_status = tk.Label(self.root, text="Sẵn sàng", font=("Arial", 10, "italic"), fg="gray")
         self.lbl_status.pack(pady=(5, 2))
 
-        # --- Thanh tiến độ tải xuống ---
         self.frame_progress = tk.Frame(self.root)
         self.frame_progress.pack(fill="x", padx=40, pady=(0, 4))
 
@@ -205,7 +181,6 @@ class MinecraftLauncherApp:
         )
         self.lbl_progress.pack(pady=(0, 2))
 
-        # Ẩn thanh tiến độ ban đầu
         self.frame_progress.pack_forget()
         self.lbl_progress.pack_forget()
 
@@ -219,55 +194,60 @@ class MinecraftLauncherApp:
             height=2,
             command=self.bat_dau_hoac_tat_game
         )
-        self.btn_launch.pack(pady=(10, 20))
+        self.btn_launch.pack(pady=(10, 8))
 
-        self.btn_console = tk.Button(
-            self.root,
-            text="🖥 Console",
-            font=("Arial", 9, "bold"),
-            bg="#37474F",
-            fg="white",
-            padx=8,
-            pady=3,
-            command=self.console.show
-        )
-        self.btn_console.place(relx=1.0, rely=1.0, anchor="se", x=-10, y=-40)
+        toolbar = tk.Frame(self.root)
+        toolbar.pack(side="bottom", fill="x", padx=10, pady=(0, 10))
 
-        self.btn_setting = tk.Button(
-            self.root,
-            text="⚙️ Settings",
+        left = tk.Frame(toolbar)
+        left.pack(side="left")
+
+        self.btn_open_folder = tk.Button(
+            left,
+            text="📂 Thư mục",
             font=("Arial", 9, "bold"),
-            bg="#607D8B",
+            bg="#43A047",
             fg="white",
-            padx=8,
-            pady=3,
-            command=self.mo_cua_so_setting
+            padx=8, pady=3,
+            command=self.mo_thu_muc_game
         )
-        self.btn_setting.place(relx=1.0, rely=1.0, anchor="se", x=-10, y=-10)
+        self.btn_open_folder.pack(side="left")
+
+        right = tk.Frame(toolbar)
+        right.pack(side="right")
 
         self.btn_modpack = tk.Button(
-            self.root,
+            right,
             text="🧩 Modpack",
             font=("Arial", 9, "bold"),
             bg="#5C6BC0",
             fg="white",
-            padx=8,
-            pady=3,
+            padx=8, pady=3,
             command=self.mo_cua_so_modpack
         )
-        self.btn_modpack.place(relx=1.0, rely=1.0, anchor="se", x=-95, y=-10)
+        self.btn_modpack.pack(side="left", padx=(0, 4))
 
-        self.btn_open_folder = tk.Button(
-            self.root,
-            text="📂 Thư mục game",
+        self.btn_console = tk.Button(
+            right,
+            text="🖥 Console",
             font=("Arial", 9, "bold"),
-            bg="#43A047",
+            bg="#37474F",
             fg="white",
-            padx=8,
-            pady=3,
-            command=self.mo_thu_muc_game
+            padx=8, pady=3,
+            command=self.console.show
         )
-        self.btn_open_folder.place(relx=0.0, rely=1.0, anchor="sw", x=10, y=-10)
+        self.btn_console.pack(side="left", padx=(0, 4))
+
+        self.btn_setting = tk.Button(
+            right,
+            text="⚙️ Settings",
+            font=("Arial", 9, "bold"),
+            bg="#607D8B",
+            fg="white",
+            padx=8, pady=3,
+            command=self.mo_cua_so_setting
+        )
+        self.btn_setting.pack(side="left")
 
     def mo_thu_muc_game(self):
         import subprocess, sys
@@ -286,8 +266,8 @@ class MinecraftLauncherApp:
         import components.mod_mc as mod_mc
         if mod_mc.dang_cai_modpack():
             chon = messagebox.askyesno(
-                "Dang tai modpack",
-                "Modpack dang duoc cai dat!Neu thoat bay gio, du lieu co the bi hong.Ban co chac muon thoat khong?",
+                "Đang tải modpack",
+                "Nếu thoát có thể bị lỗi dữ liệu.Có thoát ko?",
                 icon="warning"
             )
             if not chon:
@@ -310,42 +290,11 @@ class MinecraftLauncherApp:
         self.instance_frame = InstanceFrame(self.root, self.khi_thay_doi_instance)
         self.instance_frame.pack(pady=10)
         self.instance_frame.pack_configure(after=self.account_frame)
-
-    def xoa_instance_hien_tai(self):
-        ten_instance = self.instance_frame.get_current_instance()
-
-        if ten_instance == "Latest Version":
-            messagebox.showwarning("Chú ý", "Không thể xóa phiên bản mặc định hệ thống!")
-            return
-
-        xac_nhan = messagebox.askyesno("Xác nhận", f"Bạn có chắc chắn muốn xóa hoàn toàn phiên bản '{ten_instance}'?")
-        if xac_nhan:
-            if ten_instance in config.current_config["danh_sach_instances"]:
-                del config.current_config["danh_sach_instances"][ten_instance]
-
-            config.current_config["current_instance"] = "Latest Version"
-            config.luu_toan_bo_cau_hinh()
-
-            ten_folder = ten_instance.replace(" ", "_")
-            duong_dan_folder = os.path.join(self.instance_frame.thu_muc_instances, ten_folder)
-            if os.path.exists(duong_dan_folder):
-                try:
-                    import shutil
-                    shutil.rmtree(duong_dan_folder)
-                except Exception as e:
-                    print(f"Không thể xóa thư mục vật lý: {e}")
-
-            messagebox.showinfo("Thành công", f"Đã xóa phiên bản: {ten_instance}")
-
-            self.instance_frame.destroy()
-            self.instance_frame = InstanceFrame(self.root, self.khi_thay_doi_instance)
-            self.instance_frame.pack(pady=10)
-            self.instance_frame.pack_configure(after=self.account_frame)
+        theme.apply_theme(self.instance_frame)
 
     def hien_thi_progress(self, hien=True):
         """Hien / an khu vuc thanh tien do."""
         if hien:
-            # Hien thanh progress sau btn_launch
             self.frame_progress.pack(fill="x", padx=40, pady=(0, 2),
                                      after=self.btn_launch)
             self.lbl_progress.pack(pady=(0, 4), after=self.frame_progress)
@@ -356,42 +305,28 @@ class MinecraftLauncherApp:
             self.lbl_progress.config(text="")
 
     def cap_nhat_progress(self, phan_tram: float, mo_ta: str = ""):
-        """
-        Callback truyen vao core.chay_game_minecraft de cap nhat tien do.
-        phan_tram: 0.0 -> 100.0
-        mo_ta    : chuoi hien thi ben duoi thanh (ten file dang tai, ...)
-        """
         self.root.after(0, lambda: self._cap_nhat_progress_ui(phan_tram, mo_ta))
 
     def _cap_nhat_progress_ui(self, phan_tram, mo_ta: str):
-        # phan_tram=None nghia la chi cap nhat text, khong doi thanh keo
         if phan_tram is not None:
             self.progress_bar["value"] = max(0.0, min(100.0, phan_tram))
         if mo_ta:
             self.lbl_progress.config(text=mo_ta)
 
     def _khoa_ui(self):
-        """Khóa toàn bộ UI khi game đang tải/chạy."""
-        # Khóa chọn tài khoản
         self.account_frame.khoa(True)
-        # Khóa chọn/thêm/xóa/đổi tên phiên bản
         self.instance_frame.khoa(True)
-        self.btn_delete_instance.config(state="disabled")
 
     def _mo_khoa_ui(self):
-        """Mở khóa toàn bộ UI khi game dừng."""
         self.account_frame.khoa(False)
         self.instance_frame.khoa(False)
-        self.btn_delete_instance.config(state="normal")
 
     def bat_dau_hoac_tat_game(self):
-        # Dang tai -> huy tai
         if self._dang_tai:
             self._huy_tai = True
             self.btn_launch.config(state="disabled", text="⏳ Đang hủy...")
             self.lbl_status.config(text="Đang hủy tải xuống...", fg="#E53935")
             return
-        # Dang chay game -> tat game
         if self._game_process is not None and self._game_process.poll() is None:
             try:
                 self._game_process.terminate()
@@ -440,7 +375,6 @@ class MinecraftLauncherApp:
                 self.root.after(0, lambda: self.hien_thi_progress(False))
 
                 if proc:
-                    # Stream stdout/stderr vào console
                     def _stream_log(p):
                         try:
                             for line in p.stdout:
@@ -478,13 +412,14 @@ if __name__ == "__main__":
     root = tk.Tk()
     root.withdraw()
 
-    _doc_cau_hinh_may()       # Đọc RAM/CPU/GPU thực tế trước khi mở bất kỳ cửa sổ nào
+    theme.preload_combobox_options(root)
+
+    _doc_cau_hinh_may()
     kiem_tra_va_chay_wizard(root)
 
     try:
         root.deiconify()
     except Exception:
-        # root bị hủy (người dùng tắt wizard) — thoát bình thường
         import sys; sys.exit(0)
 
     app = MinecraftLauncherApp(root)

@@ -140,13 +140,14 @@ def dang_cai_modpack():
     return _dang_cai_modpack
 
 
-def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=None):
+def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=None, cancel_event=None):
     """
     Giai nen va cai Modpack vao instance moi.
     Ho tro:
       - Modrinth .mrpack  (co modrinth.index.json)
       - CurseForge .zip   (co manifest.json)
       - ZIP thong thuong  (giai nen thang vao instance/)
+    cancel_event: threading.Event — neu duoc set thi dung lai, xoa folder dang do va xoa config.
     """
     thu_muc_game = config.current_config.get("thu_muc_game", "")
     # ten_instance dung cho key config (dau cach), ten_folder dung cho thu muc (gach duoi)
@@ -157,6 +158,26 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
 
     def _cap(text, mau="gray"):
         lbl_status.after(0, lambda: lbl_status.config(text=text, fg=mau))
+
+    def _don_dep_va_huy():
+        """Xoa folder instance dang tao do va xoa khoi config neu da ghi."""
+        try:
+            if os.path.exists(thu_muc_instance):
+                shutil.rmtree(thu_muc_instance)
+        except Exception:
+            pass
+        try:
+            if ten_instance in config.current_config.get("danh_sach_instances", {}):
+                del config.current_config["danh_sach_instances"][ten_instance]
+                config.luu_toan_bo_cau_hinh()
+        except Exception:
+            pass
+
+    def _check_huy():
+        """Kiem tra co huy — neu co thi don dep va nem exception de thoat thread."""
+        if cancel_event and cancel_event.is_set():
+            _don_dep_va_huy()
+            raise Exception("__HUY__")
 
     def _chay():
         global _dang_cai_modpack
@@ -177,70 +198,67 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                     print(f"[mrpack] dependencies doc duoc: {deps}")
 
                     version_goc = deps.get("minecraft", "").strip()
-                    # Chuan hoa: bo ky tu la o cuoi (vd: "1.21.1 " hoac "1.21.11" do nham)
-                    # Uu tien lay chinh xac tu dependencies, khong fallback regex neu da co
                     if not version_goc:
-                        import re as _re
-                        m = _re.search(r"(\d+\.\d+\.\d+|\d+\.\d+)", os.path.basename(duong_dan_zip))
-                        version_goc = m.group(1) if m else "1.21.1"
-                    print(f"[mrpack] version_goc chinh xac: '{version_goc}'")
+                        import re
+                        for k, v in deps.items():
+                            m = re.match(r"(\d+\.\d+(?:\.\d+)?)", str(v))
+                            if m:
+                                version_goc = m.group(1)
+                                break
 
-                    if "fabric-loader" in deps:
-                        loai_game, version_mod = "Fabric",   deps["fabric-loader"]
-                    elif "quilt-loader" in deps:
-                        loai_game, version_mod = "Quilt",    deps["quilt-loader"]
-                    elif "neoforge" in deps:
-                        loai_game, version_mod = "NeoForge", deps["neoforge"]
-                    elif "forge" in deps:
-                        loai_game, version_mod = "Forge",    deps["forge"]
-                    elif "minecraftForge" in deps:
-                        loai_game, version_mod = "Forge",    deps["minecraftForge"]
+                    if deps.get("quilt-loader"):
+                        loai_game   = "Quilt"
+                        version_mod = deps.get("quilt-loader", "")
+                    elif deps.get("fabric-loader"):
+                        loai_game   = "Fabric"
+                        version_mod = deps.get("fabric-loader", "")
+                    elif deps.get("forge"):
+                        loai_game   = "Forge"
+                        version_mod = deps.get("forge", "")
+                    elif deps.get("neoforge"):
+                        loai_game   = "NeoForge"
+                        version_mod = deps.get("neoforge", "")
 
-                    print(f"[mrpack] Ket qua: loai={loai_game}, mc={version_goc}, mod={version_mod}")
                     modrinth_files = index_data.get("files", [])
-                    prefix = "overrides/"
+                    prefix         = "overrides/"
 
                 # ── CurseForge .zip ───────────────────────────────────
                 elif "manifest.json" in names:
-                    manifest    = json.loads(z.read("manifest.json"))
-                    mc_info     = manifest.get("minecraft", {})
-                    version_goc = mc_info.get("version", "").strip()
-                    if not version_goc:
-                        import re as _re
-                        m = _re.search(r"(\d+\.\d+\.\d+|\d+\.\d+)", os.path.basename(duong_dan_zip))
-                        version_goc = m.group(1) if m else "1.21.1"
-                    print(f"[manifest] version_goc chinh xac: '{version_goc}'")
-                    for loader in mc_info.get("modLoaders", []):
-                        lid = loader.get("id", "")
-                        if lid.startswith("fabric-"):     loai_game, version_mod = "Fabric",   lid[7:]
-                        elif lid.startswith("quilt-"):    loai_game, version_mod = "Quilt",    lid[6:]
-                        elif lid.startswith("neoforge-"): loai_game, version_mod = "NeoForge", lid[9:]
-                        elif lid.startswith("forge-"):    loai_game, version_mod = "Forge",    lid[6:]
-                        elif lid.startswith("neoforge"):  loai_game, version_mod = "NeoForge", lid[8:]
-                    print(f"[manifest] Ket qua: loai={loai_game}, mc={version_goc}, mod={version_mod}")
-                    cf_mods = manifest.get("files", [])  # list {projectID, fileID, required}
-
-                    # CurseForge co the co nhieu prefix overrides
-                    CF_PREFIXES = ("overrides/", "client-overrides/")
-                    for member in names:
-                        matched_prefix = None
-                        for pfx in CF_PREFIXES:
-                            if member.startswith(pfx):
-                                matched_prefix = pfx
-                                break
-                        if not matched_prefix:
-                            continue
-                        rel = member[len(matched_prefix):]
-                        if not rel:
-                            continue
-                        dest = os.path.join(thu_muc_instance, rel.replace("/", os.sep))
-                        if member.endswith("/"):
-                            os.makedirs(dest, exist_ok=True)
+                    manifest   = json.loads(z.read("manifest.json"))
+                    mc_info    = manifest.get("minecraft", {})
+                    version_goc = mc_info.get("version", "1.21.1")
+                    loaders    = mc_info.get("modLoaders", [])
+                    if loaders:
+                        loader_id = loaders[0].get("id", "")
+                        if "-" in loader_id:
+                            loai_game, version_mod = loader_id.split("-", 1)
+                            loai_game = loai_game.capitalize()
                         else:
-                            os.makedirs(os.path.dirname(dest), exist_ok=True)
-                            with z.open(member) as src, open(dest, "wb") as dst:
-                                dst.write(src.read())
-                    prefix = None  # da xu ly o tren, bo qua vong lap chung ben duoi
+                            loai_game = loader_id.capitalize()
+
+                    cf_mods = manifest.get("files", [])
+
+                    # Giai nen overrides CurseForge
+                    matched_prefix = None
+                    for candidate in ("overrides/", "Overrides/"):
+                        if any(n.startswith(candidate) for n in names):
+                            matched_prefix = candidate
+                            break
+                    if matched_prefix:
+                        for member in names:
+                            if not member.startswith(matched_prefix):
+                                continue
+                            rel = member[len(matched_prefix):]
+                            if not rel:
+                                continue
+                            dest = os.path.join(thu_muc_instance, rel.replace("/", os.sep))
+                            if member.endswith("/"):
+                                os.makedirs(dest, exist_ok=True)
+                            else:
+                                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                                with z.open(member) as src, open(dest, "wb") as dst:
+                                    dst.write(src.read())
+                        prefix = None  # da xu ly o tren, bo qua vong lap chung ben duoi
 
                 # ── ZIP thong thuong ──────────────────────────────────
                 else:
@@ -272,11 +290,16 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                             with z.open(member) as src, open(dest, "wb") as dst:
                                 dst.write(src.read())
 
+            # Kiem tra huy sau khi giai nen xong, truoc khi tai mod
+            _check_huy()
+
             # ── Tai mod tu Modrinth (mrpack) ──────────────────────────
             if modrinth_files:
                 tong_mod = len(modrinth_files)
                 loi_tai  = []
                 for i, mf in enumerate(modrinth_files):
+                    _check_huy()  # Kiem tra huy dau moi vong lap
+
                     rel_path = mf.get("path", "")
                     urls     = mf.get("downloads", [])
                     if not rel_path or not urls:
@@ -321,7 +344,6 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                     Chon thu muc dich dua tren class_id CurseForge hoac phan mo rong file.
                     class_id: 6=Mods, 12=ResourcePacks, 6552=Shaders, 4546=DataPacks
                     """
-                    ext = os.path.splitext(ten_file)[1].lower()
                     if class_id_cf == 12 or "resourcepack" in ten_file.lower():
                         sub = "resourcepacks"
                     elif class_id_cf == 6552 or "shader" in ten_file.lower():
@@ -329,13 +351,14 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                     elif class_id_cf == 4546 or "datapack" in ten_file.lower():
                         sub = os.path.join("saves", "datapacks")
                     else:
-                        # Mac dinh la mods (jar hoac zip mod)
                         sub = "mods"
                     thu_muc = os.path.join(thu_muc_instance, sub)
                     os.makedirs(thu_muc, exist_ok=True)
                     return thu_muc
 
                 for i, entry in enumerate(cf_mods):
+                    _check_huy()  # Kiem tra huy dau moi vong lap
+
                     project_id = entry.get("projectID")
                     file_id    = entry.get("fileID")
                     required   = entry.get("required", True)
@@ -377,6 +400,8 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                         _cap(f"OK: {ten_file}  ({i+1}/{tong_cf})", "#2b8c54")
 
                     except Exception as ex:
+                        if str(ex) == "__HUY__":
+                            raise  # truyen len de thoat vong lap ngoai
                         loi_cf.append(str(file_id))
                         print(f"[CF mod] Loi {file_id}: {ex}")
 
@@ -405,7 +430,10 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                 lbl_status.after(500, callback_xong)
 
         except Exception as e:
-            _cap(f"Loi cai dat: {e}", "red")
+            if str(e) == "__HUY__":
+                _cap("Da huy. Da xoa du lieu cai dat do.", "#E53935")
+            else:
+                _cap(f"Loi cai dat: {e}", "red")
         finally:
             _dang_cai_modpack = False
 

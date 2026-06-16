@@ -31,18 +31,13 @@ def tai_danh_sach_mod(loai_game, version_goc):
         elif loai_game == "NeoForge":
             url = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            # --- ĐOẠN ĐƯỢC SỬA LẠI THỤT LỀ TỪ ĐÂY ---
             with urllib.request.urlopen(req, timeout=10) as response:
                 data = json.loads(response.read().decode())
                 tat_ca_versions = data.get("versions", [])
 
                 parts = version_goc.split('.')
                 sub_ver = parts[1] if len(parts) > 1 else ""
-
-                # Lọc đúng prefix
                 ds_loader = [v for v in tat_ca_versions if v.startswith(f"{sub_ver}.")]
-
-                # Sort an toàn — bỏ qua version không parse được
                 def safe_sort_key(s):
                     try:
                         return list(map(int, s.split('.')))
@@ -53,12 +48,9 @@ def tai_danh_sach_mod(loai_game, version_goc):
 
                 if ds_loader:
                     return ds_loader
-
-                # Fallback nếu không tìm thấy — lấy tất cả bản mới nhất
                 ds_loader = list(tat_ca_versions)
                 ds_loader.sort(key=safe_sort_key, reverse=True)
-                return ds_loader[:20]  # trả về 20 bản mới nhất
-            # --- KẾT THÚC ĐOẠN SỬA THỤT LỀ ---
+                return ds_loader[:20]
 
         elif loai_game == "Forge":
             forge_list = minecraft_launcher_lib.forge.list_forge_versions()
@@ -74,9 +66,6 @@ def tai_danh_sach_mod(loai_game, version_goc):
 
     return []
 
-# =====================================================================
-# TÍNH NĂNG ĐỒNG BỘ THỜI GIAN THỰC (DYNAMIC INSTANCE SCANNER)
-# =====================================================================
 def cap_nhat_va_quet_instances(thu_muc_game):
     thu_muc_instances_goc = os.path.join(thu_muc_game, "Instances")
     if not os.path.exists(thu_muc_instances_goc):
@@ -164,6 +153,7 @@ def build_jvm_arguments(current_config, ram_min, ram_max):
     final_args = []
     final_args.append(f"-Xms{ram_min}")
     final_args.append(f"-Xmx{ram_max}")
+    final_args.append("-Dminecraft.api.auth.enabled=false")
 
     mode = current_config.get("jvm_mode", "default")
     if mode == "preset":
@@ -428,7 +418,7 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
     options = {
         "username": tai_khoan,
         "uuid": offline_uuid,
-        "token": "",
+        "token": "0",
         "jvmArguments": danh_sach_jvm_args,
         "customResolution": True,
         "resolutionWidth": rong,

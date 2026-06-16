@@ -7,6 +7,7 @@ import unicodedata
 import json
 import config
 import core
+import theme
 from icon_utils import gan_icon_app
 
 
@@ -88,6 +89,13 @@ class InstanceFrame(tk.Frame):
             command=self.mo_cua_so_tao_instance
         )
         self.btn_add_instance.grid(row=0, column=1, padx=2)
+
+        self.btn_delete_instance = tk.Button(
+            frame_inner, text="❌ Xóa",
+            font=("Arial", 9, "bold"), bg="#E53935", fg="white",
+            command=self._xoa_instance_hien_tai
+        )
+        self.btn_delete_instance.grid(row=0, column=2, padx=2)
 
         self.lbl_info = tk.Label(self, text="", font=("Arial", 9, "italic"), fg="#2E7D32")
         self.lbl_info.pack(pady=2)
@@ -210,6 +218,31 @@ class InstanceFrame(tk.Frame):
         trang_thai_btn = "disabled" if tat else "normal"
         self.cbo_instance.configure(state=trang_thai_cb)
         self.btn_add_instance.configure(state=trang_thai_btn)
+        self.btn_delete_instance.configure(state=trang_thai_btn)
+
+    def _xoa_instance_hien_tai(self):
+        ten_instance = self.get_current_instance()
+        if ten_instance == "Latest Version":
+            messagebox.showwarning("Chú ý", "Không thể xóa phiên bản mặc định hệ thống!")
+            return
+        xac_nhan = messagebox.askyesno("Xác nhận", f"Bạn có chắc chắn muốn xóa hoàn toàn phiên bản '{ten_instance}'?")
+        if not xac_nhan:
+            return
+        if ten_instance in config.current_config["danh_sach_instances"]:
+            del config.current_config["danh_sach_instances"][ten_instance]
+        config.current_config["current_instance"] = "Latest Version"
+        config.luu_toan_bo_cau_hinh()
+        ten_folder = ten_instance.replace(" ", "_")
+        duong_dan_folder = os.path.join(self.thu_muc_instances, ten_folder)
+        if os.path.exists(duong_dan_folder):
+            try:
+                import shutil
+                shutil.rmtree(duong_dan_folder)
+            except Exception as e:
+                print(f"Không thể xóa thư mục vật lý: {e}")
+        messagebox.showinfo("Thành công", f"Đã xóa phiên bản: {ten_instance}")
+        self._lam_moi_dropdown()
+        self.on_change_callback()
 
     def get_game_path(self):
         return self.thu_muc_goc
@@ -254,13 +287,13 @@ class InstanceFrame(tk.Frame):
 
     # --- CỬA SỔ POP-UP TẠO PHIÊN BẢN MỚI ---
     def mo_cua_so_tao_instance(self):
+        theme.preload_combobox_options(self)
         win_create = tk.Toplevel(self)
         win_create.title("Tạo phiên bản mới")
         win_create.geometry("420x480")
         win_create.resizable(False, False)
         win_create.grab_set()
         gan_icon_app(win_create)
-
         # 1. Nhập tên phiên bản
         tk.Label(win_create, text="Tên thư mục phiên bản (Instance):", font=("Arial", 10, "bold")).pack(pady=(15, 2))
         ent_name = tk.Entry(win_create, font=("Arial", 10), width=28)
@@ -454,3 +487,5 @@ class InstanceFrame(tk.Frame):
             width=18, height=2, command=xu_ly_tao
         )
         btn_confirm.pack(side=tk.BOTTOM, pady=15)
+
+        theme.apply_theme(win_create)

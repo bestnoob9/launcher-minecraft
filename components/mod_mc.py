@@ -17,6 +17,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
 import config
+import theme
 from icon_utils import gan_icon_app
 
 # Import tu cac module da tach
@@ -136,13 +137,8 @@ class ModMcWindow(tk.Toplevel):
         self._cancel_event = threading.Event()
         self.protocol("WM_DELETE_WINDOW", self._xu_ly_dong_cua_so)
 
-        # Debounce IDs
-        self._debounce_mr    = None
-        self._debounce_cf    = None
-        self._debounce_modmr = None
-        self._debounce_modcf = None
-        self._debounce_rsp   = None
-        self._debounce_sh    = None
+        # Debounce ID cho o tim kiem chung
+        self._debounce_search = None
 
         # Map tu vi tri hien thi (sau khi loc) -> vi tri thuc trong data goc
         self._modmr_ver_idx_map = []
@@ -172,12 +168,12 @@ class ModMcWindow(tk.Toplevel):
         if self._so_tac_vu_dang_chay <= 0:
             return
         if messagebox.askyesno(
-            "Huy tac vu",
-            "Ban co chac muon huy tac vu dang tai/cai dat?",
+            "Hủy",
+            "Bạn có chắc muốn hủy?",
             parent=self
         ):
             self._cancel_event.set()
-            self.lbl_status.config(text="Dang huy...", fg="#E53935")
+            self.lbl_status.config(text="Đang hủy...", fg="#E53935")
 
     def _dang_co_tac_vu(self):
         dang_chay_local = self._so_tac_vu_dang_chay > 0
@@ -191,9 +187,9 @@ class ModMcWindow(tk.Toplevel):
         """Chan nut X khi dang tai/cai Mod, Modpack, Resource Pack hoac Shader."""
         if self._dang_co_tac_vu():
             messagebox.showwarning(
-                "Dang cai dat",
-                "Dang tai/cai dat Mod, Modpack, Resource Pack hoac Shader.\n"
-                "Vui long doi cho den khi hoan tat truoc khi dong cua so nay!",
+                "Đang cài đặt",
+                "Đang tải/cài đặt Mod, Modpack, Resource Pack hoặc Shader.\n"
+                "Vui lòng đợi đến khi hoàn tất hoặc hủy để đóng cửa sổ này!",
                 parent=self
             )
             return
@@ -222,25 +218,67 @@ class ModMcWindow(tk.Toplevel):
                   background=[("selected", BG_SEL)],
                   foreground=[("selected", "#1a1a1a")])
 
+        # --------------------------------------------------------------
+        # O TIM KIEM CHUNG (dung cho ca Modpack / Mod / Resource Pack / Shader)
+        # --------------------------------------------------------------
+        search_bar = tk.Frame(self)
+        search_bar.pack(fill="x", padx=14, pady=(0, 4))
+        tk.Label(search_bar, text="Tìm kiếm:", font=("Arial", 10)).pack(side="left")
+        self.ent_search = tk.Entry(search_bar, font=("Arial", 10), width=34)
+        self.ent_search.pack(side="left", padx=6)
+        self.ent_search.bind("<Return>", lambda e: self._search_current_tab())
+        self.ent_search.bind("<KeyRelease>",
+                              lambda e: self._debounce("_debounce_search", 400, self._search_current_tab))
+        tk.Button(search_bar, text="Tim", font=("Arial", 9, "bold"),
+                  bg="#1E88E5", fg="white", activebackground="#1E88E5", activeforeground="white",
+                  width=6, command=self._search_current_tab).pack(side="left")
+        tk.Button(search_bar, text="Top", font=("Arial", 9), bg="#607D8B", fg="white",
+                  activebackground="#607D8B", activeforeground="white",
+                  command=self._top_current_tab).pack(side="left", padx=4)
+        #tk.Label(search_bar, text="(ap dung cho tat ca: Modpack / Mod / Resource Pack / Shader)",
+                 #font=("Arial", 8, "italic"), fg="gray").pack(side="left", padx=8)
+
         self.nb = ttk.Notebook(self)
         self.nb.pack(fill="both", expand=True, padx=12, pady=4)
 
         BG = "#f5f5f7"
-        self.tab_mr    = tk.Frame(self.nb, bg=BG)
-        self.tab_cf    = tk.Frame(self.nb, bg=BG)
-        self.tab_modmr = tk.Frame(self.nb, bg=BG)
-        self.tab_modcf = tk.Frame(self.nb, bg=BG)
-        self.tab_rsp   = tk.Frame(self.nb, bg=BG)
-        self.tab_sh    = tk.Frame(self.nb, bg=BG)
-        self.tab_f     = tk.Frame(self.nb)
 
-        self.nb.add(self.tab_mr,    text="  Modpack Modrinth  ")
-        self.nb.add(self.tab_cf,    text="  Modpack CurseForge  ")
-        self.nb.add(self.tab_modmr, text="  Mod Modrinth  ")
-        self.nb.add(self.tab_modcf, text="  Mod CurseForge  ")
-        self.nb.add(self.tab_rsp,   text="  Resource Pack  ")
-        self.nb.add(self.tab_sh,    text="  Shaders  ")
-        self.nb.add(self.tab_f,     text="  Cai tu File  ")
+        # --- 3 tab cap 1: Modrinth / CurseForge / Cai tu File ---
+        self.tab_modrinth   = tk.Frame(self.nb, bg=BG)
+        self.tab_curseforge = tk.Frame(self.nb, bg=BG)
+        self.tab_f          = tk.Frame(self.nb)
+
+        self.nb.add(self.tab_modrinth,   text="  Modrinth  ")
+        self.nb.add(self.tab_curseforge, text="  CurseForge  ")
+        self.nb.add(self.tab_f,          text="  Cai tu File  ")
+
+        # --- Sub-notebook trong tab Modrinth: Modpack / Mod / Resource Pack / Shader ---
+        self.nb_mr = ttk.Notebook(self.tab_modrinth)
+        self.nb_mr.pack(fill="both", expand=True)
+
+        self.tab_mr    = tk.Frame(self.nb_mr, bg=BG)
+        self.tab_modmr = tk.Frame(self.nb_mr, bg=BG)
+        self.tab_rsp   = tk.Frame(self.nb_mr, bg=BG)
+        self.tab_sh    = tk.Frame(self.nb_mr, bg=BG)
+
+        self.nb_mr.add(self.tab_mr,    text="  Modpack  ")
+        self.nb_mr.add(self.tab_modmr, text="  Mod  ")
+        self.nb_mr.add(self.tab_rsp,   text="  Resource Pack  ")
+        self.nb_mr.add(self.tab_sh,    text="  Shader  ")
+
+        # --- Sub-notebook trong tab CurseForge: Modpack / Mod / Resource Pack / Shader ---
+        self.nb_cf = ttk.Notebook(self.tab_curseforge)
+        self.nb_cf.pack(fill="both", expand=True)
+
+        self.tab_cf     = tk.Frame(self.nb_cf, bg=BG)
+        self.tab_modcf  = tk.Frame(self.nb_cf, bg=BG)
+        self.tab_rsp_cf = tk.Frame(self.nb_cf, bg=BG)
+        self.tab_sh_cf  = tk.Frame(self.nb_cf, bg=BG)
+
+        self.nb_cf.add(self.tab_cf,     text="  Modpack  ")
+        self.nb_cf.add(self.tab_modcf,  text="  Mod  ")
+        self.nb_cf.add(self.tab_rsp_cf, text="  Resource Pack  ")
+        self.nb_cf.add(self.tab_sh_cf,  text="  Shader  ")
 
         self._build_modpack_modrinth()
         self._build_modpack_curseforge()
@@ -248,6 +286,8 @@ class ModMcWindow(tk.Toplevel):
         self._build_mod_curseforge()
         self._build_rsp_tab()
         self._build_shader_tab()
+        self._build_rsp_cf_tab()
+        self._build_shader_cf_tab()
         self._build_file()
 
         status_bar = tk.Frame(self)
@@ -269,13 +309,88 @@ class ModMcWindow(tk.Toplevel):
         threading.Thread(target=self._load_sh_top,  daemon=True).start()
         # Mod tabs: load lazy khi user click
         self.nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        self.nb_mr.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        self.nb_cf.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+
+        theme.apply_theme(self)
+
+    # ------------------------------------------------------------------
+    # XAC DINH TAB CON (mr/cf/modmr/modcf/rsp/sh/file) DANG DUOC CHON
+    # ------------------------------------------------------------------
+
+    def _current_tab_key(self):
+        outer = self.nb.index(self.nb.select())
+        if outer == 0:      # Modrinth
+            inner = self.nb_mr.index(self.nb_mr.select())
+            return ["mr", "modmr", "rsp", "sh"][inner]
+        elif outer == 1:    # CurseForge
+            inner = self.nb_cf.index(self.nb_cf.select())
+            return ["cf", "modcf", "rsp_cf", "sh_cf"][inner]
+        return "file"
 
     def _on_tab_changed(self, e):
-        tab = self.nb.index(self.nb.select())
-        if tab == 2 and not self._modmr_data:
+        key = self._current_tab_key()
+
+        if key == "modmr" and not self._modmr_data:
             threading.Thread(target=self._load_modmr_top, daemon=True).start()
-        elif tab == 3 and not self._modcf_data:
+        elif key == "modcf" and not self._modcf_data:
             threading.Thread(target=self._load_modcf_top, daemon=True).start()
+        elif key == "rsp_cf" and not self._rsp_cf_data:
+            threading.Thread(target=self._load_rsp_cf_top, daemon=True).start()
+        elif key == "sh_cf" and not self._sh_cf_data:
+            threading.Thread(target=self._load_sh_cf_top, daemon=True).start()
+
+        # Ap dung tu khoa cua o tim kiem chung cho tab vua chuyen toi
+        kw = self.ent_search.get().strip()
+        if kw and key != "file":
+            last_kw_map = {
+                "mr":     self._mr_last_kw,
+                "cf":     self._cf_last_kw,
+                "modmr":  self._modmr_last_kw,
+                "modcf":  self._modcf_last_kw,
+                "rsp":    self._rsp_last_kw,
+                "sh":     self._sh_last_kw,
+                "rsp_cf": self._rsp_cf_last_kw,
+                "sh_cf":  self._sh_cf_last_kw,
+            }
+            last = last_kw_map.get(key)
+            cur_kw = last[0] if last else None
+            if cur_kw != kw:
+                self._search_current_tab()
+
+    # ------------------------------------------------------------------
+    # O TIM KIEM CHUNG: dieu huong toi tab dang chon
+    # ------------------------------------------------------------------
+
+    def _search_current_tab(self, page=1):
+        key = self._current_tab_key()
+        fn = {
+            "mr":     self._search_mr,
+            "cf":     self._search_cf,
+            "modmr":  self._search_modmr,
+            "modcf":  self._search_modcf,
+            "rsp":    self._search_rsp,
+            "sh":     self._search_sh,
+            "rsp_cf": self._search_rsp_cf,
+            "sh_cf":  self._search_sh_cf,
+        }.get(key)
+        if fn:
+            fn(page)
+
+    def _top_current_tab(self):
+        key = self._current_tab_key()
+        fn = {
+            "mr":     self._load_mr_top,
+            "cf":     self._load_cf_top,
+            "modmr":  self._load_modmr_top,
+            "modcf":  self._load_modcf_top,
+            "rsp":    self._load_rsp_top,
+            "sh":     self._load_sh_top,
+            "rsp_cf": self._load_rsp_cf_top,
+            "sh_cf":  self._load_sh_cf_top,
+        }.get(key)
+        if fn:
+            threading.Thread(target=fn, daemon=True).start()
 
     # ------------------------------------------------------------------
     # HELPER: debounced search
@@ -301,23 +416,8 @@ class ModMcWindow(tk.Toplevel):
         f  = self.tab_mr
         BG = f["bg"]
 
-        sr = tk.Frame(f, bg=BG)
-        sr.pack(fill="x", padx=10, pady=(8, 2))
-        tk.Label(sr, text="Tim kiem:", font=("Arial", 10), bg=BG).pack(side="left")
-        self.ent_mr = tk.Entry(sr, font=("Arial", 10), width=30)
-        self.ent_mr.pack(side="left", padx=6)
-        self.ent_mr.bind("<Return>",    lambda e: self._search_mr())
-        self.ent_mr.bind("<KeyRelease>", lambda e: self._debounce("_debounce_mr", 400, self._search_mr))
-        tk.Button(sr, text="Tim", font=("Arial", 9, "bold"),
-                  bg="#1E88E5", fg="white", activebackground="#1E88E5", activeforeground="white",
-                  width=6, command=self._search_mr).pack(side="left")
-        tk.Button(sr, text="Top", font=("Arial", 9), bg="#607D8B", fg="white",
-                  activebackground="#607D8B", activeforeground="white",
-                  command=lambda: threading.Thread(target=self._load_mr_top, daemon=True).start()
-                  ).pack(side="left", padx=4)
-
         self.fb_mr = FilterBar(f, self._search_mr, accent_color="#1E88E5", show_category=True, bg=BG)
-        self.fb_mr.pack(fill="x", padx=10, pady=(2, 4))
+        self.fb_mr.pack(fill="x", padx=10, pady=(8, 4))
         self.list_mr = ContentTableWidget(f, "modrinth", self._select_mr)
         self.list_mr.pack(fill="both", expand=True, padx=10)
 
@@ -326,13 +426,13 @@ class ModMcWindow(tk.Toplevel):
 
         bp = tk.Frame(f, bg=BG)
         bp.pack(fill="x", padx=10, pady=(4, 8))
-        tk.Label(bp, text="Phien ban:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
+        tk.Label(bp, text="Phiên bản:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
         self.cbo_mr_ver = ttk.Combobox(bp, font=("Arial", 9), state="readonly", width=42)
         self.cbo_mr_ver.grid(row=0, column=1, padx=6)
-        tk.Label(bp, text="Ten Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=4)
+        tk.Label(bp, text="Tên Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=4)
         self.ent_mr_name = tk.Entry(bp, font=("Arial", 9), width=44)
         self.ent_mr_name.grid(row=1, column=1, padx=6)
-        tk.Button(bp, text="Cai Modpack", font=("Arial", 9, "bold"),
+        tk.Button(bp, text="Cài Modpack", font=("Arial", 9, "bold"),
                   bg="#4CAF50", fg="white", activebackground="#4CAF50", activeforeground="white",
                   width=14, pady=4, command=self._install_mr).grid(row=0, column=2, rowspan=2, padx=8)
 
@@ -358,11 +458,11 @@ class ModMcWindow(tk.Toplevel):
             self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi MR: {e}", fg="red"))
 
     def _search_mr(self, page=1):
-        kw          = self.ent_mr.get().strip()
+        kw          = self.ent_search.get().strip()
         mc, ld, cat = self.fb_mr.get()
         self._mr_page    = page
         self._mr_last_kw = (kw, mc, ld, cat)
-        self.lbl_status.config(text="Dang tim...", fg="#1E88E5")
+        self.lbl_status.config(text="Đang tìm...", fg="#1E88E5")
         def _t():
             try:
                 r, total = tim_kiem_modrinth("modpack", kw, mc, ld, cat, 50, offset=(page - 1) * 50)
@@ -389,7 +489,7 @@ class ModMcWindow(tk.Toplevel):
         ten = r.get("title", "")
         self.ent_mr_name.delete(0, "end")
         self.ent_mr_name.insert(0, ten.replace(" ", "_")[:30])
-        self.cbo_mr_ver.set("Dang tai phien ban...")
+        self.cbo_mr_ver.set("Đang tải phiên bản...")
         pid = r.get("project_id", "")
         def _t():
             try:
@@ -399,7 +499,7 @@ class ModMcWindow(tk.Toplevel):
                 self.after(0, lambda: (
                     self.cbo_mr_ver.config(values=ds),
                     self.cbo_mr_ver.set(ds[0]) if ds else None,
-                    self.lbl_status.config(text="Chon phien ban roi nhan Cai Modpack.", fg="gray"),
+                    self.lbl_status.config(text="Chọn phiên bản rồi nhấn cài Modpack.", fg="gray"),
                 ))
                 if install: self.after(200, self._install_mr)
             except Exception as e:
@@ -409,49 +509,51 @@ class ModMcWindow(tk.Toplevel):
     def _install_mr(self):
         ten = self.ent_mr_name.get().strip()
         if not ten:
-            messagebox.showwarning("Chu y", "Nhap ten Instance!", parent=self); return
+            messagebox.showwarning("Chú ý", "Nhập tên Instance!", parent=self); return
         if ten in config.current_config["danh_sach_instances"]:
-            messagebox.showwarning("Chu y", "Ten da ton tai!", parent=self); return
+            messagebox.showwarning("Chú ý", "Tên đã tồn tại!", parent=self); return
         iv = self.cbo_mr_ver.current()
         if iv < 0 or not self._mr_vers_raw:
-            messagebox.showwarning("Chu y", "Chon phien ban!", parent=self); return
+            messagebox.showwarning("Chú ý", "Chọn phiên bản!", parent=self); return
         vd    = self._mr_vers_raw[iv]
         files = vd.get("files", [])
         prim  = next((f for f in files if f.get("primary")), files[0] if files else None)
         if not prim:
-            messagebox.showerror("Loi", "Khong tim thay file tai!", parent=self); return
+            messagebox.showerror("Lỗi", "Không tìm thấy file tải!", parent=self); return
         url   = prim["url"]
         fname = prim.get("filename", "modpack.mrpack")
         self.lbl_status.config(text="Dang tai...", fg="#1E88E5")
 
         self._tang_tac_vu()
         def _t():
+            _tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
             try:
-                tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
-                os.makedirs(tmp, exist_ok=True)
-                pz  = os.path.join(tmp, fname)
+                os.makedirs(_tmp, exist_ok=True)
+                pz  = os.path.join(_tmp, fname)
                 def prog(da, tong):
                     if self._cancel_event.is_set():
-                        raise TacVuBiHuy("Da huy tai modpack")
+                        raise TacVuBiHuy("Đã hủy tải modpack")
                     pct = int(da / tong * 100)
                     self.after(0, lambda: self.lbl_status.config(
-                        text=f"Dang tai: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#1E88E5"))
+                        text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#1E88E5"))
                 tai_file(url, pz, prog)
                 if self._cancel_event.is_set():
-                    raise TacVuBiHuy("Da huy cai modpack")
+                    raise TacVuBiHuy("Đã hủy cài modpack")
                 def _done_va_xoa():
-                    try: shutil.rmtree(tmp)
+                    try: shutil.rmtree(_tmp)
                     except: pass
+                    self._giam_tac_vu()   # ← chuyển vào đây
                     self._done()
-                cai_modpack_tu_file(pz, ten, self.lbl_status, _done_va_xoa)
+                cai_modpack_tu_file(pz, ten, self.lbl_status, _done_va_xoa, cancel_event=self._cancel_event)
+                # KHÔNG finally ở đây — _giam_tac_vu đã nằm trong callback
             except TacVuBiHuy:
-                try: shutil.rmtree(tmp)
+                try: shutil.rmtree(_tmp)
                 except: pass
+                self._giam_tac_vu()   # ← hủy sớm thì giảm ở đây
                 self.after(0, lambda: self.lbl_status.config(text="Da huy cai dat Modpack.", fg="#E53935"))
             except Exception as e:
+                self._giam_tac_vu()   # ← lỗi thì giảm ở đây
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
-            finally:
-                self._giam_tac_vu()
         threading.Thread(target=_t, daemon=True).start()
 
     # ------------------------------------------------------------------
@@ -462,23 +564,8 @@ class ModMcWindow(tk.Toplevel):
         f  = self.tab_cf
         BG = f["bg"]
 
-        sr = tk.Frame(f, bg=BG)
-        sr.pack(fill="x", padx=10, pady=(8, 2))
-        tk.Label(sr, text="Tim kiem:", font=("Arial", 10), bg=BG).pack(side="left")
-        self.ent_cf = tk.Entry(sr, font=("Arial", 10), width=30)
-        self.ent_cf.pack(side="left", padx=6)
-        self.ent_cf.bind("<Return>",    lambda e: self._search_cf())
-        self.ent_cf.bind("<KeyRelease>", lambda e: self._debounce("_debounce_cf", 400, self._search_cf))
-        tk.Button(sr, text="Tim", font=("Arial", 9, "bold"),
-                  bg="#E64A19", fg="white", activebackground="#E64A19", activeforeground="white",
-                  width=6, command=self._search_cf).pack(side="left")
-        tk.Button(sr, text="Top", font=("Arial", 9), bg="#607D8B", fg="white",
-                  activebackground="#607D8B", activeforeground="white",
-                  command=lambda: threading.Thread(target=self._load_cf_top, daemon=True).start()
-                  ).pack(side="left", padx=4)
-
         self.fb_cf = FilterBar(f, self._search_cf, accent_color="#E64A19", show_category=True, bg=BG)
-        self.fb_cf.pack(fill="x", padx=10, pady=(2, 4))
+        self.fb_cf.pack(fill="x", padx=10, pady=(8, 4))
         self.list_cf = ContentTableWidget(f, "curseforge", self._select_cf)
         self.list_cf.pack(fill="both", expand=True, padx=10)
 
@@ -487,13 +574,13 @@ class ModMcWindow(tk.Toplevel):
 
         bp = tk.Frame(f, bg=BG)
         bp.pack(fill="x", padx=10, pady=(4, 8))
-        tk.Label(bp, text="Phien ban:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
+        tk.Label(bp, text="Phiên bản:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
         self.cbo_cf_ver = ttk.Combobox(bp, font=("Arial", 9), state="readonly", width=42)
         self.cbo_cf_ver.grid(row=0, column=1, padx=6)
-        tk.Label(bp, text="Ten Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=4)
+        tk.Label(bp, text="Tên Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=4)
         self.ent_cf_name = tk.Entry(bp, font=("Arial", 9), width=44)
         self.ent_cf_name.grid(row=1, column=1, padx=6)
-        tk.Button(bp, text="Cai Modpack", font=("Arial", 9, "bold"),
+        tk.Button(bp, text="Cài Modpack", font=("Arial", 9, "bold"),
                   bg="#4CAF50", fg="white", activebackground="#4CAF50", activeforeground="white",
                   width=14, pady=4, command=self._install_cf).grid(row=0, column=2, rowspan=2, padx=8)
 
@@ -516,10 +603,10 @@ class ModMcWindow(tk.Toplevel):
                 self.lbl_status.config(text=f"Top Modpack (CurseForge) - trang {page}", fg="#2b8c54"),
             ))
         except Exception as e:
-            self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi CF: {e}", fg="red"))
+            self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi CF: {e}", fg="red"))
 
     def _search_cf(self, page=1):
-        kw         = self.ent_cf.get().strip()
+        kw         = self.ent_search.get().strip()
         mc, ld, _c = self.fb_cf.get()
         self._cf_page    = page
         self._cf_last_kw = (kw, mc, ld)
@@ -613,7 +700,7 @@ class ModMcWindow(tk.Toplevel):
                     try: shutil.rmtree(tmp)
                     except: pass
                     self._done()
-                cai_modpack_tu_file(pz, ten, self.lbl_status, _done_va_xoa)
+                cai_modpack_tu_file(pz, ten, self.lbl_status, _done_va_xoa, cancel_event=self._cancel_event)
             except TacVuBiHuy:
                 try: shutil.rmtree(tmp)
                 except: pass
@@ -637,23 +724,8 @@ class ModMcWindow(tk.Toplevel):
         f  = self.tab_modmr
         BG = f["bg"]
 
-        sr = tk.Frame(f, bg=BG)
-        sr.pack(fill="x", padx=10, pady=(8, 2))
-        tk.Label(sr, text="Tim kiem:", font=("Arial", 10), bg=BG).pack(side="left")
-        self.ent_modmr = tk.Entry(sr, font=("Arial", 10), width=30)
-        self.ent_modmr.pack(side="left", padx=6)
-        self.ent_modmr.bind("<Return>",    lambda e: self._search_modmr())
-        self.ent_modmr.bind("<KeyRelease>", lambda e: self._debounce("_debounce_modmr", 400, self._search_modmr))
-        tk.Button(sr, text="Tim", font=("Arial", 9, "bold"),
-                  bg="#00897B", fg="white", activebackground="#00897B", activeforeground="white",
-                  width=6, command=self._search_modmr).pack(side="left")
-        tk.Button(sr, text="Top", font=("Arial", 9), bg="#607D8B", fg="white",
-                  activebackground="#607D8B", activeforeground="white",
-                  command=lambda: threading.Thread(target=self._load_modmr_top, daemon=True).start()
-                  ).pack(side="left", padx=4)
-
         self.fb_modmr = FilterBar(f, self._search_modmr, accent_color="#00897B", bg=BG)
-        self.fb_modmr.pack(fill="x", padx=10, pady=(2, 4))
+        self.fb_modmr.pack(fill="x", padx=10, pady=(8, 4))
         self.list_modmr = ContentTableWidget(f, "modrinth", self._select_modmr)
         self.list_modmr.pack(fill="both", expand=True, padx=10)
 
@@ -693,7 +765,7 @@ class ModMcWindow(tk.Toplevel):
             self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi ModMR: {e}", fg="red"))
 
     def _search_modmr(self, page=1):
-        kw         = self.ent_modmr.get().strip()
+        kw         = self.ent_search.get().strip()
         mc, ld, _c = self.fb_modmr.get()
         self._modmr_page    = page
         self._modmr_last_kw = (kw, mc, ld)
@@ -843,23 +915,8 @@ class ModMcWindow(tk.Toplevel):
         f  = self.tab_modcf
         BG = f["bg"]
 
-        sr = tk.Frame(f, bg=BG)
-        sr.pack(fill="x", padx=10, pady=(8, 2))
-        tk.Label(sr, text="Tim kiem:", font=("Arial", 10), bg=BG).pack(side="left")
-        self.ent_modcf = tk.Entry(sr, font=("Arial", 10), width=30)
-        self.ent_modcf.pack(side="left", padx=6)
-        self.ent_modcf.bind("<Return>",    lambda e: self._search_modcf())
-        self.ent_modcf.bind("<KeyRelease>", lambda e: self._debounce("_debounce_modcf", 400, self._search_modcf))
-        tk.Button(sr, text="Tim", font=("Arial", 9, "bold"),
-                  bg="#F9A825", fg="white", activebackground="#F9A825", activeforeground="white",
-                  width=6, command=self._search_modcf).pack(side="left")
-        tk.Button(sr, text="Top", font=("Arial", 9), bg="#607D8B", fg="white",
-                  activebackground="#607D8B", activeforeground="white",
-                  command=lambda: threading.Thread(target=self._load_modcf_top, daemon=True).start()
-                  ).pack(side="left", padx=4)
-
         self.fb_modcf = FilterBar(f, self._search_modcf, accent_color="#F9A825", bg=BG)
-        self.fb_modcf.pack(fill="x", padx=10, pady=(2, 4))
+        self.fb_modcf.pack(fill="x", padx=10, pady=(8, 4))
         self.list_modcf = ContentTableWidget(f, "curseforge", self._select_modcf)
         self.list_modcf.pack(fill="both", expand=True, padx=10)
 
@@ -899,7 +956,7 @@ class ModMcWindow(tk.Toplevel):
             self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi ModCF: {e}", fg="red"))
 
     def _search_modcf(self, page=1):
-        kw         = self.ent_modcf.get().strip()
+        kw         = self.ent_search.get().strip()
         mc, ld, _c = self.fb_modcf.get()
         self._modcf_page    = page
         self._modcf_last_kw = (kw, mc, ld)
@@ -1053,29 +1110,15 @@ class ModMcWindow(tk.Toplevel):
     def _build_rsp_tab(self):
         self._rsp_data     = []
         self._rsp_vers_raw = []
+        self._rsp_ver_idx_map = []
         self._rsp_page     = 1
         self._rsp_total    = 0
         self._rsp_last_kw  = None
         f  = self.tab_rsp
         BG = f["bg"]
 
-        sr = tk.Frame(f, bg=BG)
-        sr.pack(fill="x", padx=10, pady=(8, 2))
-        tk.Label(sr, text="Tim kiem:", font=("Arial", 10), bg=BG).pack(side="left")
-        self.ent_rsp = tk.Entry(sr, font=("Arial", 10), width=30)
-        self.ent_rsp.pack(side="left", padx=6)
-        self.ent_rsp.bind("<Return>",    lambda e: self._search_rsp())
-        self.ent_rsp.bind("<KeyRelease>", lambda e: self._debounce("_debounce_rsp", 400, self._search_rsp))
-        tk.Button(sr, text="Tim", font=("Arial", 9, "bold"),
-                  bg="#8E24AA", fg="white", activebackground="#8E24AA", activeforeground="white",
-                  width=6, command=self._search_rsp).pack(side="left")
-        tk.Button(sr, text="Top", font=("Arial", 9), bg="#607D8B", fg="white",
-                  activebackground="#607D8B", activeforeground="white",
-                  command=lambda: threading.Thread(target=self._load_rsp_top, daemon=True).start()
-                  ).pack(side="left", padx=4)
-
         self.fb_rsp = FilterBar(f, self._search_rsp, accent_color="#8E24AA", show_loader=False, bg=BG)
-        self.fb_rsp.pack(fill="x", padx=10, pady=(2, 4))
+        self.fb_rsp.pack(fill="x", padx=10, pady=(8, 4))
         self.list_rsp = ContentTableWidget(f, "modrinth", self._select_rsp)
         self.list_rsp.pack(fill="both", expand=True, padx=10)
 
@@ -1094,6 +1137,7 @@ class ModMcWindow(tk.Toplevel):
         if cur in ds_inst: self.cbo_rsp_inst.set(cur)
         elif ds_inst:      self.cbo_rsp_inst.set(ds_inst[0])
         self.cbo_rsp_inst.grid(row=1, column=1, padx=6)
+        self.cbo_rsp_inst.bind("<<ComboboxSelected>>", lambda e: self._filter_rsp_ver())
         tk.Button(bp, text="Cai RSP", font=("Arial", 9, "bold"),
                   bg="#8E24AA", fg="white", activebackground="#8E24AA", activeforeground="white",
                   width=14, pady=4, command=self._install_rsp).grid(row=0, column=2, rowspan=2, padx=8)
@@ -1114,7 +1158,7 @@ class ModMcWindow(tk.Toplevel):
             self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi RSP: {e}", fg="red"))
 
     def _search_rsp(self, page=1):
-        kw        = self.ent_rsp.get().strip()
+        kw        = self.ent_search.get().strip()
         mc, _, _c = self.fb_rsp.get()
         self._rsp_page    = page
         self._rsp_last_kw = (kw, mc)
@@ -1148,16 +1192,58 @@ class ModMcWindow(tk.Toplevel):
             try:
                 vs = lay_phien_ban_modrinth(pid)
                 self._rsp_vers_raw = vs
-                ds = [f"{v.get('name','?')}  -  MC {', '.join(v.get('game_versions',[]))}" for v in vs]
-                self.after(0, lambda: (
-                    self.cbo_rsp_ver.config(values=ds),
-                    self.cbo_rsp_ver.set(ds[0]) if ds else None,
-                    self.lbl_status.config(text="Chon phien ban roi nhan Cai RSP.", fg="gray"),
-                ))
+                self.after(0, lambda: self._filter_rsp_ver())
                 if install: self.after(200, self._install_rsp)
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
         threading.Thread(target=_t, daemon=True).start()
+
+    def _filter_rsp_ver(self):
+        """Loc combobox phien ban RSP theo MC version cua Instance dang chon. Neu chon instance thi khoa cbo MC version."""
+        vs = self._rsp_vers_raw
+        ds_all = [f"{v.get('name','?')}  -  MC {', '.join(v.get('game_versions',[]))}" for v in vs]
+
+        ten_inst = self.cbo_rsp_inst.get().strip()
+        mcv, _ = self._get_inst_mc_loader(ten_inst) if ten_inst else ("", "")
+
+        # Khi da chon instance, khoa combobox phien ban MC o FilterBar
+        if ten_inst and mcv:
+            try:
+                self.fb_rsp.cbo_mc.set(mcv)
+                self.fb_rsp.cbo_mc.config(state="disabled")
+            except Exception:
+                pass
+        else:
+            try:
+                self.fb_rsp.cbo_mc.config(state="readonly")
+            except Exception:
+                pass
+
+        if mcv:
+            idxs = [i for i, v in enumerate(vs) if mcv in v.get("game_versions", [])]
+        else:
+            idxs = list(range(len(vs)))
+
+        if idxs:
+            ds = [ds_all[i] for i in idxs]
+            self._rsp_ver_idx_map = idxs
+            self.cbo_rsp_ver.config(values=ds)
+            self.cbo_rsp_ver.set(ds[0])
+            if mcv:
+                self.lbl_status.config(
+                    text=f"Da loc {len(ds)} phien ban phu hop voi {ten_inst} (MC {mcv}).",
+                    fg="gray")
+            else:
+                self.lbl_status.config(text="Chon phien ban roi nhan Cai RSP.", fg="gray")
+        else:
+            self._rsp_ver_idx_map = list(range(len(vs)))
+            self.cbo_rsp_ver.config(values=ds_all)
+            if ds_all: self.cbo_rsp_ver.set(ds_all[0])
+            else:       self.cbo_rsp_ver.set("")
+            if mcv:
+                self.lbl_status.config(
+                    text=f"Khong co phien ban khop voi {ten_inst} (MC {mcv}). Hien thi tat ca.",
+                    fg="#E64A19")
 
     def _install_rsp(self):
         ten_inst = self.cbo_rsp_inst.get().strip()
@@ -1166,6 +1252,8 @@ class ModMcWindow(tk.Toplevel):
         iv = self.cbo_rsp_ver.current()
         if iv < 0 or not self._rsp_vers_raw:
             messagebox.showwarning("Chu y", "Chon phien ban!", parent=self); return
+        if iv < len(self._rsp_ver_idx_map):
+            iv = self._rsp_ver_idx_map[iv]
         vd    = self._rsp_vers_raw[iv]
         files = vd.get("files", [])
         prim  = next((f for f in files if f.get("primary")), files[0] if files else None)
@@ -1212,29 +1300,15 @@ class ModMcWindow(tk.Toplevel):
     def _build_shader_tab(self):
         self._sh_data     = []
         self._sh_vers_raw = []
+        self._sh_ver_idx_map = []
         self._sh_page     = 1
         self._sh_total    = 0
         self._sh_last_kw  = None
         f  = self.tab_sh
         BG = f["bg"]
 
-        sr = tk.Frame(f, bg=BG)
-        sr.pack(fill="x", padx=10, pady=(8, 2))
-        tk.Label(sr, text="Tim kiem:", font=("Arial", 10), bg=BG).pack(side="left")
-        self.ent_sh = tk.Entry(sr, font=("Arial", 10), width=30)
-        self.ent_sh.pack(side="left", padx=6)
-        self.ent_sh.bind("<Return>",    lambda e: self._search_sh())
-        self.ent_sh.bind("<KeyRelease>", lambda e: self._debounce("_debounce_sh", 400, self._search_sh))
-        tk.Button(sr, text="Tim", font=("Arial", 9, "bold"),
-                  bg="#F57C00", fg="white", activebackground="#F57C00", activeforeground="white",
-                  width=6, command=self._search_sh).pack(side="left")
-        tk.Button(sr, text="Top", font=("Arial", 9), bg="#607D8B", fg="white",
-                  activebackground="#607D8B", activeforeground="white",
-                  command=lambda: threading.Thread(target=self._load_sh_top, daemon=True).start()
-                  ).pack(side="left", padx=4)
-
         self.fb_sh = FilterBar(f, self._search_sh, accent_color="#F57C00", show_loader=False, bg=BG)
-        self.fb_sh.pack(fill="x", padx=10, pady=(2, 4))
+        self.fb_sh.pack(fill="x", padx=10, pady=(8, 4))
         self.list_sh = ContentTableWidget(f, "modrinth", self._select_sh)
         self.list_sh.pack(fill="both", expand=True, padx=10)
 
@@ -1253,10 +1327,10 @@ class ModMcWindow(tk.Toplevel):
         if cur in ds_inst: self.cbo_sh_inst.set(cur)
         elif ds_inst:      self.cbo_sh_inst.set(ds_inst[0])
         self.cbo_sh_inst.grid(row=1, column=1, padx=6)
+        self.cbo_sh_inst.bind("<<ComboboxSelected>>", lambda e: self._filter_sh_ver())
         tk.Button(bp, text="Cai Shader", font=("Arial", 9, "bold"),
                   bg="#F57C00", fg="white", activebackground="#F57C00", activeforeground="white",
                   width=14, pady=4, command=self._install_sh).grid(row=0, column=2, rowspan=2, padx=8)
-        self._debounce_sh = None
 
     def _load_sh_top(self, page=1):
         self._sh_page    = page
@@ -1274,7 +1348,7 @@ class ModMcWindow(tk.Toplevel):
             self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi Shader: {e}", fg="red"))
 
     def _search_sh(self, page=1):
-        kw        = self.ent_sh.get().strip()
+        kw        = self.ent_search.get().strip()
         mc, _, _c = self.fb_sh.get()
         self._sh_page    = page
         self._sh_last_kw = (kw, mc)
@@ -1308,16 +1382,58 @@ class ModMcWindow(tk.Toplevel):
             try:
                 vs = lay_phien_ban_modrinth(pid)
                 self._sh_vers_raw = vs
-                ds = [f"{v.get('name','?')}  -  MC {', '.join(v.get('game_versions',[]))}" for v in vs]
-                self.after(0, lambda: (
-                    self.cbo_sh_ver.config(values=ds),
-                    self.cbo_sh_ver.set(ds[0]) if ds else None,
-                    self.lbl_status.config(text="Chon phien ban roi nhan Cai Shader.", fg="gray"),
-                ))
+                self.after(0, lambda: self._filter_sh_ver())
                 if install: self.after(200, self._install_sh)
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
         threading.Thread(target=_t, daemon=True).start()
+
+    def _filter_sh_ver(self):
+        """Loc combobox phien ban Shader theo MC version cua Instance dang chon. Neu chon instance thi khoa cbo MC version."""
+        vs = self._sh_vers_raw
+        ds_all = [f"{v.get('name','?')}  -  MC {', '.join(v.get('game_versions',[]))}" for v in vs]
+
+        ten_inst = self.cbo_sh_inst.get().strip()
+        mcv, _ = self._get_inst_mc_loader(ten_inst) if ten_inst else ("", "")
+
+        # Khi da chon instance, khoa combobox phien ban MC o FilterBar
+        if ten_inst and mcv:
+            try:
+                self.fb_sh.cbo_mc.set(mcv)
+                self.fb_sh.cbo_mc.config(state="disabled")
+            except Exception:
+                pass
+        else:
+            try:
+                self.fb_sh.cbo_mc.config(state="readonly")
+            except Exception:
+                pass
+
+        if mcv:
+            idxs = [i for i, v in enumerate(vs) if mcv in v.get("game_versions", [])]
+        else:
+            idxs = list(range(len(vs)))
+
+        if idxs:
+            ds = [ds_all[i] for i in idxs]
+            self._sh_ver_idx_map = idxs
+            self.cbo_sh_ver.config(values=ds)
+            self.cbo_sh_ver.set(ds[0])
+            if mcv:
+                self.lbl_status.config(
+                    text=f"Da loc {len(ds)} phien ban phu hop voi {ten_inst} (MC {mcv}).",
+                    fg="gray")
+            else:
+                self.lbl_status.config(text="Chon phien ban roi nhan Cai Shader.", fg="gray")
+        else:
+            self._sh_ver_idx_map = list(range(len(vs)))
+            self.cbo_sh_ver.config(values=ds_all)
+            if ds_all: self.cbo_sh_ver.set(ds_all[0])
+            else:       self.cbo_sh_ver.set("")
+            if mcv:
+                self.lbl_status.config(
+                    text=f"Khong co phien ban khop voi {ten_inst} (MC {mcv}). Hien thi tat ca.",
+                    fg="#E64A19")
 
     def _install_sh(self):
         ten_inst = self.cbo_sh_inst.get().strip()
@@ -1326,6 +1442,8 @@ class ModMcWindow(tk.Toplevel):
         iv = self.cbo_sh_ver.current()
         if iv < 0 or not self._sh_vers_raw:
             messagebox.showwarning("Chu y", "Chon phien ban!", parent=self); return
+        if iv < len(self._sh_ver_idx_map):
+            iv = self._sh_ver_idx_map[iv]
         vd    = self._sh_vers_raw[iv]
         files = vd.get("files", [])
         prim  = next((f for f in files if f.get("primary")), files[0] if files else None)
@@ -1347,6 +1465,404 @@ class ModMcWindow(tk.Toplevel):
                     pct = int(da / tong * 100)
                     self.after(0, lambda: self.lbl_status.config(text=f"Dang tai: {pct}%", fg="#F57C00"))
                 tai_file(url, pz, prog)
+                if self._cancel_event.is_set():
+                    raise TacVuBiHuy("Da huy cai Shader")
+                def _done():
+                    try: shutil.rmtree(tmp)
+                    except: pass
+                    self.lbl_status.after(0, lambda: self.lbl_status.config(
+                        text=f"Da cai Shader vao {ten_inst}!", fg="#2b8c54"))
+                cai_rsp_shader_tu_file(pz, ten_inst, "shader", self.lbl_status, _done)
+            except TacVuBiHuy:
+                try: shutil.rmtree(tmp)
+                except: pass
+                self.after(0, lambda: self.lbl_status.config(text="Da huy cai dat Shader.", fg="#E53935"))
+            except Exception as e:
+                self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
+            finally:
+                self._giam_tac_vu()
+        threading.Thread(target=_t, daemon=True).start()
+
+    # ------------------------------------------------------------------
+    # TAB: RESOURCE PACK (CURSEFORGE)
+    # ------------------------------------------------------------------
+
+    def _build_rsp_cf_tab(self):
+        self._rsp_cf_data     = []
+        self._rsp_cf_files    = []
+        self._rsp_cf_ver_idx_map = []
+        self._rsp_cf_page     = 1
+        self._rsp_cf_total    = 0
+        self._rsp_cf_last_kw  = None
+        f  = self.tab_rsp_cf
+        BG = f["bg"]
+
+        self.fb_rsp_cf = FilterBar(f, self._search_rsp_cf, accent_color="#AB47BC", show_loader=False, bg=BG)
+        self.fb_rsp_cf.pack(fill="x", padx=10, pady=(8, 4))
+        self.list_rsp_cf = ContentTableWidget(f, "curseforge", self._select_rsp_cf)
+        self.list_rsp_cf.pack(fill="both", expand=True, padx=10)
+
+        self.pg_rsp_cf = PaginationBar(f, self._goto_rsp_cf_page, accent_color="#AB47BC", bg=BG)
+        self.pg_rsp_cf.pack(fill="x", padx=10, pady=(2, 0))
+
+        bp = tk.Frame(f, bg=BG)
+        bp.pack(fill="x", padx=10, pady=(4, 8))
+        tk.Label(bp, text="Phien ban:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
+        self.cbo_rsp_cf_ver = ttk.Combobox(bp, font=("Arial", 9), state="readonly", width=42)
+        self.cbo_rsp_cf_ver.grid(row=0, column=1, padx=6)
+        tk.Label(bp, text="Cai vao Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=4)
+        ds_inst = list(config.current_config.get("danh_sach_instances", {}).keys())
+        self.cbo_rsp_cf_inst = ttk.Combobox(bp, values=ds_inst, font=("Arial", 9), width=42)
+        cur = config.current_config.get("current_instance", "")
+        if cur in ds_inst: self.cbo_rsp_cf_inst.set(cur)
+        elif ds_inst:      self.cbo_rsp_cf_inst.set(ds_inst[0])
+        self.cbo_rsp_cf_inst.grid(row=1, column=1, padx=6)
+        self.cbo_rsp_cf_inst.bind("<<ComboboxSelected>>", lambda e: self._filter_rsp_cf_ver())
+        tk.Button(bp, text="Cai RSP", font=("Arial", 9, "bold"),
+                  bg="#AB47BC", fg="white", activebackground="#AB47BC", activeforeground="white",
+                  width=14, pady=4, command=self._install_rsp_cf).grid(row=0, column=2, rowspan=2, padx=8)
+
+    def _load_rsp_cf_top(self, page=1):
+        self._rsp_cf_page    = page
+        self._rsp_cf_last_kw = None
+        try:
+            r, total = lay_curseforge_popular(class_id=12, limit=50, offset=(page - 1) * 50)
+            self._rsp_cf_data  = r
+            self._rsp_cf_total = total
+            self.after(0, lambda: (
+                self.list_rsp_cf.load(r),
+                self.pg_rsp_cf.set_total(total, 50, page),
+                self.lbl_status.config(text=f"Top Resource Pack (CurseForge) - trang {page}", fg="#2b8c54"),
+            ))
+        except Exception as e:
+            self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi RSP CF: {e}", fg="red"))
+
+    def _search_rsp_cf(self, page=1):
+        kw        = self.ent_search.get().strip()
+        mc, _, _c = self.fb_rsp_cf.get()
+        self._rsp_cf_page    = page
+        self._rsp_cf_last_kw = (kw, mc)
+        self.lbl_status.config(text="Dang tim RSP CurseForge...", fg="#AB47BC")
+        def _t():
+            try:
+                r, total = tim_kiem_curseforge(kw, mc, "", limit=50, class_id=12, offset=(page - 1) * 50)
+                self._rsp_cf_data  = r
+                self._rsp_cf_total = total
+                self.after(0, lambda: (
+                    self.list_rsp_cf.load(r),
+                    self.pg_rsp_cf.set_total(total, 50, page),
+                    self.lbl_status.config(text=f"{total} resource pack - trang {page}", fg="#2b8c54"),
+                ))
+            except Exception as e:
+                self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
+        threading.Thread(target=_t, daemon=True).start()
+
+    def _goto_rsp_cf_page(self, page):
+        if self._rsp_cf_last_kw is None:
+            threading.Thread(target=self._load_rsp_cf_top, args=(page,), daemon=True).start()
+        else:
+            self._search_rsp_cf(page)
+
+    def _select_rsp_cf(self, idx, install=False):
+        if idx >= len(self._rsp_cf_data): return
+        r   = self._rsp_cf_data[idx]
+        mid = r.get("id", "")
+        self.cbo_rsp_cf_ver.set("Dang tai phien ban...")
+        self.lbl_status.config(text="Dang tai phien ban RSP...", fg="#AB47BC")
+        def _t():
+            try:
+                files = lay_phien_ban_curseforge(mid)
+                self._rsp_cf_files = files
+                self.after(0, lambda: self._filter_rsp_cf_ver())
+                if install: self.after(200, self._install_rsp_cf)
+            except Exception as e:
+                self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
+        threading.Thread(target=_t, daemon=True).start()
+
+    def _filter_rsp_cf_ver(self):
+        """Loc combobox phien ban RSP (CurseForge) theo MC version cua Instance dang chon. Neu chon instance thi khoa cbo MC version."""
+        files = self._rsp_cf_files
+        ds_all = [f"{fi.get('displayName', fi.get('fileName',''))}  -  MC {', '.join(fi.get('gameVersions',[]))}"
+                  for fi in files]
+
+        ten_inst = self.cbo_rsp_cf_inst.get().strip()
+        mcv, _ = self._get_inst_mc_loader(ten_inst) if ten_inst else ("", "")
+
+        if ten_inst and mcv:
+            try:
+                self.fb_rsp_cf.cbo_mc.set(mcv)
+                self.fb_rsp_cf.cbo_mc.config(state="disabled")
+            except Exception:
+                pass
+        else:
+            try:
+                self.fb_rsp_cf.cbo_mc.config(state="readonly")
+            except Exception:
+                pass
+
+        if mcv:
+            idxs = [i for i, fi in enumerate(files) if mcv in fi.get("gameVersions", [])]
+        else:
+            idxs = list(range(len(files)))
+
+        if idxs:
+            ds = [ds_all[i] for i in idxs]
+            self._rsp_cf_ver_idx_map = idxs
+            self.cbo_rsp_cf_ver.config(values=ds)
+            self.cbo_rsp_cf_ver.set(ds[0])
+            if mcv:
+                self.lbl_status.config(
+                    text=f"Da loc {len(ds)} phien ban phu hop voi {ten_inst} (MC {mcv}).",
+                    fg="gray")
+            else:
+                self.lbl_status.config(text="Chon phien ban roi nhan Cai RSP.", fg="gray")
+        else:
+            self._rsp_cf_ver_idx_map = list(range(len(files)))
+            self.cbo_rsp_cf_ver.config(values=ds_all)
+            if ds_all: self.cbo_rsp_cf_ver.set(ds_all[0])
+            else:       self.cbo_rsp_cf_ver.set("")
+            if mcv:
+                self.lbl_status.config(
+                    text=f"Khong co phien ban khop voi {ten_inst} (MC {mcv}). Hien thi tat ca.",
+                    fg="#E64A19")
+
+    def _install_rsp_cf(self):
+        ten_inst = self.cbo_rsp_cf_inst.get().strip()
+        if not ten_inst:
+            messagebox.showwarning("Chu y", "Chon Instance de cai vao!", parent=self); return
+        iv = self.cbo_rsp_cf_ver.current()
+        if iv < 0 or not self._rsp_cf_files:
+            messagebox.showwarning("Chu y", "Chon phien ban!", parent=self); return
+        if iv < len(self._rsp_cf_ver_idx_map):
+            iv = self._rsp_cf_ver_idx_map[iv]
+        fd  = self._rsp_cf_files[iv]
+        url = fd.get("downloadUrl", "")
+        if not url:
+            fid = fd.get("id", 0)
+            fn  = fd.get("fileName", "")
+            if fid and fn:
+                ids = str(fid)
+                url = f"https://mediafilez.forgecdn.net/files/{ids[:4]}/{ids[4:].lstrip('0') or '0'}/{urllib.parse.quote(fn)}"
+            else:
+                messagebox.showerror("Loi",
+                    "File nay khong co link tai truc tiep (CF an URL).\n"
+                    "Tai thu cong tu curseforge.com roi dung tab 'Cai tu File'.", parent=self)
+                return
+        fname = fd.get("fileName", "resourcepack.zip")
+        self.lbl_status.config(text="Dang tai RSP tu CurseForge...", fg="#AB47BC")
+
+        self._tang_tac_vu()
+        def _t():
+            try:
+                tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
+                os.makedirs(tmp, exist_ok=True)
+                pz  = os.path.join(tmp, fname)
+                def prog(da, tong):
+                    if self._cancel_event.is_set():
+                        raise TacVuBiHuy("Da huy tai RSP")
+                    pct = int(da / tong * 100)
+                    self.after(0, lambda: self.lbl_status.config(
+                        text=f"Dang tai: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#AB47BC"))
+                tai_file(url, pz, prog, extra_headers={"x-api-key": CURSEFORGE_API_KEY})
+                if self._cancel_event.is_set():
+                    raise TacVuBiHuy("Da huy cai RSP")
+                def _done():
+                    try: shutil.rmtree(tmp)
+                    except: pass
+                    self.lbl_status.after(0, lambda: self.lbl_status.config(
+                        text=f"Da cai RSP vao {ten_inst}!", fg="#2b8c54"))
+                cai_rsp_shader_tu_file(pz, ten_inst, "rsp", self.lbl_status, _done)
+            except TacVuBiHuy:
+                try: shutil.rmtree(tmp)
+                except: pass
+                self.after(0, lambda: self.lbl_status.config(text="Da huy cai dat Resource Pack.", fg="#E53935"))
+            except Exception as e:
+                self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
+            finally:
+                self._giam_tac_vu()
+        threading.Thread(target=_t, daemon=True).start()
+
+    # ------------------------------------------------------------------
+    # TAB: SHADER (CURSEFORGE)
+    # ------------------------------------------------------------------
+
+    def _build_shader_cf_tab(self):
+        self._sh_cf_data     = []
+        self._sh_cf_files    = []
+        self._sh_cf_ver_idx_map = []
+        self._sh_cf_page     = 1
+        self._sh_cf_total    = 0
+        self._sh_cf_last_kw  = None
+        f  = self.tab_sh_cf
+        BG = f["bg"]
+
+        self.fb_sh_cf = FilterBar(f, self._search_sh_cf, accent_color="#FB8C00", show_loader=False, bg=BG)
+        self.fb_sh_cf.pack(fill="x", padx=10, pady=(8, 4))
+        self.list_sh_cf = ContentTableWidget(f, "curseforge", self._select_sh_cf)
+        self.list_sh_cf.pack(fill="both", expand=True, padx=10)
+
+        self.pg_sh_cf = PaginationBar(f, self._goto_sh_cf_page, accent_color="#FB8C00", bg=BG)
+        self.pg_sh_cf.pack(fill="x", padx=10, pady=(2, 0))
+
+        bp = tk.Frame(f, bg=BG)
+        bp.pack(fill="x", padx=10, pady=(4, 8))
+        tk.Label(bp, text="Phien ban:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
+        self.cbo_sh_cf_ver = ttk.Combobox(bp, font=("Arial", 9), state="readonly", width=42)
+        self.cbo_sh_cf_ver.grid(row=0, column=1, padx=6)
+        tk.Label(bp, text="Cai vao Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=4)
+        ds_inst = list(config.current_config.get("danh_sach_instances", {}).keys())
+        self.cbo_sh_cf_inst = ttk.Combobox(bp, values=ds_inst, font=("Arial", 9), width=42)
+        cur = config.current_config.get("current_instance", "")
+        if cur in ds_inst: self.cbo_sh_cf_inst.set(cur)
+        elif ds_inst:      self.cbo_sh_cf_inst.set(ds_inst[0])
+        self.cbo_sh_cf_inst.grid(row=1, column=1, padx=6)
+        self.cbo_sh_cf_inst.bind("<<ComboboxSelected>>", lambda e: self._filter_sh_cf_ver())
+        tk.Button(bp, text="Cai Shader", font=("Arial", 9, "bold"),
+                  bg="#FB8C00", fg="white", activebackground="#FB8C00", activeforeground="white",
+                  width=14, pady=4, command=self._install_sh_cf).grid(row=0, column=2, rowspan=2, padx=8)
+
+    def _load_sh_cf_top(self, page=1):
+        self._sh_cf_page    = page
+        self._sh_cf_last_kw = None
+        try:
+            r, total = lay_curseforge_popular(class_id=6552, limit=50, offset=(page - 1) * 50)
+            self._sh_cf_data  = r
+            self._sh_cf_total = total
+            self.after(0, lambda: (
+                self.list_sh_cf.load(r),
+                self.pg_sh_cf.set_total(total, 50, page),
+                self.lbl_status.config(text=f"Top Shader (CurseForge) - trang {page}", fg="#2b8c54"),
+            ))
+        except Exception as e:
+            self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi Shader CF: {e}", fg="red"))
+
+    def _search_sh_cf(self, page=1):
+        kw        = self.ent_search.get().strip()
+        mc, _, _c = self.fb_sh_cf.get()
+        self._sh_cf_page    = page
+        self._sh_cf_last_kw = (kw, mc)
+        self.lbl_status.config(text="Dang tim Shader CurseForge...", fg="#FB8C00")
+        def _t():
+            try:
+                r, total = tim_kiem_curseforge(kw, mc, "", limit=50, class_id=6552, offset=(page - 1) * 50)
+                self._sh_cf_data  = r
+                self._sh_cf_total = total
+                self.after(0, lambda: (
+                    self.list_sh_cf.load(r),
+                    self.pg_sh_cf.set_total(total, 50, page),
+                    self.lbl_status.config(text=f"{total} shader - trang {page}", fg="#2b8c54"),
+                ))
+            except Exception as e:
+                self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
+        threading.Thread(target=_t, daemon=True).start()
+
+    def _goto_sh_cf_page(self, page):
+        if self._sh_cf_last_kw is None:
+            threading.Thread(target=self._load_sh_cf_top, args=(page,), daemon=True).start()
+        else:
+            self._search_sh_cf(page)
+
+    def _select_sh_cf(self, idx, install=False):
+        if idx >= len(self._sh_cf_data): return
+        r   = self._sh_cf_data[idx]
+        mid = r.get("id", "")
+        self.cbo_sh_cf_ver.set("Dang tai phien ban...")
+        self.lbl_status.config(text="Dang tai phien ban Shader...", fg="#FB8C00")
+        def _t():
+            try:
+                files = lay_phien_ban_curseforge(mid)
+                self._sh_cf_files = files
+                self.after(0, lambda: self._filter_sh_cf_ver())
+                if install: self.after(200, self._install_sh_cf)
+            except Exception as e:
+                self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
+        threading.Thread(target=_t, daemon=True).start()
+
+    def _filter_sh_cf_ver(self):
+        """Loc combobox phien ban Shader (CurseForge) theo MC version cua Instance dang chon. Neu chon instance thi khoa cbo MC version."""
+        files = self._sh_cf_files
+        ds_all = [f"{fi.get('displayName', fi.get('fileName',''))}  -  MC {', '.join(fi.get('gameVersions',[]))}"
+                  for fi in files]
+
+        ten_inst = self.cbo_sh_cf_inst.get().strip()
+        mcv, _ = self._get_inst_mc_loader(ten_inst) if ten_inst else ("", "")
+
+        if ten_inst and mcv:
+            try:
+                self.fb_sh_cf.cbo_mc.set(mcv)
+                self.fb_sh_cf.cbo_mc.config(state="disabled")
+            except Exception:
+                pass
+        else:
+            try:
+                self.fb_sh_cf.cbo_mc.config(state="readonly")
+            except Exception:
+                pass
+
+        if mcv:
+            idxs = [i for i, fi in enumerate(files) if mcv in fi.get("gameVersions", [])]
+        else:
+            idxs = list(range(len(files)))
+
+        if idxs:
+            ds = [ds_all[i] for i in idxs]
+            self._sh_cf_ver_idx_map = idxs
+            self.cbo_sh_cf_ver.config(values=ds)
+            self.cbo_sh_cf_ver.set(ds[0])
+            if mcv:
+                self.lbl_status.config(
+                    text=f"Da loc {len(ds)} phien ban phu hop voi {ten_inst} (MC {mcv}).",
+                    fg="gray")
+            else:
+                self.lbl_status.config(text="Chon phien ban roi nhan Cai Shader.", fg="gray")
+        else:
+            self._sh_cf_ver_idx_map = list(range(len(files)))
+            self.cbo_sh_cf_ver.config(values=ds_all)
+            if ds_all: self.cbo_sh_cf_ver.set(ds_all[0])
+            else:       self.cbo_sh_cf_ver.set("")
+            if mcv:
+                self.lbl_status.config(
+                    text=f"Khong co phien ban khop voi {ten_inst} (MC {mcv}). Hien thi tat ca.",
+                    fg="#E64A19")
+
+    def _install_sh_cf(self):
+        ten_inst = self.cbo_sh_cf_inst.get().strip()
+        if not ten_inst:
+            messagebox.showwarning("Chu y", "Chon Instance de cai vao!", parent=self); return
+        iv = self.cbo_sh_cf_ver.current()
+        if iv < 0 or not self._sh_cf_files:
+            messagebox.showwarning("Chu y", "Chon phien ban!", parent=self); return
+        if iv < len(self._sh_cf_ver_idx_map):
+            iv = self._sh_cf_ver_idx_map[iv]
+        fd  = self._sh_cf_files[iv]
+        url = fd.get("downloadUrl", "")
+        if not url:
+            fid = fd.get("id", 0)
+            fn  = fd.get("fileName", "")
+            if fid and fn:
+                ids = str(fid)
+                url = f"https://mediafilez.forgecdn.net/files/{ids[:4]}/{ids[4:].lstrip('0') or '0'}/{urllib.parse.quote(fn)}"
+            else:
+                messagebox.showerror("Loi",
+                    "File nay khong co link tai truc tiep (CF an URL).\n"
+                    "Tai thu cong tu curseforge.com roi dung tab 'Cai tu File'.", parent=self)
+                return
+        fname = fd.get("fileName", "shader.zip")
+        self.lbl_status.config(text="Dang tai Shader tu CurseForge...", fg="#FB8C00")
+
+        self._tang_tac_vu()
+        def _t():
+            try:
+                tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
+                os.makedirs(tmp, exist_ok=True)
+                pz  = os.path.join(tmp, fname)
+                def prog(da, tong):
+                    if self._cancel_event.is_set():
+                        raise TacVuBiHuy("Da huy tai Shader")
+                    pct = int(da / tong * 100)
+                    self.after(0, lambda: self.lbl_status.config(
+                        text=f"Dang tai: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#FB8C00"))
+                tai_file(url, pz, prog, extra_headers={"x-api-key": CURSEFORGE_API_KEY})
                 if self._cancel_event.is_set():
                     raise TacVuBiHuy("Da huy cai Shader")
                 def _done():
@@ -1435,7 +1951,7 @@ class ModMcWindow(tk.Toplevel):
         self._tang_tac_vu()
         try:
             if loai == "Modpack":
-                cai_modpack_tu_file(path, ten, self.lbl_status, self._done)
+                cai_modpack_tu_file(path, ten, self.lbl_status, self._done, cancel_event=self._cancel_event)
             elif loai == "Mod":
                 cai_mod_tu_file(path, ten, self.lbl_status)
             else:

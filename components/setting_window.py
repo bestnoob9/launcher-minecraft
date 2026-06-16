@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import re
 import config
+import theme
 from icon_utils import gan_icon_app
 
 class SettingWindow(tk.Toplevel):
@@ -60,6 +61,7 @@ class SettingWindow(tk.Toplevel):
         }
         
         self.create_widgets()
+        theme.apply_theme(self)
 
     def create_widgets(self):
         # 1. CÀI ĐẶT ĐƯỜNG DẪN GAME
@@ -75,6 +77,25 @@ class SettingWindow(tk.Toplevel):
         
         btn_browse = tk.Button(frame_path, text="Chọn...", font=("Arial", 9), command=self.chon_duong_dan)
         btn_browse.pack(side=tk.LEFT, padx=5)
+
+        # 1b. GIAO DIỆN SÁNG / TỐI
+        lbl_theme_title = tk.Label(self, text="Giao diện:", font=("Arial", 10, "bold"))
+        lbl_theme_title.pack(anchor="w", padx=20, pady=(15, 2))
+
+        frame_theme = tk.Frame(self)
+        frame_theme.pack(fill="x", padx=20)
+
+        self.var_theme = tk.StringVar(value=theme.get_theme_name())
+        tk.Radiobutton(
+            frame_theme, text="☀ Sáng", font=("Arial", 9),
+            variable=self.var_theme, value="light",
+            command=self._khi_doi_theme,
+        ).pack(side=tk.LEFT, padx=(0, 12))
+        tk.Radiobutton(
+            frame_theme, text="🌙 Tối", font=("Arial", 9),
+            variable=self.var_theme, value="dark",
+            command=self._khi_doi_theme,
+        ).pack(side=tk.LEFT)
 
         # 2. CÀI ĐẶT RAM JVM — Thanh kéo đơn, giới hạn theo RAM máy
         lbl_ram_title = tk.Label(self, text="Bộ Nhớ Sử Dụng:", font=("Arial", 10, "bold"))
@@ -506,6 +527,17 @@ class SettingWindow(tk.Toplevel):
             self.ent_height.delete(0, tk.END)
             self.ent_height.insert(0, cao.strip())
 
+    def _khi_doi_theme(self):
+        """Doi giao dien Sang/Toi ngay (xem truoc) va luu vao config."""
+        theme.set_theme(self.var_theme.get())
+        config.luu_toan_bo_cau_hinh()
+        try:
+            root = self.master
+            theme.apply_theme_to_all_toplevels(root)
+            theme.apply_theme(self)
+        except Exception:
+            pass
+
     def chon_duong_dan(self):
         thu_muc = filedialog.askdirectory(title="Chọn thư mục lưu Game")
         if thu_muc:
@@ -567,6 +599,7 @@ class SettingWindow(tk.Toplevel):
 
         # --- Lưu các trường cơ bản ---
         config.current_config["thu_muc_game"] = path
+        config.current_config["theme"] = self.var_theme.get()
         config.current_config["ram_max"] = ram_max_val
         config.current_config.pop("ram_min", None)  # xoa ram_min neu con ton tai
         config.current_config["do_phan_giai"] = res_chuan_hoa

@@ -66,6 +66,7 @@ config_mac_dinh = {
     "thu_muc_game": "",
     "ram_max": "4GB",
     "do_phan_giai": "854x480",
+    "theme": "light",
     "current_instance": "Latest Version",
     "danh_sach_instances": {
         "Latest Version": {

@@ -545,14 +545,14 @@ class SettingWindow(tk.Toplevel):
             self.ent_path.insert(0, thu_muc)
 
     def _chon_java_path(self):
-        """Mở hộp thoại chọn file java / java.exe"""
+        """Mở hộp thoại chọn file java / java.exe / javaw.exe"""
         import sys
         if sys.platform == "win32":
-            file_types = [("Java Executable", "java.exe"), ("All files", "*.*")]
+            file_types = [("Java Executable", "java.exe javaw.exe"), ("All files", "*.*")]
         else:
             file_types = [("Java Executable", "java"), ("All files", "*.*")]
         java_file = filedialog.askopenfilename(
-            title="Chọn file java hoặc java.exe",
+            title="Chọn file java.exe hoặc javaw.exe",
             filetypes=file_types
         )
         if java_file:

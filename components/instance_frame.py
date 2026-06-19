@@ -153,6 +153,17 @@ class InstanceFrame(tk.Frame):
                     loai_game   = data.get("loai_game", "Vanilla")
                     version_goc = data.get("version_goc", "1.21.1")
                     version_mod = data.get("version_mod", "Vanilla")
+                    # Tu dong sua Forge version_mod bi luu thieu prefix MC version
+                    # vd: "43.5.0" -> "1.19.2-43.5.0"
+                    if loai_game == "Forge" and version_mod not in ("Vanilla", "") \
+                            and not version_mod.startswith(version_goc):
+                        version_mod = f"{version_goc}-{version_mod}"
+                        data["version_mod"] = version_mod
+                        try:
+                            with open(file_info, "w", encoding="utf-8") as fw:
+                                json.dump(data, fw, indent=4, ensure_ascii=False)
+                        except Exception:
+                            pass
                 except Exception:
                     loai_game, version_goc, version_mod = "Vanilla", "1.21.1", "Vanilla"
             else:

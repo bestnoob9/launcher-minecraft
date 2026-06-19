@@ -4,6 +4,28 @@ import urllib.request
 import minecraft_launcher_lib
 import subprocess
 import re
+import sys
+
+# =====================================================================
+# AN TOAN BO CUA SO CMD DEN CHO MOI TIEN TRINH CON TREN WINDOWS
+# (vd: java -jar installer khi minecraft_launcher_lib cai Fabric/Forge/
+#  Quilt/NeoForge ben trong). Patch nay ghi de subprocess.Popen.__init__
+# nen ap dung cho CA cac lenh subprocess goi tu ben trong cac thu vien
+# khac (minecraft_launcher_lib), khong chi lenh ta tu goi.
+# =====================================================================
+if sys.platform == "win32":
+    _popen_init_goc = subprocess.Popen.__init__
+
+    def _popen_init_an_cmd(self, *args, **kwargs):
+        if kwargs.get("startupinfo") is None:
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = subprocess.SW_HIDE
+            kwargs["startupinfo"] = si
+        kwargs["creationflags"] = kwargs.get("creationflags", 0) | subprocess.CREATE_NO_WINDOW
+        _popen_init_goc(self, *args, **kwargs)
+
+    subprocess.Popen.__init__ = _popen_init_an_cmd
 
 def lay_danh_sach_phien_ban_chinh():
     try:
@@ -154,6 +176,10 @@ def build_jvm_arguments(current_config, ram_min, ram_max):
     final_args.append(f"-Xms{ram_min}")
     final_args.append(f"-Xmx{ram_max}")
     final_args.append("-Dminecraft.api.auth.enabled=false")
+    final_args.append("-Dminecraft.api.auth.host=https://nope.invalid")
+    final_args.append("-Dminecraft.api.account.host=https://nope.invalid")
+    final_args.append("-Dminecraft.api.session.host=https://nope.invalid")
+    final_args.append("-Dminecraft.api.services.host=https://nope.invalid")
 
     mode = current_config.get("jvm_mode", "default")
     if mode == "preset":
@@ -425,8 +451,9 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
         "resolutionHeight": cao,
     }
 
-    if "selected_java_path" in config.current_config:
-        options["executablePath"] = config.current_config["selected_java_path"]
+    java_path = config.current_config.get("java_path", "").strip()
+    if java_path and os.path.isfile(java_path):
+        options["executablePath"] = java_path
 
     lbl_status.after(0, lambda: lbl_status.config(text="Đang tải và cài đặt game...", fg="#1E88E5"))
 

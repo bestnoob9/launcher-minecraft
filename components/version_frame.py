@@ -51,14 +51,16 @@ class VersionFrame(tk.Frame):
         
         try:
             parts = version_goc.split('.')
+            major_ver = int(parts[0]) if len(parts) > 0 else 1
             sub_ver = int(parts[1]) if len(parts) > 1 else 0
         except:
+            major_ver = 1
             sub_ver = 14
 
-        if sub_ver >= 14 or int(parts[0]) >= 26:
+        if sub_ver >= 14 or major_ver >= 26:
             cac_lua_chon.extend(["Fabric", "Quilt"])
         cac_lua_chon.append("Forge")
-        if sub_ver >= 20 or int(parts[0]) >= 26:
+        if sub_ver >= 20 or major_ver >= 26:
             cac_lua_chon.append("NeoForge")
             
         self.cbo_mod_loader['values'] = cac_lua_chon

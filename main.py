@@ -86,6 +86,13 @@ def _doc_cau_hinh_may():
     config.current_config["_system_info"] = info
 
 class ConsoleWindow(tk.Toplevel):
+    # Màu cố định, không bị theme ghi đè
+    _BG_MAIN   = "#1e1e1e"
+    _BG_BAR    = "#2d2d2d"
+    _BG_BTN    = "#3c3c3c"
+    _FG_TEXT   = "#d4d4d4"
+    _FG_COUNT  = "#888888"
+
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Console — Minecraft Log")
@@ -94,24 +101,53 @@ class ConsoleWindow(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self.withdraw)
         _gan_icon_app(self)
 
-        self.txt = tk.Text(self, font=("Consolas", 9), bg="#1e1e1e", fg="#d4d4d4",
+        # Đặt màu nền cửa sổ cố định
+        self.configure(bg=self._BG_MAIN)
+
+        self.txt = tk.Text(self, font=("Consolas", 9),
+                           bg=self._BG_MAIN, fg=self._FG_TEXT,
+                           insertbackground=self._FG_TEXT,
+                           selectbackground="#264f78",
                            wrap="word", state="disabled", relief="flat", bd=0)
         sb = ttk.Scrollbar(self, orient="vertical", command=self.txt.yview)
         self.txt.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self.txt.pack(fill="both", expand=True)
 
-        btn_frame = tk.Frame(self, bg="#2d2d2d")
+        btn_frame = tk.Frame(self, bg=self._BG_BAR)
         btn_frame.pack(fill="x")
-        tk.Button(btn_frame, text="Xóa log", font=("Arial", 8),
-                  bg="#3c3c3c", fg="white", relief="flat", padx=8,
-                  command=self.clear).pack(side="left", padx=4, pady=4)
+
+        self._btn_clear = tk.Button(btn_frame, text="Xóa log", font=("Arial", 8),
+                  bg=self._BG_BTN, fg="white", activebackground="#555",
+                  activeforeground="white", relief="flat", padx=8,
+                  command=self.clear)
+        self._btn_clear.pack(side="left", padx=4, pady=4)
+
         self.lbl_count = tk.Label(btn_frame, text="0 dòng", font=("Arial", 8),
-                                  bg="#2d2d2d", fg="#888")
+                                  bg=self._BG_BAR, fg=self._FG_COUNT)
         self.lbl_count.pack(side="right", padx=8)
 
         self._line_count = 0
+
+        # Chống theme ghi đè: khôi phục màu mỗi khi cửa sổ được hiển thị
+        self.bind("<Map>", self._restore_colors)
+
         self.withdraw()
+
+    def _restore_colors(self, event=None):
+        """Khôi phục màu cố định sau khi theme có thể đã thay đổi."""
+        try:
+            self.configure(bg=self._BG_MAIN)
+            self.txt.configure(bg=self._BG_MAIN, fg=self._FG_TEXT)
+            self._btn_clear.configure(bg=self._BG_BTN, fg="white",
+                                      activebackground="#555", activeforeground="white")
+            self.lbl_count.configure(bg=self._BG_BAR, fg=self._FG_COUNT)
+            # Tìm btn_frame qua parent của lbl_count
+            bf = self.lbl_count.master
+            if bf:
+                bf.configure(bg=self._BG_BAR)
+        except Exception:
+            pass
     def append(self, text):
         """Thêm text vào console (thread-safe qua after)."""
         self.txt.config(state="normal")
@@ -373,6 +409,7 @@ class MinecraftLauncherApp:
                 self.root.after(0, lambda: self.lbl_status.config(
                     text="Minecraft đang chạy...", fg="#2E7D32"))
                 self.root.after(0, lambda: self.hien_thi_progress(False))
+                self.root.after(0, self._mo_khoa_ui)
 
                 if proc:
                     def _stream_log(p):
@@ -387,11 +424,17 @@ class MinecraftLauncherApp:
 
                     proc.wait()
 
-                self._game_process = None
-                self.root.after(0, lambda: self.btn_launch.config(
-                    text="▶ VÀO GAME", bg="#1E88E5", state="normal"))
-                self.root.after(0, lambda: self.lbl_status.config(text="Sẵn sàng", fg="gray"))
-                self.root.after(0, self._mo_khoa_ui)
+                    self._game_process = None
+                    self.root.after(0, lambda: self.btn_launch.config(
+                        text="▶ VÀO GAME", bg="#1E88E5", state="normal"))
+                    self.root.after(0, lambda: self.lbl_status.config(text="Sẵn sàng", fg="gray"))
+                    self.root.after(0, self._mo_khoa_ui)
+                else:
+                    self._game_process = None
+                    self.root.after(0, lambda: self.btn_launch.config(
+                        text="▶ VÀO GAME", bg="#1E88E5", state="normal"))
+                    self.root.after(0, lambda: self.lbl_status.config(text="Sẵn sàng", fg="gray"))
+                    self.root.after(0, self._mo_khoa_ui)
 
             except Exception as e:
                 loi = str(e)

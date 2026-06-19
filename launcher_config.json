@@ -1,0 +1,19 @@
+{
+    "danh_sach_acc": [],
+    "current_account": "",
+    "thu_muc_game": "D:\\.Minecraftfile",
+    "ram_max": "4GB",
+    "do_phan_giai": "854x480",
+    "current_instance": "Latest Version",
+    "danh_sach_instances": {
+        "Latest Version": {
+            "version_goc": "26.1.2",
+            "loai_game": "Vanilla",
+            "version_mod": "Vanilla"
+        }
+    },
+    "_system_info": {
+        "ram_total_mb": 16273,
+        "ram_total_gb": 16
+    }
+}

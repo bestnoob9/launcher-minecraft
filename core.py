@@ -27,6 +27,69 @@ if sys.platform == "win32":
 
     subprocess.Popen.__init__ = _popen_init_an_cmd
 
+# =====================================================================
+# ĐĂNG NHẬP MICROSOFT (PREMIUM)
+# =====================================================================
+
+# Azure App client ID dùng để login Microsoft OAuth
+# Đây là Client ID mặc định của minecraft-launcher-lib (dùng được cho mục đích cá nhân)
+_MS_CLIENT_ID = "00000000402b5328"
+_MS_REDIRECT_URL = "https://login.live.com/oauth20_desktop.srf"
+
+def bat_dau_dang_nhap_microsoft():
+    """
+    Trả về (login_url, state, code_verifier) để mở trình duyệt.
+    Gọi hàm này để lấy URL, sau đó mở trình duyệt cho người dùng đăng nhập.
+    """
+    login_url, state, code_verifier = minecraft_launcher_lib.microsoft_account.get_secure_login_data(
+        _MS_CLIENT_ID, _MS_REDIRECT_URL
+    )
+    return login_url, state, code_verifier
+
+def hoan_tat_dang_nhap_microsoft(code_url, state, code_verifier):
+    """
+    Nhận URL callback sau khi người dùng đăng nhập.
+    Trả về dict login_data với các key: name, id, access_token, refresh_token
+    hoặc raise Exception nếu thất bại.
+    """
+    try:
+        auth_code = minecraft_launcher_lib.microsoft_account.parse_auth_code_url(code_url, state)
+    except AssertionError:
+        raise Exception("Xác thực thất bại: State không khớp. Hãy thử lại.")
+    except KeyError:
+        raise Exception("URL không hợp lệ. Hãy copy đúng URL từ trình duyệt.")
+
+    login_data = minecraft_launcher_lib.microsoft_account.complete_login(
+        _MS_CLIENT_ID, None, _MS_REDIRECT_URL, auth_code, code_verifier
+    )
+    return {
+        "name": login_data["name"],
+        "uuid": login_data["id"],
+        "access_token": login_data["access_token"],
+        "refresh_token": login_data.get("refresh_token", ""),
+        "loai": "premium"
+    }
+
+def lam_moi_token_microsoft(refresh_token):
+    """
+    Làm mới access token bằng refresh token.
+    Trả về login_data mới hoặc None nếu thất bại.
+    """
+    try:
+        login_data = minecraft_launcher_lib.microsoft_account.complete_refresh(
+            _MS_CLIENT_ID, None, _MS_REDIRECT_URL, refresh_token
+        )
+        return {
+            "name": login_data["name"],
+            "uuid": login_data["id"],
+            "access_token": login_data["access_token"],
+            "refresh_token": login_data.get("refresh_token", refresh_token),
+            "loai": "premium"
+        }
+    except Exception as e:
+        print(f"Lỗi làm mới token: {e}")
+        return None
+
 def lay_danh_sach_phien_ban_chinh():
     try:
         all_versions = minecraft_launcher_lib.utils.get_version_list()
@@ -171,15 +234,18 @@ def get_all_jvm_presets():
         ]
     }
 
-def build_jvm_arguments(current_config, ram_min, ram_max):
+def build_jvm_arguments(current_config, ram_min, ram_max, la_tai_khoan_premium=False):
     final_args = []
     final_args.append(f"-Xms{ram_min}")
     final_args.append(f"-Xmx{ram_max}")
-    final_args.append("-Dminecraft.api.auth.enabled=false")
-    final_args.append("-Dminecraft.api.auth.host=https://nope.invalid")
-    final_args.append("-Dminecraft.api.account.host=https://nope.invalid")
-    final_args.append("-Dminecraft.api.session.host=https://nope.invalid")
-    final_args.append("-Dminecraft.api.services.host=https://nope.invalid")
+    # Chỉ bypass auth khi dùng tài khoản offline (cracked)
+    # Tài khoản premium dùng token thật, KHÔNG cần bypass
+    if not la_tai_khoan_premium:
+        final_args.append("-Dminecraft.api.auth.enabled=false")
+        final_args.append("-Dminecraft.api.auth.host=https://nope.invalid")
+        final_args.append("-Dminecraft.api.account.host=https://nope.invalid")
+        final_args.append("-Dminecraft.api.session.host=https://nope.invalid")
+        final_args.append("-Dminecraft.api.services.host=https://nope.invalid")
 
     mode = current_config.get("jvm_mode", "default")
     if mode == "preset":
@@ -436,15 +502,37 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
     match = re.search(r"(\d+)\s*x\s*(\d+)", do_phan_giai)
     rong, cao = (match.group(1), match.group(2)) if match else ("854", "480")
 
-    danh_sach_jvm_args = build_jvm_arguments(config.current_config, ram_min, ram_max)
+    # Kiểm tra tài khoản premium hay offline
+    ds_tai_khoan_ms = config.current_config.get("tai_khoan_microsoft", {})
+    thong_tin_ms = ds_tai_khoan_ms.get(tai_khoan)
+    la_tai_khoan_premium = thong_tin_ms is not None and thong_tin_ms.get("loai") == "premium"
 
-    import uuid as _uuid
-    offline_uuid = str(_uuid.uuid3(_uuid.NAMESPACE_DNS, f"OfflinePlayer:{tai_khoan}"))
+    # Thử làm mới token nếu là tài khoản premium
+    if la_tai_khoan_premium and thong_tin_ms.get("refresh_token"):
+        token_moi = lam_moi_token_microsoft(thong_tin_ms["refresh_token"])
+        if token_moi:
+            thong_tin_ms.update(token_moi)
+            ds_tai_khoan_ms[tai_khoan] = thong_tin_ms
+            config.current_config["tai_khoan_microsoft"] = ds_tai_khoan_ms
+            config.luu_toan_bo_cau_hinh()
+
+    danh_sach_jvm_args = build_jvm_arguments(config.current_config, ram_min, ram_max, la_tai_khoan_premium)
+
+    if la_tai_khoan_premium:
+        # Dùng thông tin xác thực thật từ Microsoft
+        _username = thong_tin_ms.get("name", tai_khoan)
+        _uuid_str = thong_tin_ms.get("uuid", "")
+        _token = thong_tin_ms.get("access_token", "")
+    else:
+        import uuid as _uuid
+        _username = tai_khoan
+        _uuid_str = str(_uuid.uuid3(_uuid.NAMESPACE_DNS, f"OfflinePlayer:{tai_khoan}"))
+        _token = "0"
 
     options = {
-        "username": tai_khoan,
-        "uuid": offline_uuid,
-        "token": "0",
+        "username": _username,
+        "uuid": _uuid_str,
+        "token": _token,
         "jvmArguments": danh_sach_jvm_args,
         "customResolution": True,
         "resolutionWidth": rong,

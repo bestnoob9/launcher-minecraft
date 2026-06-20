@@ -296,8 +296,14 @@ class InstanceFrame(tk.Frame):
 
     
 
-    # --- CỬA SỔ POP-UP TẠO PHIÊN BẢN MỚI ---
+    # --- CỬA SỔ TẠO PHIÊN BẢN MỚI (inline panel qua callback) ---
     def mo_cua_so_tao_instance(self):
+        if hasattr(self, 'on_open_create_panel') and self.on_open_create_panel:
+            self.on_open_create_panel()
+            return
+        self._mo_toplevel_tao_instance()
+
+    def _mo_toplevel_tao_instance(self):
         theme.preload_combobox_options(self)
         win_create = tk.Toplevel(self)
         win_create.title("Tạo phiên bản mới")
@@ -500,3 +506,168 @@ class InstanceFrame(tk.Frame):
         btn_confirm.pack(side=tk.BOTTOM, pady=15)
 
         theme.apply_theme(win_create)
+    def build_create_panel(self, parent, on_close):
+        """
+        Dựng form Tạo phiên bản mới vào 'parent' (Frame inline).
+        on_close() được gọi khi người dùng hủy hoặc tạo xong.
+        Trả về frame chứa toàn bộ form để caller pack/show.
+        """
+        p = parent  # alias ngắn gọn
+
+        # Tiêu đề + nút đóng
+        bar = tk.Frame(p)
+        bar.pack(fill="x", padx=16, pady=(12, 4))
+        tk.Label(bar, text="➕ Tạo phiên bản mới", font=("Arial", 12, "bold"), fg="#4CAF50").pack(side="left")
+        tk.Button(bar, text="✕ Đóng", font=("Arial", 9), bg="#E53935", fg="white",
+                  relief="flat", padx=6, command=on_close).pack(side="right")
+
+        content = tk.Frame(p)
+        content.pack(fill="both", expand=True, padx=16)
+
+        # 1. Tên instance
+        tk.Label(content, text="Tên thư mục phiên bản (Instance):", font=("Arial", 10, "bold")).pack(pady=(8, 2))
+        ent_name = tk.Entry(content, font=("Arial", 10), width=28)
+        ent_name.pack()
+        ent_name.focus_set()
+
+        lbl_ten_loi = tk.Label(content, text="", font=("Arial", 8, "italic"), fg="red")
+        lbl_ten_loi.pack()
+
+        def kiem_tra_realtime(*args):
+            hop_le, thong_bao = kiem_tra_ten_hop_le(ent_name.get())
+            lbl_ten_loi.config(text=f"⚠ {thong_bao.split(chr(10))[0]}" if not hop_le else "")
+
+        ent_name.bind("<KeyRelease>", kiem_tra_realtime)
+
+        # 2. Loại phiên bản
+        tk.Label(content, text="Loại phiên bản:", font=("Arial", 10, "bold")).pack(pady=(8, 2))
+        cbo_loai_ver = ttk.Combobox(content, values=["Release", "Snapshot", "Beta", "Alpha"],
+                                     font=("Arial", 10), state="readonly", width=25)
+        cbo_loai_ver.set("Release")
+        cbo_loai_ver.pack()
+
+        # 3. Phiên bản Minecraft
+        tk.Label(content, text="Chọn phiên bản Minecraft:", font=("Arial", 10, "bold")).pack(pady=(8, 2))
+        cbo_ver = ttk.Combobox(content, values=[], font=("Arial", 10), state="readonly", width=25)
+        cbo_ver.pack()
+        lbl_loading_ver = tk.Label(content, text="", font=("Arial", 8, "italic"), fg="gray")
+        lbl_loading_ver.pack()
+
+        # 4. Mod Loader type
+        tk.Label(content, text="Chọn Loại Game (Mod Loader):", font=("Arial", 10, "bold")).pack(pady=(8, 2))
+        cbo_mod_type = ttk.Combobox(content, values=["Vanilla", "Fabric", "Forge", "Quilt", "NeoForge"],
+                                     font=("Arial", 10), state="readonly", width=25)
+        cbo_mod_type.set("Vanilla")
+        cbo_mod_type.pack()
+
+        # 5. Phiên bản Mod Loader (ẩn mặc định)
+        lbl_mod_detail = tk.Label(content, text="Chọn Phiên bản Mod Loader:",
+                                   font=("Arial", 10, "bold"), fg="#2E7D32")
+        cbo_mod_ver = ttk.Combobox(content, font=("Arial", 10), state="readonly", width=35)
+        lbl_loading_mod = tk.Label(content, text="", font=("Arial", 9, "italic"), fg="gray")
+
+        def cap_nhat_mod_loader_theo_loai():
+            loai = cbo_loai_ver.get()
+            loaders = {
+                "Release": ["Vanilla", "Fabric", "Forge", "Quilt", "NeoForge"],
+                "Snapshot": ["Vanilla", "Fabric", "Quilt"],
+            }.get(loai, ["Vanilla"])
+            cbo_mod_type['values'] = loaders
+            cbo_mod_type.set("Vanilla")
+            lbl_mod_detail.pack_forget()
+            cbo_mod_ver.pack_forget()
+            lbl_loading_mod.pack_forget()
+
+        def dien_danh_sach_ver(ds):
+            lbl_loading_ver.config(text="")
+            cbo_ver['values'] = ds
+            cbo_ver.set(ds[0] if ds else "")
+            cap_nhat_mod_loader_theo_loai()
+
+        def cap_nhat_danh_sach_ver(*args):
+            mapping = {"Release": "release", "Snapshot": "snapshot", "Beta": "old_beta", "Alpha": "old_alpha"}
+            lbl_loading_ver.config(text="Đang tải...")
+            cbo_ver.set("")
+            def _load():
+                try:
+                    ds = core.lay_danh_sach_phien_ban_theo_loai(mapping[cbo_loai_ver.get()])
+                except Exception:
+                    ds = []
+                content.after(0, lambda: dien_danh_sach_ver(ds))
+            threading.Thread(target=_load, daemon=True).start()
+
+        def cap_nhat_list_mod_detail(*args):
+            l_game = cbo_mod_type.get()
+            if l_game == "Vanilla":
+                lbl_mod_detail.pack_forget()
+                cbo_mod_ver.pack_forget()
+                lbl_loading_mod.pack_forget()
+                return
+            lbl_mod_detail.pack(pady=(8, 2))
+            cbo_mod_ver.pack()
+            lbl_loading_mod.pack()
+            cbo_mod_ver.set("")
+            def _load():
+                lbl_loading_mod.config(text=f"Đang tải {l_game}...")
+                ds = core.tai_danh_sach_mod(l_game, cbo_ver.get())
+                content.after(0, lambda: _dien_mod(ds))
+            threading.Thread(target=_load, daemon=True).start()
+
+        def _dien_mod(ds):
+            lbl_loading_mod.config(text="")
+            ds_sach = [str(x) for x in ds if x and str(x).strip() != "Mới nhất"] if ds else []
+            if ds_sach:
+                cbo_mod_ver['values'] = ds_sach
+                cbo_mod_ver.set(ds_sach[0])
+                lbl_loading_mod.config(text=f"Đề xuất: {ds_sach[0]}")
+            else:
+                cbo_mod_ver['values'] = ["Mặc định"]
+                cbo_mod_ver.set("Mặc định")
+
+        cbo_loai_ver.bind("<<ComboboxSelected>>", lambda e: [cap_nhat_danh_sach_ver(), cap_nhat_mod_loader_theo_loai()])
+        cbo_ver.bind("<<ComboboxSelected>>", cap_nhat_list_mod_detail)
+        cbo_mod_type.bind("<<ComboboxSelected>>", cap_nhat_list_mod_detail)
+        cap_nhat_danh_sach_ver()
+
+        def xu_ly_tao():
+            ten_nhap = ent_name.get().strip()
+            hop_le, thong_bao = kiem_tra_ten_hop_le(ten_nhap)
+            if not hop_le:
+                messagebox.showerror("Lỗi tên", thong_bao)
+                return
+            if not ten_nhap:
+                messagebox.showwarning("Chú ý", "Tên không được để trống!")
+                return
+            if not cbo_ver.get():
+                messagebox.showwarning("Chú ý", "Vui lòng chọn phiên bản Minecraft!")
+                return
+            if ten_nhap in config.current_config["danh_sach_instances"]:
+                messagebox.showwarning("Chú ý", "Tên phiên bản này đã tồn tại!")
+                return
+
+            chuoi_mod_goc = cbo_mod_ver.get()
+            if chuoi_mod_goc.startswith("Mặc định"):
+                chuoi_mod_goc = "Vanilla"
+
+            config.current_config["danh_sach_instances"][ten_nhap] = {
+                "version_goc": cbo_ver.get(),
+                "loai_game": cbo_mod_type.get(),
+                "version_mod": chuoi_mod_goc if cbo_mod_type.get() != "Vanilla" else "Vanilla"
+            }
+            config.current_config["current_instance"] = ten_nhap
+            config.luu_toan_bo_cau_hinh()
+
+            ten_thu_muc = ten_nhap.replace(" ", "_")
+            os.makedirs(os.path.join(self.thu_muc_instances, ten_thu_muc), exist_ok=True)
+
+            ds_moi = list(config.current_config["danh_sach_instances"].keys())
+            self.cbo_instance['values'] = ds_moi
+            self.cbo_instance.set(ten_nhap)
+            self.cap_nhat_nhan_thong_tin()
+            self.on_change_callback()
+            on_close()
+            messagebox.showinfo("Thành công", f"Đã tạo phiên bản: {ten_nhap}")
+
+        tk.Button(content, text="✔ XÁC NHẬN TẠO", font=("Arial", 10, "bold"),
+                  bg="#4CAF50", fg="white", width=20, height=2,
+                  command=xu_ly_tao).pack(side=tk.BOTTOM, pady=12)

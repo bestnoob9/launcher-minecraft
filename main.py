@@ -10,8 +10,6 @@ import theme
 from icon_utils import gan_icon_app as _gan_icon_app
 from components.account_frame import AccountFrame
 from components.instance_frame import InstanceFrame
-from components.setting_window import SettingWindow
-from components.mod_mc import ModMcWindow
 from setup_wizard import kiem_tra_va_chay_wizard
 
 
@@ -170,11 +168,16 @@ class ConsoleWindow(tk.Toplevel):
 
 
 class MinecraftLauncherApp:
+    # Màu tab bar
+    _TAB_ACTIVE_BG   = "#1E88E5"
+    _TAB_INACTIVE_BG = "#37474F"
+    _TAB_FG          = "white"
+
     def __init__(self, root):
         self.root = root
         self.root.title("Bacontete MCL")
-        self.root.geometry("480x520")
-        self.root.minsize(480, 520)
+        self.root.geometry("480x560")
+        self.root.minsize(1280, 720)
         self.root.resizable(True, True)
         _gan_icon_app(self.root)
 
@@ -184,106 +187,212 @@ class MinecraftLauncherApp:
         self._huy_tai = False
 
         self.console = ConsoleWindow(root)
+        self._current_view = None          # tên view đang hiển thị
+        self._tab_buttons  = {}            # tên → Button widget
+        self._view_frames  = {}            # tên → Frame widget
+
         self.create_widgets()
         theme.apply_theme(self.root)
         self.root.protocol("WM_DELETE_WINDOW", self._xu_ly_thoat)
 
-    def create_widgets(self):
-        lbl_main_title = tk.Label(self.root, text="Bacontete MCL", font=("Arial", 16, "bold"), fg="#1E88E5")
-        lbl_main_title.pack(pady=(20, 15))
+        # Hiện view mặc định
+        self._switch_view("home")
 
-        self.account_frame = AccountFrame(self.root, self.khi_thay_doi_instance)
+    # ------------------------------------------------------------------ #
+    #  SKELETON LAYOUT                                                     #
+    # ------------------------------------------------------------------ #
+    def create_widgets(self):
+        # ── Tiêu đề ──────────────────────────────────────────────────── #
+        lbl_main_title = tk.Label(
+            self.root, text="Bacontete MCL",
+            font=("Arial", 16, "bold"), fg="#1E88E5"
+        )
+        lbl_main_title.pack(pady=(14, 6))
+
+        # ── Tab bar ───────────────────────────────────────────────────── #
+        self._tab_bar = tk.Frame(self.root, bg="#263238")
+        self._tab_bar.pack(fill="x", padx=0, pady=(0, 4))
+
+        tabs = [
+            ("home",     "🏠 Chơi"),
+            ("modpack",  "🧩 Modpack"),
+            ("settings", "⚙️ Cài đặt"),
+        ]
+        for name, label in tabs:
+            btn = tk.Button(
+                self._tab_bar,
+                text=label,
+                font=("Arial", 9, "bold"),
+                bg=self._TAB_INACTIVE_BG,
+                fg=self._TAB_FG,
+                relief="flat",
+                padx=14, pady=5,
+                bd=0,
+                command=lambda n=name: self._switch_view(n),
+            )
+            btn.pack(side="left", fill="y")
+            self._tab_buttons[name] = btn
+
+        # Nút console cố định bên phải tab bar
+        btn_console = tk.Button(
+            self._tab_bar,
+            text="🖥 Console",
+            font=("Arial", 9, "bold"),
+            bg="#455A64",
+            fg="white",
+            relief="flat",
+            padx=10, pady=5,
+            bd=0,
+            command=self.console.show,
+        )
+        btn_console.pack(side="right")
+
+        # ── Container chứa các view ───────────────────────────────────── #
+        self._container = tk.Frame(self.root)
+        self._container.pack(fill="both", expand=True)
+
+        # Tạo các view frame
+        self._view_frames["home"]     = self._build_home_view(self._container)
+        self._view_frames["modpack"]  = self._build_modpack_view(self._container)
+        self._view_frames["settings"] = self._build_settings_view(self._container)
+
+    # ------------------------------------------------------------------ #
+    #  VIEW SWITCHING                                                      #
+    # ------------------------------------------------------------------ #
+    def _switch_view(self, name: str):
+        if self._current_view == name:
+            return
+
+        # Kiểm tra nếu đang ở modpack và có tác vụ chạy
+        if self._current_view == "modpack":
+            modpack_frame = self._view_frames.get("modpack")
+            if modpack_frame and hasattr(modpack_frame, "can_switch"):
+                if not modpack_frame.can_switch():
+                    from tkinter import messagebox
+                    messagebox.showwarning(
+                        "Đang tải/cài đặt",
+                        "Đang có tác vụ tải/cài đặt đang chạy.\n"
+                        "Vui lòng đợi hoàn tất hoặc hủy trước khi chuyển tab!"
+                    )
+                    return
+
+        # Ẩn tất cả frame
+        for frame in self._view_frames.values():
+            frame.pack_forget()
+
+        # Hiện frame được chọn
+        self._view_frames[name].pack(fill="both", expand=True)
+        self._current_view = name
+
+        # Cập nhật màu tab
+        for tab_name, btn in self._tab_buttons.items():
+            if tab_name == name:
+                btn.configure(bg=self._TAB_ACTIVE_BG, relief="sunken")
+            else:
+                btn.configure(bg=self._TAB_INACTIVE_BG, relief="flat")
+
+    # ------------------------------------------------------------------ #
+    #  VIEW: HOME                                                          #
+    # ------------------------------------------------------------------ #
+    def _build_home_view(self, parent) -> tk.Frame:
+        # Frame gốc dùng place để stack các layer
+        frame = tk.Frame(parent)
+        frame.pack_propagate(True)
+
+        # ── Layer chính (main_layer) ──────────────────────────────────
+        self._home_main = tk.Frame(frame)
+        self._home_main.place(relx=0, rely=0, relwidth=1, relheight=1)
+
+        self.account_frame = AccountFrame(self._home_main, self.khi_thay_doi_instance)
         self.account_frame.pack(pady=10)
 
-        self.instance_frame = InstanceFrame(self.root, self.khi_thay_doi_instance)
+        self.instance_frame = InstanceFrame(self._home_main, self.khi_thay_doi_instance)
         self.instance_frame.pack(pady=10)
 
-        self.lbl_status = tk.Label(self.root, text="Sẵn sàng", font=("Arial", 10, "italic"), fg="gray")
+        self.lbl_status = tk.Label(self._home_main, text="Sẵn sàng", font=("Arial", 10, "italic"), fg="gray")
         self.lbl_status.pack(pady=(5, 2))
 
-        self.frame_progress = tk.Frame(self.root)
+        # Thanh progress
+        self.frame_progress = tk.Frame(self._home_main)
         self.frame_progress.pack(fill="x", padx=40, pady=(0, 4))
-
-        self.progress_bar = ttk.Progressbar(
-            self.frame_progress,
-            orient="horizontal",
-            mode="determinate",
-            length=400
-        )
+        self.progress_bar = ttk.Progressbar(self.frame_progress, orient="horizontal", mode="determinate", length=400)
         self.progress_bar.pack(fill="x")
-
-        self.lbl_progress = tk.Label(
-            self.root, text="", font=("Arial", 8), fg="#555"
-        )
+        self.lbl_progress = tk.Label(self._home_main, text="", font=("Arial", 8), fg="#555")
         self.lbl_progress.pack(pady=(0, 2))
-
         self.frame_progress.pack_forget()
         self.lbl_progress.pack_forget()
 
+        # Nút Launch
         self.btn_launch = tk.Button(
-            self.root,
-            text="▶ VÀO GAME",
-            font=("Arial", 12, "bold"),
-            bg="#1E88E5",
-            fg="white",
-            width=18,
-            height=2,
-            command=self.bat_dau_hoac_tat_game
+            self._home_main, text="▶ VÀO GAME",
+            font=("Arial", 12, "bold"), bg="#1E88E5", fg="white",
+            width=18, height=2, command=self.bat_dau_hoac_tat_game
         )
         self.btn_launch.pack(pady=(10, 8))
 
-        toolbar = tk.Frame(self.root)
+        # Toolbar dưới
+        toolbar = tk.Frame(self._home_main)
         toolbar.pack(side="bottom", fill="x", padx=10, pady=(0, 10))
-
-        left = tk.Frame(toolbar)
-        left.pack(side="left")
-
         self.btn_open_folder = tk.Button(
-            left,
-            text="📂 Thư mục",
-            font=("Arial", 9, "bold"),
-            bg="#43A047",
-            fg="white",
-            padx=8, pady=3,
-            command=self.mo_thu_muc_game
+            toolbar, text="📂 Thư mục", font=("Arial", 9, "bold"),
+            bg="#43A047", fg="white", padx=8, pady=3, command=self.mo_thu_muc_game
         )
         self.btn_open_folder.pack(side="left")
 
-        right = tk.Frame(toolbar)
-        right.pack(side="right")
+        # ── Layer overlay (panel nhúng) ───────────────────────────────
+        self._home_overlay = tk.Frame(frame)
+        # Không place ngay — chỉ show khi cần
 
-        self.btn_modpack = tk.Button(
-            right,
-            text="🧩 Modpack",
-            font=("Arial", 9, "bold"),
-            bg="#5C6BC0",
-            fg="white",
-            padx=8, pady=3,
-            command=self.mo_cua_so_modpack
-        )
-        self.btn_modpack.pack(side="left", padx=(0, 4))
+        # Wire callback từ instance_frame và account_frame
+        self.instance_frame.on_open_create_panel = self._show_create_instance_panel
+        self.account_frame.on_open_add_panel = self._show_add_account_panel
 
-        self.btn_console = tk.Button(
-            right,
-            text="🖥 Console",
-            font=("Arial", 9, "bold"),
-            bg="#37474F",
-            fg="white",
-            padx=8, pady=3,
-            command=self.console.show
-        )
-        self.btn_console.pack(side="left", padx=(0, 4))
+        return frame
 
-        self.btn_setting = tk.Button(
-            right,
-            text="⚙️ Settings",
-            font=("Arial", 9, "bold"),
-            bg="#607D8B",
-            fg="white",
-            padx=8, pady=3,
-            command=self.mo_cua_so_setting
-        )
-        self.btn_setting.pack(side="left")
+    def _show_overlay(self):
+        """Hiện overlay, ẩn main layer."""
+        self._home_main.place_forget()
+        self._home_overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
+        # Xóa nội dung overlay cũ
+        for w in self._home_overlay.winfo_children():
+            w.destroy()
+
+    def _hide_overlay(self):
+        """Ẩn overlay, hiện lại main layer."""
+        self._home_overlay.place_forget()
+        for w in self._home_overlay.winfo_children():
+            w.destroy()
+        self._home_main.place(relx=0, rely=0, relwidth=1, relheight=1)
+        import theme
+        theme.apply_theme(self._home_main)
+
+    def _show_create_instance_panel(self):
+        self._show_overlay()
+        self.instance_frame.build_create_panel(self._home_overlay, self._hide_overlay)
+        import theme
+        theme.apply_theme(self._home_overlay)
+
+    def _show_add_account_panel(self):
+        self._show_overlay()
+        self.account_frame.build_add_panel(self._home_overlay, self._hide_overlay)
+        import theme
+        theme.apply_theme(self._home_overlay)
+
+    # ------------------------------------------------------------------ #
+    #  VIEW: MODPACK (nhúng ModMcFrame trực tiếp)                        #
+    # ------------------------------------------------------------------ #
+    def _build_modpack_view(self, parent) -> tk.Frame:
+        from components.mod_mc import ModMcFrame
+        frame = ModMcFrame(parent, callback_lam_moi=self._lam_moi_instance_frame)
+        return frame
+
+    # ------------------------------------------------------------------ #
+    #  VIEW: SETTINGS (nhúng SettingFrame trực tiếp)                     #
+    # ------------------------------------------------------------------ #
+    def _build_settings_view(self, parent) -> tk.Frame:
+        from components.setting_window import SettingFrame
+        frame = SettingFrame(parent, on_save_callback=self.khi_thay_doi_instance)
+        return frame
 
     def mo_thu_muc_game(self):
         import subprocess, sys
@@ -315,15 +424,16 @@ class MinecraftLauncherApp:
             self.instance_frame.cap_nhat_nhan_thong_tin()
 
     def mo_cua_so_setting(self):
-        SettingWindow(self.root, self.khi_thay_doi_instance)
+        self._switch_view("settings")
 
     def mo_cua_so_modpack(self):
-        ModMcWindow(self.root, self._lam_moi_instance_frame)
+        self._switch_view("modpack")
 
     def _lam_moi_instance_frame(self):
         from components.instance_frame import InstanceFrame
+        home_view = self._view_frames["home"]
         self.instance_frame.destroy()
-        self.instance_frame = InstanceFrame(self.root, self.khi_thay_doi_instance)
+        self.instance_frame = InstanceFrame(home_view, self.khi_thay_doi_instance)
         self.instance_frame.pack(pady=10)
         self.instance_frame.pack_configure(after=self.account_frame)
         theme.apply_theme(self.instance_frame)

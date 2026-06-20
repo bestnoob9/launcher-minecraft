@@ -51,6 +51,9 @@ _LIGHT_TO_DARK = {
     # --- chu ---
     "#1a1a1a": "#e8e8e8",
     "black":   "#e8e8e8",
+    "#222":    "#d0d0d0",
+    "#222222": "#d0d0d0",
+    "#444":    "#cfcfcf",
     "#444444": "#cfcfcf",
     "#555":    "#b5b5b5",
     "#555555": "#b5b5b5",
@@ -59,6 +62,9 @@ _LIGHT_TO_DARK = {
     "#888888": "#9a9a9a",
     "gray":    "#a0a0a0",
     "grey":    "#a0a0a0",
+    # --- mau trang thai / highlight ---
+    "#2e7d32": "#66bb6a",   # xanh la "luot tai" (ModDetailWindow)
+    "#b35900": "#ffb74d",   # cam "tag" (ContentTableWidget)
 }
 
 # Mau dark-mode -> light-mode (chieu nguoc, de doi lai khi ve Sang)
@@ -67,7 +73,11 @@ _DARK_TO_LIGHT = {v: k for k, v in _LIGHT_TO_DARK.items()}
 _DARK_TO_LIGHT.update({
     "#1e1e1e": "#ffffff",
     "#e8e8e8": "#1a1a1a",
+    "#d0d0d0": "#222222",
+    "#cfcfcf": "#444444",
     "#a0a0a0": "gray",
+    "#66bb6a": "#2e7d32",
+    "#ffb74d": "#b35900",
 })
 
 

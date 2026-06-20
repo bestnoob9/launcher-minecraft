@@ -54,6 +54,13 @@ class AccountFrame(tk.Frame):
         self.btn_del_acc.configure(state=trang_thai_btn)
 
     def them_tai_khoan(self):
+        # Nếu main.py đã wire inline panel thì dùng, không thì fallback Toplevel
+        if hasattr(self, 'on_open_add_panel') and self.on_open_add_panel:
+            self.on_open_add_panel()
+            return
+        self._them_tai_khoan_toplevel()
+
+    def _them_tai_khoan_toplevel(self):
         win_add = tk.Toplevel(self)
         win_add.title("Thêm tài khoản")
         win_add.geometry("300x150")
@@ -105,3 +112,42 @@ class AccountFrame(tk.Frame):
             
             config.luu_toan_bo_cau_hinh()
             self.on_change_callback()
+    def build_add_panel(self, parent, on_close):
+        """
+        Dựng form Thêm tài khoản vào 'parent' (Frame inline).
+        on_close() được gọi khi người dùng hủy hoặc thêm xong.
+        """
+        bar = tk.Frame(parent)
+        bar.pack(fill="x", padx=16, pady=(12, 4))
+        tk.Label(bar, text="➕ Thêm tài khoản", font=("Arial", 12, "bold"), fg="#4CAF50").pack(side="left")
+        tk.Button(bar, text="✕ Đóng", font=("Arial", 9), bg="#E53935", fg="white",
+                  relief="flat", padx=6, command=on_close).pack(side="right")
+
+        content = tk.Frame(parent)
+        content.pack(pady=20)
+
+        tk.Label(content, text="Nhập tên tài khoản mới:", font=("Arial", 10)).pack(pady=(0, 8))
+        ent_new_name = tk.Entry(content, font=("Arial", 11), width=22)
+        ent_new_name.pack(pady=4)
+        ent_new_name.focus_set()
+
+        def xu_ly_them():
+            ten_moi = ent_new_name.get().strip()
+            if not ten_moi:
+                messagebox.showwarning("Chú ý", "Tên không được để trống!")
+                return
+            if ten_moi in config.current_config["danh_sach_acc"]:
+                messagebox.showwarning("Chú ý", "Tên tài khoản này đã tồn tại!")
+                return
+            config.current_config["danh_sach_acc"].append(ten_moi)
+            config.current_config["current_account"] = ten_moi
+            config.luu_toan_bo_cau_hinh()
+            self.cbo_username['values'] = config.current_config["danh_sach_acc"]
+            self.cbo_username.set(ten_moi)
+            self.on_change_callback()
+            on_close()
+
+        btn = tk.Button(content, text="✔ Xác nhận", font=("Arial", 10, "bold"),
+                        bg="#4CAF50", fg="white", width=14, height=2, command=xu_ly_them)
+        btn.pack(pady=12)
+        content.bind_all("<Return>", lambda e: xu_ly_them())

@@ -106,6 +106,10 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
 
         self._so_tac_vu_dang_chay = 0
         self._cancel_event        = threading.Event()
+        # Trang thai tien trinh moi nhat - de main.py polling hien thanh
+        # trang thai noi goc tren-phai du dang o tab nao.
+        self._last_progress_pct   = None   # int 0-100 hoac None neu khong co
+        self._last_progress_label = ""
         self._debounce_search     = None
 
         # idx_map khoi tao san de tranh AttributeError neu tab chua load
@@ -132,14 +136,31 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         self._so_tac_vu_dang_chay = max(0, self._so_tac_vu_dang_chay - 1)
         if self._so_tac_vu_dang_chay == 0:
             self._cancel_event.clear()
+            self._last_progress_pct = None
+            self._last_progress_label = ""
             self.after(0, lambda: self.btn_huy.config(state="disabled"))
 
+    def ghi_tien_do(self, pct, label=""):
+        """Ghi lai % tien do moi nhat - goi tu cac closure cai dat trong
+        modrinthmod.py / forgemod.py de main.py co the polling hien thanh
+        trang thai noi (goc tren-phai) du nguoi dung dang o tab nao."""
+        self._last_progress_pct = max(0, min(100, int(pct)))
+        self._last_progress_label = label
+
     def _huy_tac_vu(self):
+        """Dung cho nut Huy o status bar chinh - tu hoi xac nhan."""
         if self._so_tac_vu_dang_chay <= 0:
             return
-        if messagebox.askyesno("Huy", "Ban co chac muon huy?", parent=self):
-            self._cancel_event.set()
-            self.lbl_status.config(text="Dang huy...", fg="#E53935")
+        if messagebox.askyesno("Hủy", "Bạn có chắc muốn hủy?", parent=self):
+            self._huy_tac_vu_khong_hoi()
+
+    def _huy_tac_vu_khong_hoi(self):
+        """Huy ngay khong hoi lai - dung lam cancel_cb cho ModDetailWindow,
+        vi panel do da tu hoi xac nhan truoc khi goi ham nay."""
+        if self._so_tac_vu_dang_chay <= 0:
+            return
+        self._cancel_event.set()
+        self.lbl_status.config(text="Đang hủy...", fg="#E53935")
 
     def _dang_co_tac_vu(self):
         dang_chay_local = self._so_tac_vu_dang_chay > 0
@@ -152,9 +173,9 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
     def _xu_ly_dong_cua_so(self):
         if self._dang_co_tac_vu():
             messagebox.showwarning(
-                "Dang cai dat",
-                "Dang tai/cai dat Mod, Modpack, Resource Pack hoac Shader.\n"
-                "Vui long doi den khi hoan tat hoac huy de dong cua so nay!",
+                "Đang cài đặt",
+                "Đang cài đặt Mod, Modpack, Resource Pack hoặc Shader.\n"
+                "Vui lòng đợi!",
                 parent=self)
             return
         self.destroy()
@@ -170,7 +191,8 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         for w in dv_frame.winfo_children():
             w.destroy()
         panel = ModDetailWindow(dv_frame, source, data, versions,
-                                install_cb=install_cb, on_back=_back, accent=accent)
+                                install_cb=install_cb, on_back=_back,
+                                cancel_cb=self._huy_tac_vu, accent=accent)
         panel.pack(fill="both", expand=True)
         lv_frame.pack_forget()
         dv_frame.pack(fill="both", expand=True)
@@ -207,7 +229,7 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         # O tim kiem chung
         search_bar = tk.Frame(self)
         search_bar.pack(fill="x", padx=14, pady=(0, 4))
-        tk.Label(search_bar, text="Tim kiem:", font=("Arial", 10)).pack(side="left")
+        tk.Label(search_bar, text="Tìm kiếm:", font=("Arial", 10)).pack(side="left")
         self.ent_search = tk.Entry(search_bar, font=("Arial", 10), width=34)
         self.ent_search.pack(side="left", padx=6)
         self.ent_search.bind("<Return>", lambda e: self._search_current_tab())
@@ -220,6 +242,21 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
                   activebackground="#607D8B", activeforeground="white",
                   command=self._top_current_tab).pack(side="left", padx=4)
 
+        # Status bar - tao va pack TRUOC Notebook chinh, dung side="bottom" de
+        # luon duoc danh rieng khong gian o day cua so, KHONG bi Notebook
+        # (pack voi expand=True) day ra ngoai vung nhin thay khi noi dung ben
+        # trong (vd ModDetailWindow) qua dai.
+        status_bar = tk.Frame(self)
+        status_bar.pack(side="bottom", fill="x", padx=14, pady=(2, 6))
+        self.lbl_status = tk.Label(status_bar, text="Dang tai...",
+                                   font=("Arial", 9, "italic"), fg="#1E88E5", anchor="w")
+        self.lbl_status.pack(side="left", fill="x", expand=True)
+        self.btn_huy = tk.Button(status_bar, text="Hủy", font=("Arial", 9, "bold"),
+                                 bg="#E53935", fg="white",
+                                 activebackground="#E53935", activeforeground="white",
+                                 width=8, state="disabled", command=self._huy_tac_vu)
+        self.btn_huy.pack(side="right", padx=(8, 0))
+
         self.nb = ttk.Notebook(self)
         self.nb.pack(fill="both", expand=True, padx=12, pady=4)
 
@@ -231,7 +268,7 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         self.tab_f          = tk.Frame(self.nb)
         self.nb.add(self.tab_modrinth,   text="  Modrinth  ")
         self.nb.add(self.tab_curseforge, text="  CurseForge  ")
-        self.nb.add(self.tab_f,          text="  Cai tu File  ")
+        self.nb.add(self.tab_f,          text="  Import  ")
 
         # Sub-notebook Modrinth
         self.nb_mr = ttk.Notebook(self.tab_modrinth)
@@ -267,18 +304,6 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         self._build_rsp_cf_tab()
         self._build_shader_cf_tab()
         self._build_file()
-
-        # Status bar
-        status_bar = tk.Frame(self)
-        status_bar.pack(fill="x", padx=14, pady=(2, 6))
-        self.lbl_status = tk.Label(status_bar, text="Dang tai...",
-                                   font=("Arial", 9, "italic"), fg="#1E88E5", anchor="w")
-        self.lbl_status.pack(side="left", fill="x", expand=True)
-        self.btn_huy = tk.Button(status_bar, text="Huy", font=("Arial", 9, "bold"),
-                                 bg="#E53935", fg="white",
-                                 activebackground="#E53935", activeforeground="white",
-                                 width=8, state="disabled", command=self._huy_tac_vu)
-        self.btn_huy.pack(side="right", padx=(8, 0))
 
         # Bat dau load ngay cac tab luon hien thi
         threading.Thread(target=self._load_mr_top,  daemon=True).start()
@@ -389,8 +414,8 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
     def _done(self):
         if self.callback_lam_moi:
             self.callback_lam_moi()
-        messagebox.showinfo("Thanh cong",
-            "Da cai dat thanh cong!\nInstance moi da xuat hien trong danh sach.", parent=self)
+        messagebox.showinfo("Thành công",
+            "Đã cài đặt thành công!\nInstance mới đã xuất hiện trong danh sách.", parent=self)
 
 
 # =====================================================================
@@ -409,6 +434,10 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
 
         self._so_tac_vu_dang_chay = 0
         self._cancel_event        = threading.Event()
+        # Trang thai tien trinh moi nhat - de main.py polling hien thanh
+        # trang thai noi goc tren-phai du dang o tab nao.
+        self._last_progress_pct   = None   # int 0-100 hoac None neu khong co
+        self._last_progress_label = ""
         self._debounce_search     = None
 
         self._modmr_ver_idx_map  = []
@@ -421,8 +450,10 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
         self._build_ui()
 
     def can_switch(self) -> bool:
-        """Tra ve True neu khong co tac vu dang chay (an toan de chuyen view)."""
-        return not self._dang_co_tac_vu()
+        """Luon cho phep chuyen view, ke ca khi dang co tac vu tai/cai dat
+        chay ngam - vi ModMcFrame khong bi destroy khi doi tab (chi pack_forget),
+        nen thread cai dat van song binh thuong va co the tiep tuc/huy duoc."""
+        return True
 
     # Cac method dung chung voi ModMcWindow duoc dinh nghia lai o day
     # de Frame khong phu thuoc vao viec copy tu Toplevel.
@@ -436,14 +467,31 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
         self._so_tac_vu_dang_chay = max(0, self._so_tac_vu_dang_chay - 1)
         if self._so_tac_vu_dang_chay == 0:
             self._cancel_event.clear()
+            self._last_progress_pct = None
+            self._last_progress_label = ""
             self.after(0, lambda: self.btn_huy.config(state="disabled"))
 
+    def ghi_tien_do(self, pct, label=""):
+        """Ghi lai % tien do moi nhat - goi tu cac closure cai dat trong
+        modrinthmod.py / forgemod.py de main.py co the polling hien thanh
+        trang thai noi (goc tren-phai) du nguoi dung dang o tab nao."""
+        self._last_progress_pct = max(0, min(100, int(pct)))
+        self._last_progress_label = label
+
     def _huy_tac_vu(self):
+        """Dung cho nut Huy o status bar chinh - tu hoi xac nhan."""
         if self._so_tac_vu_dang_chay <= 0:
             return
-        if messagebox.askyesno("Huy", "Ban co chac muon huy?", parent=self):
-            self._cancel_event.set()
-            self.lbl_status.config(text="Dang huy...", fg="#E53935")
+        if messagebox.askyesno("Hủy", "Bạn có chắc muốn hủy?", parent=self):
+            self._huy_tac_vu_khong_hoi()
+
+    def _huy_tac_vu_khong_hoi(self):
+        """Huy ngay khong hoi lai - dung lam cancel_cb cho ModDetailWindow,
+        vi panel do da tu hoi xac nhan truoc khi goi ham nay."""
+        if self._so_tac_vu_dang_chay <= 0:
+            return
+        self._cancel_event.set()
+        self.lbl_status.config(text="Dang huy...", fg="#E53935")
 
     def _dang_co_tac_vu(self):
         dang_chay_local = self._so_tac_vu_dang_chay > 0
@@ -460,7 +508,8 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
         for w in dv_frame.winfo_children():
             w.destroy()
         panel = ModDetailWindow(dv_frame, source, data, versions,
-                                install_cb=install_cb, on_back=_back, accent=accent)
+                                install_cb=install_cb, on_back=_back,
+                                cancel_cb=self._huy_tac_vu, accent=accent)
         panel.pack(fill="both", expand=True)
         lv_frame.pack_forget()
         dv_frame.pack(fill="both", expand=True)
@@ -522,6 +571,21 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
                   activebackground="#607D8B", activeforeground="white",
                   command=self._top_current_tab).pack(side="left", padx=4)
 
+        # Status bar - tao va pack TRUOC Notebook chinh, dung side="bottom" de
+        # luon duoc danh rieng khong gian o day cua so, KHONG bi Notebook
+        # (pack voi expand=True) day ra ngoai vung nhin thay khi noi dung ben
+        # trong (vd ModDetailWindow) qua dai.
+        status_bar = tk.Frame(self)
+        status_bar.pack(side="bottom", fill="x", padx=14, pady=(2, 6))
+        self.lbl_status = tk.Label(status_bar, text="Dang tai...",
+                                   font=("Arial", 9, "italic"), fg="#1E88E5", anchor="w")
+        self.lbl_status.pack(side="left", fill="x", expand=True)
+        self.btn_huy = tk.Button(status_bar, text="Hủy", font=("Arial", 9, "bold"),
+                                 bg="#E53935", fg="white",
+                                 activebackground="#E53935", activeforeground="white",
+                                 width=8, state="disabled", command=self._huy_tac_vu)
+        self.btn_huy.pack(side="right", padx=(8, 0))
+
         self.nb = ttk.Notebook(self)
         self.nb.pack(fill="both", expand=True, padx=12, pady=4)
 
@@ -532,7 +596,7 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
         self.tab_f          = tk.Frame(self.nb)
         self.nb.add(self.tab_modrinth,   text="  Modrinth  ")
         self.nb.add(self.tab_curseforge, text="  CurseForge  ")
-        self.nb.add(self.tab_f,          text="  Cai tu File  ")
+        self.nb.add(self.tab_f,          text="  Import  ")
 
         self.nb_mr = ttk.Notebook(self.tab_modrinth)
         self.nb_mr.pack(fill="both", expand=True)
@@ -566,17 +630,6 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
         self._build_rsp_cf_tab()
         self._build_shader_cf_tab()
         self._build_file()
-
-        status_bar = tk.Frame(self)
-        status_bar.pack(fill="x", padx=14, pady=(2, 6))
-        self.lbl_status = tk.Label(status_bar, text="Dang tai...",
-                                   font=("Arial", 9, "italic"), fg="#1E88E5", anchor="w")
-        self.lbl_status.pack(side="left", fill="x", expand=True)
-        self.btn_huy = tk.Button(status_bar, text="Huy", font=("Arial", 9, "bold"),
-                                 bg="#E53935", fg="white",
-                                 activebackground="#E53935", activeforeground="white",
-                                 width=8, state="disabled", command=self._huy_tac_vu)
-        self.btn_huy.pack(side="right", padx=(8, 0))
 
         threading.Thread(target=self._load_mr_top,  daemon=True).start()
         threading.Thread(target=self._load_cf_top,  daemon=True).start()

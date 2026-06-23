@@ -413,15 +413,32 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
             id_phien_ban_chay = da_cai
             _set_status(f"Da cai NeoForge {version_mod_da_chon}, bo qua cai dat lai...")
         else:
-            try:
-                minecraft_launcher_lib.neoforge.install_neoforge_version(version_mod_da_chon, thu_muc_game, callback=_callbacks)
-            except AttributeError:
+            # Tu ban 8.0, minecraft-launcher-lib BO HAN module "neoforge" rieng,
+            # chuyen het sang module "mod_loader" thong nhat cho ca
+            # Forge/NeoForge/Fabric/Quilt. Uu tien dung API moi nay; neu thu
+            # vien dang dung la ban cu hon 8.0 (chua co mod_loader), fallback
+            # ve module "neoforge" cu (neu co) de van tuong thich nguoc.
+            if hasattr(minecraft_launcher_lib, "mod_loader"):
+                try:
+                    loader = minecraft_launcher_lib.mod_loader.get_mod_loader("neoforge")
+                    id_phien_ban_chay = loader.install(
+                        version_goc, thu_muc_game,
+                        loader_version=version_mod_da_chon, callback=_callbacks)
+                except Exception as e:
+                    raise Exception(f"Cai NeoForge {version_mod_da_chon} thất bại: {e}")
+            elif hasattr(minecraft_launcher_lib, "neoforge"):
+                try:
+                    minecraft_launcher_lib.neoforge.install_neoforge_version(
+                        version_mod_da_chon, thu_muc_game, callback=_callbacks)
+                except AttributeError:
+                    raise Exception("NeoForge chưa được hỗ trợ. Hãy chạy: pip install --upgrade minecraft-launcher-lib")
+                if os.path.exists(thu_muc_versions):
+                    for folder in os.listdir(thu_muc_versions):
+                        if "neoforge" in folder.lower() and _khop_chinh_xac_version(version_mod_da_chon, folder):
+                            id_phien_ban_chay = folder
+                            break
+            else:
                 raise Exception("NeoForge chưa được hỗ trợ. Hãy chạy: pip install --upgrade minecraft-launcher-lib")
-            if os.path.exists(thu_muc_versions):
-                for folder in os.listdir(thu_muc_versions):
-                    if "neoforge" in folder.lower() and _khop_chinh_xac_version(version_mod_da_chon, folder):
-                        id_phien_ban_chay = folder
-                        break
 
     elif loai_game == "Forge" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
         da_cai = _tim_phien_ban_loader_da_cai(
@@ -478,6 +495,22 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
         except Exception as e:
             lbl_status.after(0, lambda: lbl_status.config(text=f"Lỗi tạo file cấu hình: {e}", fg="red"))
             return
+
+    # "Latest Version" la instance dac biet LUON phai tro toi ban Minecraft moi
+    # nhat - version_goc cua no duoc tu dong cap nhat trong config (xem
+    # instance_frame.py) moi lan mo app, nhung instance_info.json tren dia
+    # chi duoc ghi 1 lan luc tao nen co the bi "ket" o phien ban cu. Vi vay,
+    # voi instance nay, luon dong bo lai version_goc moi nhat tu config truoc
+    # khi doc, tranh chay nham phien ban cu (vd 26.1.2 trong khi config da la 26.2).
+    if ten_instance == "Latest Version" or ten_folder_instance == "Latest_Version":
+        ds_instances = config.current_config.get("danh_sach_instances", {})
+        data_latest = ds_instances.get("Latest Version")
+        if data_latest:
+            try:
+                with open(file_thong_tin, "w", encoding="utf-8") as f:
+                    json.dump(data_latest, f, indent=4, ensure_ascii=False)
+            except Exception:
+                pass  # neu ghi loi thi van tiep tuc doc file cu, khong chan nguoi dung
 
     try:
         with open(file_thong_tin, "r", encoding="utf-8") as f:
@@ -584,9 +617,17 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
         lbl_status.after(0, lambda: lbl_status.config(text="Sẵn sàng", fg="gray"))
         return None
     except Exception as e:
+        # QUAN TRONG: KHONG tu "an" loi va return None o day. Truoc day code
+        # chi cap nhat lbl_status roi return None, nhung ben goi (main.py)
+        # ngay sau do lai TU GHI DE lbl_status thanh "San sang" (vi proc=None
+        # duoc hieu la "da huy hop le", giong InterruptedError) - khien thong
+        # bao loi thuc su (vd thieu loader NeoForge, version_mod sai dinh
+        # dang...) bi xoa mat trong vong chua toi 1 giay, tao cam giac "bam
+        # Vao game ma khong co gi xay ra". Raise lai de main.py's except
+        # Exception (co messagebox.showerror ro rang) xu ly dung.
         err = str(e)
         lbl_status.after(0, lambda: lbl_status.config(text=f"Thất bại: {err}", fg="red"))
-        return None
+        raise
 def lay_danh_sach_phien_ban_theo_loai(loai):
     """loai: release | snapshot | old_beta | old_alpha"""
     try:

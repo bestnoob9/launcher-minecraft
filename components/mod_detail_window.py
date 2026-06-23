@@ -23,7 +23,7 @@ import threading
 import urllib.request
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 
 try:
     import theme as _theme
@@ -91,23 +91,34 @@ class ModDetailWindow(tk.Frame):
     source       : 'modrinth' | 'curseforge'
     data         : dict du lieu cua mod (1 phan tu tu API)
     versions_raw : list phien ban da tai truoc (co the rong -> se tai them)
-    install_cb   : callable(version_data) -> goi khi nhan "Cai dat"
-                   version_data la dict phien ban dang chon
+    install_cb   : callable(version_data, on_done=None, progress_cb=None) -> goi
+                   khi nhan "Cai dat". version_data la dict phien ban dang chon.
+                   Ben goi (mod_mc.py / modrinthmod.py / forgemod.py) PHAI tu
+                   goi on_done() khi tac vu tai/cai dat ket thuc - du la thanh
+                   cong, loi, hay bi huy - de panel nay biet duong ma doi nut
+                   "Huy" tro lai thanh "Cai dat". Neu duoc cung cap progress_cb,
+                   ben goi nen goi progress_cb(da, tong) de cap nhat thanh %.
     on_back      : callable() -> goi khi nguoi dung nhan "Quay lai danh sach"
                    (de container chuyen view tro lai bang danh sach)
+    cancel_cb    : callable() -> goi khi nguoi dung nhan nut "Huy" trong luc
+                   dang cai dat (thuong la self._huy_tac_vu cua ModMcWindow/
+                   ModMcFrame - se tu hoi xac nhan va set _cancel_event).
+                   Neu None, nut se khong chuyen thanh "Huy" duoc.
     accent       : mau accent (hex string)
     """
 
     def __init__(self, parent, source, data, versions_raw,
-                 install_cb, on_back=None, accent="#1E88E5"):
+                 install_cb, on_back=None, cancel_cb=None, accent="#1E88E5"):
         super().__init__(parent)
         self._source   = source
         self._data     = data
         self._versions = list(versions_raw) if versions_raw else []
         self._install_cb = install_cb
         self._on_back   = on_back
+        self._cancel_cb = cancel_cb
         self._accent   = accent
         self._banner_photo = None   # giu ref tranh GC
+        self._dang_cai  = False     # True trong luc cho install_cb hoan tat
 
         # --- Lay thong tin co ban ---
         if source == "modrinth":
@@ -117,6 +128,11 @@ class ModDetailWindow(tk.Frame):
             self._dl      = data.get("downloads", 0)
             self._icon_url  = data.get("icon_url", "")
             self._pid     = data.get("project_id", data.get("slug", ""))
+            # Gallery: list cac anh chi tiet (modpack / resource pack / shader...)
+            gallery = data.get("gallery") or []
+            self._gallery_urls = [
+                g.get("url", "") for g in gallery if isinstance(g, dict) and g.get("url")
+            ]
         else:  # curseforge
             self._title   = data.get("name", "")
             authors       = data.get("authors", [])
@@ -127,9 +143,20 @@ class ModDetailWindow(tk.Frame):
             self._icon_url = (logo.get("url", "") or
                               logo.get("thumbnailUrl", ""))
             self._pid     = data.get("id", "")
+            # Gallery: screenshots cua CurseForge
+            shots = data.get("screenshots") or []
+            self._gallery_urls = [
+                s.get("url", "") or s.get("thumbnailUrl", "")
+                for s in shots if isinstance(s, dict)
+            ]
+            self._gallery_urls = [u for u in self._gallery_urls if u]
+
+        self._gallery_photos = []   # giu ref PhotoImage tranh GC
+        self._gallery_big_photo = None
 
         self._build_ui()
         self._load_banner()
+        self._load_gallery()
 
         # Neu chua co phien ban -> tai ngay
         if not self._versions:
@@ -173,13 +200,14 @@ class ModDetailWindow(tk.Frame):
         # === ROW 0: NUT QUAY LAI ===
         back_bar = tk.Frame(self, bg=BG)
         back_bar.grid(row=0, column=0, sticky="ew", padx=16, pady=(10, 0))
-        tk.Button(
+        self.btn_back = tk.Button(
             back_bar, text="←  Quay lại danh sách",
             font=("Arial", 9, "bold"),
             bg="#78909C", fg="white",
             activebackground="#607D8B", activeforeground="white",
             relief="flat", padx=10, pady=4,
-            command=self._go_back).pack(side="left")
+            command=self._go_back)
+        self.btn_back.pack(side="left")
 
         # === ROW 1: PANEL TREN - anh + thong tin ===
         self._top = tk.Frame(self, bg=BG)
@@ -268,23 +296,87 @@ class ModDetailWindow(tk.Frame):
 
         self._set_changelog("Chọn phiên bản để xem bản ghi thay đổi.")
 
+        # === TAB "Hinh anh" (gallery anh modpack / resource pack / shader) ===
+        tab_gallery = tk.Frame(self.nb, bg=BG)
+        self.nb.add(tab_gallery, text="  Hình ảnh  ")
+
+        # Khung xem anh lon (hien khi click vao thumbnail)
+        self._gal_big_frame = tk.Frame(tab_gallery, bg=BG)
+        self._gal_big_frame.pack(fill="x", padx=4, pady=(4, 0))
+
+        self.lbl_gallery_big = tk.Label(
+            self._gal_big_frame, bg=ICON_BG, relief="flat", bd=0)
+        self.lbl_gallery_big.pack()
+        self._gal_big_frame.pack_forget()  # an cho den khi co anh duoc chon
+
+        # Khung cuon chua cac thumbnail
+        gal_outer = tk.Frame(tab_gallery, bg=BG)
+        gal_outer.pack(fill="both", expand=True, padx=4, pady=4)
+
+        self._gal_canvas = tk.Canvas(gal_outer, bg=BG, highlightthickness=0)
+        gal_sb = ttk.Scrollbar(gal_outer, orient="vertical",
+                                command=self._gal_canvas.yview)
+        self._gal_canvas.configure(yscrollcommand=gal_sb.set)
+        gal_sb.pack(side="right", fill="y")
+        self._gal_canvas.pack(side="left", fill="both", expand=True)
+
+        self._gal_inner = tk.Frame(self._gal_canvas, bg=BG)
+        self._gal_canvas.create_window((0, 0), window=self._gal_inner,
+                                        anchor="nw", tags=("inner",))
+
+        self._gal_inner.bind(
+            "<Configure>",
+            lambda e: self._gal_canvas.configure(
+                scrollregion=self._gal_canvas.bbox("all")))
+        self._gal_canvas.bind(
+            "<Configure>",
+            lambda e: self._gal_canvas.itemconfigure("inner", width=e.width))
+
+        self.lbl_gallery_status = tk.Label(
+            self._gal_inner, text="Đang tải hình ảnh..." if self._gallery_urls
+            else "Mod này chưa có hình ảnh nào.",
+            font=("Arial", 9, "italic"), fg=FG_SUB, bg=BG)
+        self.lbl_gallery_status.pack(anchor="w", padx=8, pady=8)
+
         # === ROW 5: THANH NUT CAI DAT (co dinh o day) ===
         btn_bar = tk.Frame(self, bg=BG)
         btn_bar.grid(row=5, column=0, sticky="ew", padx=16, pady=(6, 12))
+        btn_bar.columnconfigure(0, weight=1)
+
+        # Thanh tien trinh - an khi khong cai dat, hien khi dang cai
+        self._progress_var = tk.DoubleVar(value=0)
+        self.pb_install = ttk.Progressbar(
+            btn_bar, orient="horizontal", mode="determinate",
+            variable=self._progress_var, maximum=100, length=200)
+        # Se duoc grid() vao row=0 khi bat dau cai (xem _set_install_ui_state)
+
+        self.lbl_progress_pct = tk.Label(
+            btn_bar, text="", font=("Arial", 9, "bold"),
+            fg=self._accent, bg=BG)
+        # Cung chi grid() khi dang cai
+
+        row_btn = tk.Frame(btn_bar, bg=BG)
+        row_btn.grid(row=1, column=0, sticky="ew", pady=(6, 0))
 
         self.btn_install = tk.Button(
-            btn_bar, text="⬇  Cài đặt",
+            row_btn, text="⬇  Cài đặt",
             font=("Arial", 10, "bold"),
             bg=self._accent, fg="white",
             activebackground=self._accent, activeforeground="white",
             relief="flat", padx=16, pady=6,
-            command=self._on_install)
+            command=self._on_install_or_cancel)
         self.btn_install.pack(side="left", padx=(0, 8))
 
         self.lbl_detail_status = tk.Label(
-            btn_bar, text="", font=("Arial", 9, "italic"),
+            row_btn, text="", font=("Arial", 9, "italic"),
             fg=self._accent, bg=BG, anchor="w")
         self.lbl_detail_status.pack(side="left", padx=12)
+
+        # Goi y dung nut Huy o status bar chinh - chi hien trong luc dang cai
+        self.lbl_cancel_hint = tk.Label(
+            btn_bar, text="💡 Muốn hủy? Dùng nút Hủy ở thanh trạng thái phía dưới cùng.",
+            font=("Arial", 8, "italic"), fg=FG_SUB, bg=BG, anchor="w")
+        # Chi grid() khi dang cai (xem _set_install_ui_state)
 
         # Goi apply_theme ngay sau khi build xong de dong bo mau voi toan bo app
         if _theme:
@@ -315,6 +407,81 @@ class ModDetailWindow(tk.Frame):
             self.lbl_banner.configure(image=photo, width=photo.width(),
                                        height=photo.height())
             self.lbl_banner.image = photo
+        except tk.TclError:
+            pass
+
+    # ------------------------------------------------------------------
+    # TAI GALLERY ANH (modpack / resource pack / shader...)
+    # ------------------------------------------------------------------
+
+    _GAL_THUMB_SIZE = (140, 90)
+
+    def _load_gallery(self):
+        urls = self._gallery_urls
+        if not urls or not _PIL_OK:
+            return
+
+        def _t():
+            results = []
+            for url in urls:
+                photo = _fetch_image(url, size=self._GAL_THUMB_SIZE)
+                results.append((url, photo))
+            self._safe_after(lambda: self._render_gallery(results))
+
+        threading.Thread(target=_t, daemon=True).start()
+
+    def _render_gallery(self, results):
+        # Xoa label trang thai "Dang tai..."
+        try:
+            self.lbl_gallery_status.destroy()
+        except tk.TclError:
+            pass
+
+        ok_results = [(u, p) for u, p in results if p is not None]
+        if not ok_results:
+            clr = _theme.colors() if _theme else {}
+            BG = clr.get("bg_alt", "#f5f5f7")
+            FG_SUB = clr.get("fg_author", "#5b6b8c")
+            tk.Label(
+                self._gal_inner, text="Không thể tải hình ảnh.",
+                font=("Arial", 9, "italic"), fg=FG_SUB, bg=BG
+            ).pack(anchor="w", padx=8, pady=8)
+            return
+
+        clr = _theme.colors() if _theme else {}
+        BG = clr.get("bg_alt", "#f5f5f7")
+
+        # Hien thi thumbnail dang luoi (wrap nhieu dong) bang grid
+        cols = 3
+        for i, (url, photo) in enumerate(ok_results):
+            self._gallery_photos.append(photo)  # giu ref tranh GC
+            r, c = divmod(i, cols)
+            cell = tk.Frame(self._gal_inner, bg=BG)
+            cell.grid(row=r, column=c, padx=6, pady=6, sticky="n")
+
+            btn = tk.Label(
+                cell, image=photo, bg=BG, cursor="hand2",
+                relief="flat", bd=0)
+            btn.image = photo
+            btn.pack()
+            btn.bind("<Button-1>",
+                     lambda e, u=url: self._show_gallery_big(u))
+
+    def _show_gallery_big(self, url):
+        """Phong to anh duoc click trong tab Hinh anh (khong mo cua so moi)."""
+        def _t():
+            photo = _fetch_image(url, size=(640, 360))
+            if photo:
+                self._safe_after(lambda: self._set_gallery_big(photo))
+
+        threading.Thread(target=_t, daemon=True).start()
+
+    def _set_gallery_big(self, photo):
+        self._gallery_big_photo = photo  # giu ref
+        try:
+            self.lbl_gallery_big.configure(image=photo)
+            self.lbl_gallery_big.image = photo
+            self._gal_big_frame.pack(fill="x", padx=4, pady=(4, 0))
         except tk.TclError:
             pass
 
@@ -453,14 +620,87 @@ class ModDetailWindow(tk.Frame):
     # ------------------------------------------------------------------
 
     def _go_back(self):
-        """Goi khi nguoi dung nhan nut 'Quay lai danh sach'."""
+        """Goi khi nguoi dung nhan nut 'Quay lai danh sach'.
+        Cho phep quay lai NGAY CA KHI dang cai dat - tien trinh van tiep tuc
+        chay ngam (giong tinh thần can_switch() luon True cua mod_mc.py).
+        progress_cb/on_done deu da tu kiem tra winfo_exists() truoc khi dong
+        vao widget, nen an toan khi panel nay bi destroy giua luc dang cai."""
         if self._on_back:
             self._on_back()
 
-    def _on_install(self):
+    def _on_install_or_cancel(self):
+        """Bam nut nay khi CHUA cai -> bat dau cai dat, nut tu disable.
+        Khong con vai tro 'Huy' tren nut nay nua - de huy mot tac vu dang
+        chay, nguoi dung dung nut Huy o thanh trang thai chinh (status bar
+        duoi cung cua mod_mc.py), vi do la noi quan ly tac vu duy nhat va
+        dang hoat dong dung/on dinh nhat trong app."""
+        if self._dang_cai:
+            return  # nut da disable nen binh thuong khong vao day duoc
+
         idx = self.cbo_ver.current()
         if idx < 0 or not self._versions:
             return
         vd = self._versions[idx]
-        self._go_back()
-        self._install_cb(vd)
+
+        self._dang_cai = True
+        self._progress_var.set(0)
+        self.lbl_progress_pct.configure(text="")
+        self._set_install_ui_state(installing=True)
+        # KHONG quay lai danh sach ngay - panel o lai de nguoi dung theo doi
+        # % tien do, nhung van co the bam "Quay lai danh sach" bat cu luc nao.
+        self._install_cb(vd, on_done=self._on_install_done, progress_cb=self.update_progress)
+
+    def _on_install_done(self):
+        """Goi boi ben cai dat thuc su (mod_mc.py / modrinthmod.py / forgemod.py)
+        khi tac vu tai/cai dat ket thuc - du thanh cong, loi, hay bi huy.
+        An toan khi panel da bi destroy (vd nguoi dung da dong cua so)."""
+        if not self.winfo_exists():
+            return
+        self._dang_cai = False
+        try:
+            self._set_install_ui_state(installing=False)
+        except tk.TclError:
+            pass
+
+    def update_progress(self, da, tong, label_text=None):
+        """Cap nhat thanh tien trinh % - goi boi ben cai dat thuc su qua
+        progress_cb(da, tong, label_text=None). 'da'/'tong' dung de tinh % cho
+        thanh progressbar (luon theo thang 0-100, vi du so mod da cai/tong so
+        mod cho Modpack, hoac % byte da tai cho Mod/RSP/Shader le).
+        'label_text' tuy chon - neu duoc truyen se hien thi thay cho '{pct}%'
+        (vi du '12/45 mod' cho Modpack). An toan khi panel da bi destroy."""
+        if not self.winfo_exists():
+            return
+        try:
+            pct = 0 if not tong else max(0, min(100, int(da / tong * 100)))
+            self._progress_var.set(pct)
+            self.lbl_progress_pct.configure(text=label_text if label_text else f"{pct}%")
+        except (tk.TclError, ZeroDivisionError):
+            pass
+
+    def _set_install_ui_state(self, installing):
+        """Cap nhat giao dien nut Cai dat (disable luc dang cai, KHONG doi
+        thanh nut Huy nua) va thanh tien trinh. Nut 'Quay lai danh sach'
+        luon duoc giu o trang thai 'normal', khong bi khoa."""
+        if installing:
+            self.btn_install.configure(
+                text="⏳ Đang cài...", bg="#78909C", activebackground="#78909C",
+                state="disabled")
+            try:
+                self.cbo_ver.configure(state="disabled")
+            except tk.TclError:
+                pass
+            self.pb_install.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+            self.lbl_progress_pct.grid(row=0, column=1, sticky="w")
+            self.lbl_cancel_hint.grid(row=2, column=0, columnspan=2, sticky="w", pady=(2, 0))
+        else:
+            self.btn_install.configure(
+                text="⬇  Cài đặt", bg=self._accent, activebackground=self._accent,
+                state="normal")
+            try:
+                self.cbo_ver.configure(state="readonly")
+            except tk.TclError:
+                pass
+            self.pb_install.grid_remove()
+            self.lbl_progress_pct.grid_remove()
+            self.lbl_cancel_hint.grid_remove()

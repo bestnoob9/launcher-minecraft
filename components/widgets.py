@@ -84,6 +84,11 @@ class FilterBar(tk.Frame):
         else:
             self.cbo_category = None
 
+        # Map ten hien thi -> id thuc (chi dung cho CurseForge, category_id
+        # so nguyen). Voi Modrinth, category la chuoi nen khong can map nay
+        # (xem get(), se tra ve ten chuoi truc tiep neu map rong).
+        self._category_id_map = {}
+
         tk.Button(self, text="Loc", font=("Arial", 8, "bold"),
                   bg=accent_color, fg="white", activebackground=accent_color,
                   activeforeground="white", pady=1, command=self._cb).pack(side="left", padx=(0, 4))
@@ -91,11 +96,39 @@ class FilterBar(tk.Frame):
                   bg="#78909C", fg="white", activebackground="#78909C",
                   activeforeground="white", pady=1, command=self._reset).pack(side="left")
 
+    def set_categories(self, categories):
+        """
+        Cap nhat lai danh sach category hien trong dropdown sau khi widget
+        da duoc tao - dung cho CurseForge, vi category that phai tai bat
+        dong bo tu API (lay_category_curseforge), khac voi Modrinth co list
+        CATEGORIES co dinh san co tu luc khoi tao.
+        categories: list[dict] dang [{"id": 421, "name": "Adventure and RPG"}, ...]
+        """
+        if not self.cbo_category:
+            return
+        names = ["Tat ca"] + [c["name"] for c in categories]
+        self._category_id_map = {c["name"]: c["id"] for c in categories}
+        cur = self.cbo_category.get()
+        self.cbo_category.configure(values=names)
+        # Giu lai lua chon cu neu ten do van con trong danh sach moi
+        self.cbo_category.set(cur if cur in names else "Tat ca")
+
     def get(self):
-        """Tra ve (mc_version, loader, category)."""
-        ver      = self.ent_ver.get().strip()
-        loader   = self.cbo_loader.get() if self.cbo_loader else "Tat ca"
-        category = self.cbo_category.get() if self.cbo_category else "Tat ca"
+        """
+        Tra ve (mc_version, loader, category).
+        'category' la chuoi ten (Modrinth) HOAC id so (CurseForge, neu
+        set_categories() da duoc goi truoc do voi du lieu that tu API) -
+        tra ve None/"" khi dang chon "Tat ca" (khong loc theo category).
+        """
+        ver    = self.ent_ver.get().strip()
+        loader = self.cbo_loader.get() if self.cbo_loader else "Tat ca"
+        cat_ten = self.cbo_category.get() if self.cbo_category else "Tat ca"
+        if cat_ten in ("Tat ca", ""):
+            category = ""
+        elif self._category_id_map:
+            category = self._category_id_map.get(cat_ten, "")
+        else:
+            category = cat_ten
         return ver, loader, category
 
     def _reset(self):

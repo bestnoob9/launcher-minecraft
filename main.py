@@ -233,6 +233,17 @@ class MinecraftLauncherApp:
             btn.pack(side="left", fill="y")
             self._tab_buttons[name] = btn
 
+        # Nhãn trạng thái nổi (góc trên-phải) - hiện % tiến trình cài đặt
+        # Modpack/Mod/RSP/Shader đang chạy ngầm, hiển thị dù đang ở tab nào.
+        self.lbl_floating_progress = tk.Label(
+            self._tab_bar,
+            text="",
+            font=("Arial", 9, "bold"),
+            bg="#263238",
+            fg="#1E88E5",
+        )
+        self.lbl_floating_progress.pack(side="right", padx=(0, 12))
+
         # Nút console cố định bên phải tab bar
         btn_console = tk.Button(
             self._tab_bar,
@@ -255,6 +266,9 @@ class MinecraftLauncherApp:
         self._view_frames["home"]     = self._build_home_view(self._container)
         self._view_frames["modpack"]  = self._build_modpack_view(self._container)
         self._view_frames["settings"] = self._build_settings_view(self._container)
+
+        # Bắt đầu polling trạng thái tiến trình Modpack (chạy ngầm dù đổi tab)
+        self._poll_modpack_progress()
 
     # ------------------------------------------------------------------ #
     #  VIEW SWITCHING                                                      #
@@ -406,6 +420,34 @@ class MinecraftLauncherApp:
             subprocess.Popen(["open", thu_muc])
         else:
             subprocess.Popen(["xdg-open", thu_muc])
+
+    def _poll_modpack_progress(self):
+        """Polling moi 500ms de doc trang thai tien trinh cai dat tu ModMcFrame
+        (Modpack/Mod/RSP/Shader) va hien len nhan noi goc tren-phai, du nguoi
+        dung dang o tab nao (Choi/Modpack/Cai dat). Tu lap lai vo han bang
+        self.root.after - tu dung lai neu cua so chinh da bi destroy, tranh
+        loi 'invalid command name' khi app da dong."""
+        try:
+            if not self.root.winfo_exists():
+                return  # cua so da dong - dung han, khong lap lai nua
+            modpack_frame = self._view_frames.get("modpack")
+            pct = getattr(modpack_frame, "_last_progress_pct", None) if modpack_frame else None
+            if pct is not None:
+                label = getattr(modpack_frame, "_last_progress_label", "") or ""
+                text = f"⬇ {pct}%"
+                if label:
+                    text += f" — {label}"
+                self.lbl_floating_progress.config(text=text)
+            else:
+                self.lbl_floating_progress.config(text="")
+        except tk.TclError:
+            return  # widget/cua so da bi destroy giua luc dang cap nhat - dung han
+        except Exception:
+            pass
+        try:
+            self.root.after(500, self._poll_modpack_progress)
+        except tk.TclError:
+            pass  # cua so da dong dung luc nay - khong can lap lai nua
 
     def _xu_ly_thoat(self):
         import components.mod_mc as mod_mc

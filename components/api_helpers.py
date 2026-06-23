@@ -112,8 +112,31 @@ def lay_curseforge_popular(class_id=4471, limit=50, offset=0):
     return data.get("data", []), total
 
 
-def tim_kiem_curseforge(tu_khoa, mc_version="", loader="", limit=50, class_id=4471, offset=0):
-    """class_id: 4471=modpack, 6=mod"""
+def lay_category_curseforge(class_id=4471):
+    """
+    Lay danh sach category THAT cua CurseForge cho 1 loai noi dung (class_id).
+    Tra ve list dict [{"id": 421, "name": "Adventure and RPG"}, ...] - dung
+    de fill vao dropdown Category va tra cuu id khi nguoi dung chon ten.
+    class_id: 4471=modpack, 6=mod, 12=resourcepack, 6552=shader.
+    """
+    params = urllib.parse.urlencode({"gameId": 432, "classId": class_id})
+    data = _request_json(
+        f"https://api.curseforge.com/v1/categories?{params}",
+        {"x-api-key": CURSEFORGE_API_KEY})
+    cats = data.get("data", [])
+    # Chi giu cac category cap cao nhat thuoc dung class_id nay (CurseForge
+    # tra ve ca category con/cha lan nhau qua field parentCategoryId).
+    return sorted(
+        [{"id": c.get("id"), "name": c.get("name", "")} for c in cats
+         if c.get("classId") == class_id],
+        key=lambda c: c["name"]
+    )
+
+
+def tim_kiem_curseforge(tu_khoa, mc_version="", loader="", limit=50, class_id=4471,
+                         offset=0, category_id=None):
+    """class_id: 4471=modpack, 6=mod
+    category_id: id so (lay tu lay_category_curseforge) - None/0 nghia la khong loc."""
     p = {"gameId": 432, "classId": class_id, "searchFilter": tu_khoa,
          "pageSize": limit, "index": offset, "sortField": 2, "sortOrder": "desc"}
     if mc_version:
@@ -122,6 +145,8 @@ def tim_kiem_curseforge(tu_khoa, mc_version="", loader="", limit=50, class_id=44
         lm = {"Fabric": 4, "Forge": 1, "Quilt": 5, "NeoForge": 6}
         if loader in lm:
             p["modLoaderType"] = lm[loader]
+    if category_id:
+        p["categoryId"] = category_id
     data = _request_json(
         f"https://api.curseforge.com/v1/mods/search?{urllib.parse.urlencode(p)}",
         {"x-api-key": CURSEFORGE_API_KEY})
@@ -134,4 +159,3 @@ def lay_phien_ban_curseforge(mod_id):
         f"https://api.curseforge.com/v1/mods/{mod_id}/files?pageSize=30",
         {"x-api-key": CURSEFORGE_API_KEY})
     return data.get("data", [])
-

@@ -59,14 +59,18 @@ def _tai_file_don_gian(url, dest_path, cancel_event=None, so_lan_thu=3):
     """
     Tai 1 file vao file tam roi rename — dam bao khong bi corrupt neu bi ngat.
     Co kiem tra Content-Length sau khi tai xong, tu dong retry neu thieu byte.
+    Timeout 20s (thay vi 60s) de gioi han thoi gian "dung im" toi da khi mot
+    ket noi bi treo giua chung va nguoi dung dang cho Huy có hieu luc.
     """
     headers = {"User-Agent": MODRINTH_USER_AGENT}
     tmp_path = dest_path + ".part"
 
     for lan in range(so_lan_thu):
+        if cancel_event and cancel_event.is_set():
+            raise Exception("__HUY__")
         try:
             req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=60) as resp:
+            with urllib.request.urlopen(req, timeout=20) as resp:
                 content_length = int(resp.headers.get("Content-Length") or 0)
                 da_tai = 0
                 with open(tmp_path, "wb") as f:
@@ -114,10 +118,13 @@ def _tai_file_don_gian(url, dest_path, cancel_event=None, so_lan_thu=3):
 # CAI RESOURCE PACK / SHADER
 # =====================================================================
 
-def cai_rsp_shader_tu_file(duong_dan_zip, ten_instance, loai, lbl_status, callback_xong=None):
+def cai_rsp_shader_tu_file(duong_dan_zip, ten_instance, loai, lbl_status,
+                            callback_xong=None, progress_cb=None):
     """
     Cai Resource Pack hoac Shader vao thu muc instance tuong ung.
     loai: 'rsp' -> resourcepacks/, 'shader' -> shaderpacks/
+    progress_cb: callable(da, tong) tuy chon - vi day la copy 1 file duy nhat
+                 nen chi bao (0, 1) luc bat dau va (1, 1) luc xong.
     """
     thu_muc_game     = config.current_config.get("thu_muc_game", "")
     ten_folder       = ten_instance.replace(" ", "_")
@@ -130,11 +137,15 @@ def cai_rsp_shader_tu_file(duong_dan_zip, ten_instance, loai, lbl_status, callba
         lbl_status.after(0, lambda: lbl_status.config(text=text, fg=mau))
 
     def _chay():
+        if progress_cb:
+            lbl_status.after(0, lambda: progress_cb(0, 1))
         try:
             ten_file = os.path.basename(duong_dan_zip)
             dest     = os.path.join(thu_muc_dest, ten_file)
             shutil.copy2(duong_dan_zip, dest)
             _cap(f"Da cai: {ten_file} -> {sub_dir}/", "#2b8c54")
+            if progress_cb:
+                lbl_status.after(0, lambda: progress_cb(1, 1))
             if callback_xong:
                 lbl_status.after(500, callback_xong)
         except Exception as e:
@@ -147,8 +158,9 @@ def cai_rsp_shader_tu_file(duong_dan_zip, ten_instance, loai, lbl_status, callba
 # CAI MOD (.jar)
 # =====================================================================
 
-def cai_mod_tu_file(duong_dan_jar, ten_instance, lbl_status, callback_xong=None):
-    """Copy file .jar mod vao thu muc mods/ cua instance."""
+def cai_mod_tu_file(duong_dan_jar, ten_instance, lbl_status, callback_xong=None, progress_cb=None):
+    """Copy file .jar mod vao thu muc mods/ cua instance.
+    progress_cb: callable(da, tong) tuy chon - bao (0, 1) luc bat dau, (1, 1) luc xong."""
     thu_muc_game     = config.current_config.get("thu_muc_game", "")
     ten_folder       = ten_instance.replace(" ", "_")
     thu_muc_instance = os.path.join(thu_muc_game, "Instances", ten_folder)
@@ -159,11 +171,15 @@ def cai_mod_tu_file(duong_dan_jar, ten_instance, lbl_status, callback_xong=None)
         lbl_status.after(0, lambda: lbl_status.config(text=text, fg=mau))
 
     def _chay():
+        if progress_cb:
+            lbl_status.after(0, lambda: progress_cb(0, 1))
         try:
             ten_file = os.path.basename(duong_dan_jar)
             dest     = os.path.join(thu_muc_mods, ten_file)
             shutil.copy2(duong_dan_jar, dest)
             _cap(f"Da cai mod: {ten_file}", "#2b8c54")
+            if progress_cb:
+                lbl_status.after(0, lambda: progress_cb(1, 1))
             if callback_xong:
                 lbl_status.after(500, callback_xong)
         except Exception as e:
@@ -184,7 +200,8 @@ def dang_cai_modpack():
     return _dang_cai_modpack
 
 
-def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=None, cancel_event=None):
+def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=None,
+                         cancel_event=None, progress_cb=None, callback_huy=None):
     """
     Giai nen va cai Modpack vao instance moi.
     Ho tro:
@@ -192,6 +209,15 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
       - CurseForge .zip   (co manifest.json)
       - ZIP thong thuong  (giai nen thang vao instance/)
     cancel_event: threading.Event — neu duoc set thi dung lai, xoa folder dang do va xoa config.
+    progress_cb : callable(da, tong) -> goi moi khi co them 1 mod duoc xu ly xong
+                  (thanh cong hoac loi), de UI ve thanh tien trinh. Tuy chon.
+    callback_xong: goi KHI VA CHI KHI cai dat THANH CONG hoan toan.
+    callback_huy : goi khi tac vu KET THUC do BI HUY hoac LOI (khong thanh
+                   cong). Tach rieng voi callback_xong de ben goi khong hien
+                   nham thong bao "Da cai dat thanh cong" sau khi nguoi dung
+                   da huy giua luc dang cai tung mod. Neu khong cung cap,
+                   khong co callback nao duoc goi trong truong hop nay (giu
+                   tuong thich nguoc voi code cu).
     """
     thu_muc_game = config.current_config.get("thu_muc_game", "")
     # ten_instance dung cho key config (dau cach), ten_folder dung cho thu muc (gach duoi)
@@ -202,6 +228,13 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
 
     def _cap(text, mau="gray"):
         lbl_status.after(0, lambda: lbl_status.config(text=text, fg=mau))
+
+    def _bao_tien_do(da, tong):
+        if progress_cb:
+            try:
+                lbl_status.after(0, lambda: progress_cb(da, tong))
+            except Exception:
+                pass
 
     def _don_dep_va_huy():
         """Xoa folder instance dang tao do va xoa khoi config neu da ghi."""
@@ -259,6 +292,13 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                     elif deps.get("forge"):
                         loai_game   = "Forge"
                         version_mod = deps.get("forge", "")
+                        # Modrinth's modrinth.index.json chi luu so loader thuan
+                        # (vd "47.4.20"), KHONG kem prefix MC version - khac voi
+                        # CurseForge's manifest.json da co dang "forge-47.4.20".
+                        # Forge can dung format day du "1.20.1-47.4.20" thi
+                        # launcher moi tai dung modloader, nen phai tu ghep lai.
+                        if version_mod and version_goc and not version_mod.startswith(version_goc):
+                            version_mod = f"{version_goc}-{version_mod}"
                     elif deps.get("neoforge"):
                         loai_game   = "NeoForge"
                         version_mod = deps.get("neoforge", "")
@@ -371,6 +411,7 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                             with lock:
                                 da_tai[0] += 1
                                 _cap(f"Bo qua (da co): {os.path.basename(rel_path)}  ({da_tai[0]}/{tong_mod})", "#607D8B")
+                                _bao_tien_do(da_tai[0], tong_mod)
                             return
                         else:
                             # File bi thieu byte, xoa de tai lai
@@ -399,19 +440,40 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                             _cap(f"Da tai ({da_tai[0]}/{tong_mod}): {ten_mod}", "#1E88E5")
                         else:
                             loi_tai.append(ten_mod)
+                        _bao_tien_do(da_tai[0], tong_mod)
 
                 MAX_WORKERS = 8  # tai toi da 8 mod cung luc
-                with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+                pool = concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS)
+                try:
                     futures = [pool.submit(_tai_mot_mod, arg) for arg in enumerate(modrinth_files)]
-                    for fut in concurrent.futures.as_completed(futures):
+                    con_lai = set(futures)
+                    while con_lai:
                         if cancel_event and cancel_event.is_set():
-                            for f in futures:
-                                f.cancel()
+                            # Huy ngay: bo het task chua chay, KHONG cho doi cac
+                            # luong dang tai hoan tat (tranh "Huy" bi tre/vo hieu).
+                            try:
+                                pool.shutdown(wait=False, cancel_futures=True)
+                            except TypeError:
+                                # Python < 3.9 khong co cancel_futures
+                                for f in con_lai:
+                                    f.cancel()
                             break
-                        try:
-                            fut.result()
-                        except Exception:
-                            pass
+                        # Cho toi da 0.3s cho bat ky future nao hoan tat, sau do
+                        # quay lai kiem tra cancel_event - khong dung as_completed()
+                        # thuan vi no se block vo han neu chua co future nao xong.
+                        xong, con_lai = concurrent.futures.wait(
+                            con_lai, timeout=0.3,
+                            return_when=concurrent.futures.FIRST_COMPLETED)
+                        for fut in xong:
+                            try:
+                                fut.result()
+                            except Exception:
+                                pass
+                finally:
+                    # wait=False de khong bi treo cho cac luong dang tai dang chay;
+                    # cac luong nay tu ket thuc som vi _tai_file_don_gian kiem tra
+                    # cancel_event lien tuc trong khi doc tung block du lieu.
+                    pool.shutdown(wait=False)
 
                 _check_huy()
                 if loi_tai:
@@ -460,6 +522,9 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                         ten_file  = file_info.get("fileName", f"{file_id}.jar")
                         dl_url    = file_info.get("downloadUrl", "")
 
+                        if cancel_event and cancel_event.is_set():
+                            return
+
                         try:
                             proj_data = _request_json(
                                 f"https://api.curseforge.com/v1/mods/{project_id}",
@@ -477,6 +542,9 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                                 f"{urllib.parse.quote(ten_file)}"
                             )
 
+                        if cancel_event and cancel_event.is_set():
+                            return
+
                         thu_muc_dich = _thu_muc_theo_loai(ten_file, class_id_cf)
                         dest = os.path.join(thu_muc_dich, ten_file)
                         if not os.path.exists(dest):
@@ -485,25 +553,42 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                         with lock_cf:
                             da_cf[0] += 1
                             _cap(f"OK: {ten_file}  ({da_cf[0]}/{tong_cf})", "#2b8c54")
+                            _bao_tien_do(da_cf[0], tong_cf)
 
                     except Exception as ex:
+                        if cancel_event and cancel_event.is_set():
+                            return  # bi huy giua chung - khong tinh la loi
                         with lock_cf:
                             da_cf[0] += 1
                             loi_cf.append(str(file_id))
+                            _bao_tien_do(da_cf[0], tong_cf)
                         print(f"[CF mod] Loi {file_id}: {ex}")
 
                 MAX_WORKERS_CF = 5  # CF API co rate-limit nen dung it worker hon
-                with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS_CF) as pool:
-                    futures_cf = [pool.submit(_tai_mot_mod_cf, entry) for entry in cf_mods]
-                    for fut in concurrent.futures.as_completed(futures_cf):
+                pool_cf = concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS_CF)
+                try:
+                    futures_cf = [pool_cf.submit(_tai_mot_mod_cf, entry) for entry in cf_mods]
+                    con_lai_cf = set(futures_cf)
+                    while con_lai_cf:
                         if cancel_event and cancel_event.is_set():
-                            for f in futures_cf:
-                                f.cancel()
+                            try:
+                                pool_cf.shutdown(wait=False, cancel_futures=True)
+                            except TypeError:
+                                for f in con_lai_cf:
+                                    f.cancel()
                             break
-                        try:
-                            fut.result()
-                        except Exception:
-                            pass
+                        # Cho toi da 0.3s - tranh as_completed() block vo han neu
+                        # chua co future nao xong (vd dang goi API/tai file cham).
+                        xong, con_lai_cf = concurrent.futures.wait(
+                            con_lai_cf, timeout=0.3,
+                            return_when=concurrent.futures.FIRST_COMPLETED)
+                        for fut in xong:
+                            try:
+                                fut.result()
+                            except Exception:
+                                pass
+                finally:
+                    pool_cf.shutdown(wait=False)
 
                 _check_huy()
                 if loi_cf:
@@ -536,6 +621,17 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                 _cap("Da huy. Da xoa du lieu cai dat do.", "#E53935")
             else:
                 _cap(f"Loi cai dat: {e}", "red")
+            # QUAN TRONG: mot trong 2 callback PHAI duoc goi du thanh cong hay
+            # bi huy/loi, de ben goi (modrinthmod.py/forgemod.py) biet thread
+            # nay da ket thuc va tu cap nhat lai UI (thanh % + nut Cai dat).
+            # Dung callback_huy (rieng voi callback_xong) de tranh hien nham
+            # thong bao "Da cai dat thanh cong" khi thuc ra la bi huy/loi.
+            if callback_huy:
+                lbl_status.after(500, callback_huy)
+            elif callback_xong:
+                # Tuong thich nguoc: neu ben goi chua nang cap de truyen
+                # callback_huy, van goi callback_xong nhu code cu truoc day.
+                lbl_status.after(500, callback_xong)
         finally:
             _dang_cai_modpack = False
 

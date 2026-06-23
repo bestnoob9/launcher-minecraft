@@ -137,11 +137,16 @@ class ModrinthModMixin:
         self.ent_mr_name.insert(0, ten.replace(" ", "_")[:30])
 
         if install:
-            def _install_from_detail(version_data):
+            def _install_from_detail(version_data, on_done=None, progress_cb=None):
+                def _finish():
+                    if on_done:
+                        self.after(0, on_done)
                 files = version_data.get("files", [])
                 prim  = next((f for f in files if f.get("primary")), files[0] if files else None)
                 if not prim:
-                    messagebox.showerror("Loi", "Khong tim thay file tai!", parent=self); return
+                    messagebox.showerror("Loi", "Khong tim thay file tai!", parent=self)
+                    _finish()
+                    return
                 url      = prim["url"]
                 fname    = prim.get("filename", "modpack.mrpack")
                 ten_inst = ten.replace(" ", "_")[:30]
@@ -160,6 +165,10 @@ class ModrinthModMixin:
                             pct = int(da / tong * 100)
                             self.after(0, lambda: self.lbl_status.config(
                                 text=f"Dang tai: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#1E88E5"))
+                            # Giai doan tai file goi modpack chiem 0-10% thanh tien trinh chung
+                            self.ghi_tien_do(pct // 10, f"Đang tải gói: {pct}%")
+                            if progress_cb:
+                                self.after(0, lambda: progress_cb(pct // 10, 100))
                         tai_file(url, pz, prog)
                         if self._cancel_event.is_set():
                             raise TacVuBiHuy("Da huy cai modpack")
@@ -168,20 +177,42 @@ class ModrinthModMixin:
                             except: pass
                             self._giam_tac_vu()
                             self._done()
+                            _finish()
+                        def _huy_va_xoa():
+                            # Goi khi cai_modpack_tu_file ket thuc do BI HUY/LOI
+                            # (rieng voi _done_va_xoa o tren, vi do chi danh cho
+                            # truong hop THANH CONG - tranh hien nham thong bao
+                            # "Da cai dat thanh cong!" khi thuc ra da bi huy).
+                            try: shutil.rmtree(_tmp)
+                            except: pass
+                            self._giam_tac_vu()
+                            _finish()
+                        def _modpack_progress(da_mod, tong_mod):
+                            # Giai doan cai tung mod chiem 10-100% thanh tien trinh chung
+                            if tong_mod:
+                                self.ghi_tien_do(10 + int(da_mod / tong_mod * 90),
+                                                  f"{da_mod}/{tong_mod} mod")
+                            if progress_cb and tong_mod:
+                                progress_cb(10 + int(da_mod / tong_mod * 90), 100,
+                                            label_text=f"{da_mod}/{tong_mod} mod")
                         cai_modpack_tu_file(pz, ten_inst, self.lbl_status, _done_va_xoa,
-                                            cancel_event=self._cancel_event)
+                                            cancel_event=self._cancel_event,
+                                            progress_cb=_modpack_progress if progress_cb else None,
+                                            callback_huy=_huy_va_xoa)
                     except TacVuBiHuy:
                         try: shutil.rmtree(_tmp)
                         except: pass
                         self._giam_tac_vu()
                         self.after(0, lambda: self.lbl_status.config(text="Da huy cai dat Modpack.", fg="#E53935"))
+                        _finish()
                     except Exception as e:
                         self._giam_tac_vu()
                         self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
+                        _finish()
                 threading.Thread(target=_t, daemon=True).start()
 
             self._swap_to_detail(self.lv_mr, self.dv_mr, "modrinth", r,
-                                  self._mr_vers_raw, install_cb=_install_from_detail,
+                                  [], install_cb=_install_from_detail,
                                   accent="#1E88E5")
             return
 
@@ -273,7 +304,7 @@ class ModrinthModMixin:
         self.dv_modmr = tk.Frame(f, bg=BG)
         lv = self.lv_modmr
 
-        self.fb_modmr = FilterBar(lv, self._search_modmr, accent_color="#00897B", bg=BG)
+        self.fb_modmr = FilterBar(lv, self._search_modmr, accent_color="#00897B", show_category=True, bg=BG)
         self.fb_modmr.pack(fill="x", padx=10, pady=(8, 4))
         self.list_modmr = ContentTableWidget(lv, "modrinth", self._select_modmr)
         self.list_modmr.pack(fill="both", expand=True, padx=10)
@@ -314,14 +345,14 @@ class ModrinthModMixin:
             self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi ModMR: {e}", fg="red"))
 
     def _search_modmr(self, page=1):
-        kw         = self.ent_search.get().strip()
-        mc, ld, _c = self.fb_modmr.get()
+        kw        = self.ent_search.get().strip()
+        mc, ld, c = self.fb_modmr.get()
         self._modmr_page    = page
-        self._modmr_last_kw = (kw, mc, ld)
+        self._modmr_last_kw = (kw, mc, ld, c)
         self.lbl_status.config(text="Dang tim Mod Modrinth...", fg="#00897B")
         def _t():
             try:
-                r, total = tim_kiem_modrinth("mod", kw, mc, ld, "", 50, offset=(page - 1) * 50)
+                r, total = tim_kiem_modrinth("mod", kw, mc, ld, c, 50, offset=(page - 1) * 50)
                 self._modmr_data  = r
                 self._modmr_total = total
                 self.after(0, lambda: (
@@ -346,16 +377,23 @@ class ModrinthModMixin:
         pid = r.get("project_id", "")
 
         if install:
-            def _install_from_detail(version_data):
+            def _install_from_detail(version_data, on_done=None, progress_cb=None):
+                def _finish():
+                    if on_done:
+                        self.after(0, on_done)
                 files = version_data.get("files", [])
                 prim  = next((fi for fi in files if fi.get("primary")), files[0] if files else None)
                 if not prim:
-                    messagebox.showerror("Loi", "Khong tim thay file tai!", parent=self); return
+                    messagebox.showerror("Loi", "Khong tim thay file tai!", parent=self)
+                    _finish()
+                    return
                 url      = prim["url"]
                 fname    = prim.get("filename", "mod.jar")
                 ten_inst = self.cbo_modmr_inst.get().strip()
                 if not ten_inst:
-                    messagebox.showwarning("Chu y", "Chon Instance de cai vao!", parent=self); return
+                    messagebox.showwarning("Chu y", "Chon Instance de cai vao!", parent=self)
+                    _finish()
+                    return
                 self.lbl_status.config(text="Dang tai Mod...", fg="#00897B")
                 self._tang_tac_vu()
                 def _t():
@@ -368,6 +406,9 @@ class ModrinthModMixin:
                                 raise TacVuBiHuy("Da huy tai mod")
                             pct = int(da / tong * 100)
                             self.after(0, lambda: self.lbl_status.config(text=f"Dang tai mod: {pct}%", fg="#00897B"))
+                            self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
+                            if progress_cb:
+                                self.after(0, lambda: progress_cb(da, tong))
                         tai_file(url, pz, prog)
                         if self._cancel_event.is_set():
                             raise TacVuBiHuy("Da huy cai mod")
@@ -376,19 +417,22 @@ class ModrinthModMixin:
                             except: pass
                             self.lbl_status.after(0, lambda: self.lbl_status.config(
                                 text=f"Da cai mod '{fname}' vao {ten_inst}!", fg="#2b8c54"))
+                            _finish()
                         cai_mod_tu_file(pz, ten_inst, self.lbl_status, _done)
                     except TacVuBiHuy:
                         try: shutil.rmtree(tmp)
                         except: pass
                         self.after(0, lambda: self.lbl_status.config(text="Da huy cai dat Mod.", fg="#E53935"))
+                        _finish()
                     except Exception as e:
                         self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
+                        _finish()
                     finally:
                         self._giam_tac_vu()
                 threading.Thread(target=_t, daemon=True).start()
 
             self._swap_to_detail(self.lv_modmr, self.dv_modmr, "modrinth", r,
-                                  self._modmr_vers_raw, install_cb=_install_from_detail,
+                                  [], install_cb=_install_from_detail,
                                   accent="#00897B")
             return
 
@@ -512,7 +556,7 @@ class ModrinthModMixin:
         self.dv_rsp = tk.Frame(f, bg=BG)
         lv = self.lv_rsp
 
-        self.fb_rsp = FilterBar(lv, self._search_rsp, accent_color="#8E24AA", show_loader=False, bg=BG)
+        self.fb_rsp = FilterBar(lv, self._search_rsp, accent_color="#8E24AA", show_loader=False, show_category=True, bg=BG)
         self.fb_rsp.pack(fill="x", padx=10, pady=(8, 4))
         self.list_rsp = ContentTableWidget(lv, "modrinth", self._select_rsp)
         self.list_rsp.pack(fill="both", expand=True, padx=10)
@@ -553,14 +597,14 @@ class ModrinthModMixin:
             self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi RSP: {e}", fg="red"))
 
     def _search_rsp(self, page=1):
-        kw        = self.ent_search.get().strip()
-        mc, _, _c = self.fb_rsp.get()
+        kw       = self.ent_search.get().strip()
+        mc, _, c = self.fb_rsp.get()
         self._rsp_page    = page
-        self._rsp_last_kw = (kw, mc)
+        self._rsp_last_kw = (kw, mc, c)
         self.lbl_status.config(text="Dang tim RSP...", fg="#8E24AA")
         def _t():
             try:
-                r, total = tim_kiem_modrinth("resourcepack", kw, mc, "", "", 50, offset=(page - 1) * 50)
+                r, total = tim_kiem_modrinth("resourcepack", kw, mc, "", c, 50, offset=(page - 1) * 50)
                 self._rsp_data  = r
                 self._rsp_total = total
                 self.after(0, lambda: (
@@ -585,16 +629,23 @@ class ModrinthModMixin:
         pid = r.get("project_id", "")
 
         if install:
-            def _install_from_detail(version_data):
+            def _install_from_detail(version_data, on_done=None, progress_cb=None):
+                def _finish():
+                    if on_done:
+                        self.after(0, on_done)
                 files = version_data.get("files", [])
                 prim  = next((f for f in files if f.get("primary")), files[0] if files else None)
                 if not prim:
-                    messagebox.showerror("Loi", "Khong tim thay file tai!", parent=self); return
+                    messagebox.showerror("Loi", "Khong tim thay file tai!", parent=self)
+                    _finish()
+                    return
                 url      = prim["url"]
                 fname    = prim.get("filename", "resourcepack.zip")
                 ten_inst = self.cbo_rsp_inst.get().strip()
                 if not ten_inst:
-                    messagebox.showwarning("Chu y", "Chon Instance de cai vao!", parent=self); return
+                    messagebox.showwarning("Chu y", "Chon Instance de cai vao!", parent=self)
+                    _finish()
+                    return
                 self.lbl_status.config(text="Dang tai RSP...", fg="#8E24AA")
                 self._tang_tac_vu()
                 def _t():
@@ -607,6 +658,9 @@ class ModrinthModMixin:
                                 raise TacVuBiHuy("Da huy tai RSP")
                             pct = int(da / tong * 100)
                             self.after(0, lambda: self.lbl_status.config(text=f"Dang tai: {pct}%", fg="#8E24AA"))
+                            self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
+                            if progress_cb:
+                                self.after(0, lambda: progress_cb(da, tong))
                         tai_file(url, pz, prog)
                         if self._cancel_event.is_set():
                             raise TacVuBiHuy("Da huy cai RSP")
@@ -615,19 +669,22 @@ class ModrinthModMixin:
                             except: pass
                             self.lbl_status.after(0, lambda: self.lbl_status.config(
                                 text=f"Da cai RSP vao {ten_inst}!", fg="#2b8c54"))
+                            _finish()
                         cai_rsp_shader_tu_file(pz, ten_inst, "rsp", self.lbl_status, _done)
                     except TacVuBiHuy:
                         try: shutil.rmtree(tmp)
                         except: pass
                         self.after(0, lambda: self.lbl_status.config(text="Da huy cai dat Resource Pack.", fg="#E53935"))
+                        _finish()
                     except Exception as e:
                         self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
+                        _finish()
                     finally:
                         self._giam_tac_vu()
                 threading.Thread(target=_t, daemon=True).start()
 
             self._swap_to_detail(self.lv_rsp, self.dv_rsp, "modrinth", r,
-                                  self._rsp_vers_raw, install_cb=_install_from_detail,
+                                  [], install_cb=_install_from_detail,
                                   accent="#8E24AA")
             return
 
@@ -753,7 +810,7 @@ class ModrinthModMixin:
         self.dv_sh = tk.Frame(f, bg=BG)
         lv = self.lv_sh
 
-        self.fb_sh = FilterBar(lv, self._search_sh, accent_color="#F57C00", show_loader=False, bg=BG)
+        self.fb_sh = FilterBar(lv, self._search_sh, accent_color="#F57C00", show_loader=False, show_category=True, bg=BG)
         self.fb_sh.pack(fill="x", padx=10, pady=(8, 4))
         self.list_sh = ContentTableWidget(lv, "modrinth", self._select_sh)
         self.list_sh.pack(fill="both", expand=True, padx=10)
@@ -794,14 +851,14 @@ class ModrinthModMixin:
             self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi Shader: {e}", fg="red"))
 
     def _search_sh(self, page=1):
-        kw        = self.ent_search.get().strip()
-        mc, _, _c = self.fb_sh.get()
+        kw       = self.ent_search.get().strip()
+        mc, _, c = self.fb_sh.get()
         self._sh_page    = page
-        self._sh_last_kw = (kw, mc)
+        self._sh_last_kw = (kw, mc, c)
         self.lbl_status.config(text="Dang tim Shader...", fg="#F57C00")
         def _t():
             try:
-                r, total = tim_kiem_modrinth("shader", kw, mc, "", "", 50, offset=(page - 1) * 50)
+                r, total = tim_kiem_modrinth("shader", kw, mc, "", c, 50, offset=(page - 1) * 50)
                 self._sh_data  = r
                 self._sh_total = total
                 self.after(0, lambda: (
@@ -826,16 +883,23 @@ class ModrinthModMixin:
         pid = r.get("project_id", "")
 
         if install:
-            def _install_from_detail(version_data):
+            def _install_from_detail(version_data, on_done=None, progress_cb=None):
+                def _finish():
+                    if on_done:
+                        self.after(0, on_done)
                 files = version_data.get("files", [])
                 prim  = next((f for f in files if f.get("primary")), files[0] if files else None)
                 if not prim:
-                    messagebox.showerror("Loi", "Khong tim thay file tai!", parent=self); return
+                    messagebox.showerror("Loi", "Khong tim thay file tai!", parent=self)
+                    _finish()
+                    return
                 url      = prim["url"]
                 fname    = prim.get("filename", "shader.zip")
                 ten_inst = self.cbo_sh_inst.get().strip()
                 if not ten_inst:
-                    messagebox.showwarning("Chu y", "Chon Instance de cai vao!", parent=self); return
+                    messagebox.showwarning("Chu y", "Chon Instance de cai vao!", parent=self)
+                    _finish()
+                    return
                 self.lbl_status.config(text="Dang tai Shader...", fg="#F57C00")
                 self._tang_tac_vu()
                 def _t():
@@ -848,6 +912,9 @@ class ModrinthModMixin:
                                 raise TacVuBiHuy("Da huy tai Shader")
                             pct = int(da / tong * 100)
                             self.after(0, lambda: self.lbl_status.config(text=f"Dang tai: {pct}%", fg="#F57C00"))
+                            self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
+                            if progress_cb:
+                                self.after(0, lambda: progress_cb(da, tong))
                         tai_file(url, pz, prog)
                         if self._cancel_event.is_set():
                             raise TacVuBiHuy("Da huy cai Shader")
@@ -856,19 +923,22 @@ class ModrinthModMixin:
                             except: pass
                             self.lbl_status.after(0, lambda: self.lbl_status.config(
                                 text=f"Da cai Shader vao {ten_inst}!", fg="#2b8c54"))
+                            _finish()
                         cai_rsp_shader_tu_file(pz, ten_inst, "shader", self.lbl_status, _done)
                     except TacVuBiHuy:
                         try: shutil.rmtree(tmp)
                         except: pass
                         self.after(0, lambda: self.lbl_status.config(text="Da huy cai dat Shader.", fg="#E53935"))
+                        _finish()
                     except Exception as e:
                         self.after(0, lambda e=e: self.lbl_status.config(text=f"Loi: {e}", fg="red"))
+                        _finish()
                     finally:
                         self._giam_tac_vu()
                 threading.Thread(target=_t, daemon=True).start()
 
             self._swap_to_detail(self.lv_sh, self.dv_sh, "modrinth", r,
-                                  self._sh_vers_raw, install_cb=_install_from_detail,
+                                  [], install_cb=_install_from_detail,
                                   accent="#F57C00")
             return
 

@@ -200,7 +200,22 @@ class SettingFrame(tk.Frame):
         tk.Checkbutton(frame_slider_row, text="Auto", variable=self.var_ram_auto, font=("Arial", 9),
                        command=lambda: khi_thay_doi_auto()).pack(side=tk.LEFT)
 
-        def khi_keo_ram(val): self.var_ram_mib.set(str(step_to_mb(int(float(val)))))
+        def _dong_bo_arguments_neu_dang_preset():
+            """RAM thay doi (keo thanh truot / nhap tay MiB / bat Auto) co the
+            anh huong truc tiep den -Xmx/-Xms trong o Arguments khi dang o che
+            do 'Su dung goi toi uu san'. Truoc day o Arguments chi duoc cap
+            nhat khi doi dropdown preset, khien thanh truot va Arguments hien
+            sai lech nhau cho den khi nguoi dung vo tinh trigger 1 su kien
+            khac. Goi lai ham nay moi khi RAM doi de luon dong bo ngay."""
+            try:
+                if self.cbo_jvm_mode.get() == "Sử dụng gói tối ưu sẵn":
+                    self._khi_chon_preset_jvm()
+            except Exception:
+                pass
+
+        def khi_keo_ram(val):
+            self.var_ram_mib.set(str(step_to_mb(int(float(val)))))
+            _dong_bo_arguments_neu_dang_preset()
         self.sld_ram.config(command=khi_keo_ram)
 
         def khi_nhap_mib(event=None):
@@ -210,6 +225,7 @@ class SettingFrame(tk.Frame):
                 self.sld_ram.set(mb_to_step(mb))
             except ValueError:
                 pass
+            _dong_bo_arguments_neu_dang_preset()
         self.ent_ram_mib.bind("<Return>", khi_nhap_mib)
         self.ent_ram_mib.bind("<FocusOut>", khi_nhap_mib)
 
@@ -224,6 +240,7 @@ class SettingFrame(tk.Frame):
             else:
                 self.sld_ram.config(state="normal")
                 self.ent_ram_mib.config(state="normal")
+            _dong_bo_arguments_neu_dang_preset()
         khi_thay_doi_auto()
 
         self._mb_to_display = mb_to_display
@@ -702,8 +719,19 @@ class SettingWindow(tk.Toplevel):
         chk_auto.pack(side=tk.LEFT)
 
         # --- Đồng bộ thanh kéo <-> ô nhập ---
+        def _dong_bo_arguments_neu_dang_preset():
+            """RAM thay doi co the anh huong -Xmx/-Xms trong o Arguments khi
+            dang o che do 'Su dung goi toi uu san'. Goi lai moi khi RAM doi
+            de Arguments luon dong bo ngay, khong phai doi su kien khac."""
+            try:
+                if self.cbo_jvm_mode.get() == "Sử dụng gói tối ưu sẵn":
+                    self._khi_chon_preset_jvm()
+            except Exception:
+                pass
+
         def khi_keo_ram(val):
             self.var_ram_mib.set(str(step_to_mb(int(float(val)))))
+            _dong_bo_arguments_neu_dang_preset()
 
         self.sld_ram.config(command=khi_keo_ram)
 
@@ -714,6 +742,7 @@ class SettingWindow(tk.Toplevel):
                 self.sld_ram.set(mb_to_step(mb))
             except ValueError:
                 pass
+            _dong_bo_arguments_neu_dang_preset()
 
         self.ent_ram_mib.bind("<Return>", khi_nhap_mib)
         self.ent_ram_mib.bind("<FocusOut>", khi_nhap_mib)
@@ -730,6 +759,7 @@ class SettingWindow(tk.Toplevel):
             else:
                 self.sld_ram.config(state="normal")
                 self.ent_ram_mib.config(state="normal")
+            _dong_bo_arguments_neu_dang_preset()
 
         khi_thay_doi_auto()
         """

@@ -50,31 +50,35 @@ file_config_json = _FILE_CONFIG_TAM
 def cap_nhat_duong_dan_config(thu_muc_game: str):
     """
     Gọi sau khi wizard xác nhận thu_muc_game (hoặc khi main.py khởi động).
+    - Luôn ghi file pointer để lần sau khởi động biết đường dẫn ngay.
     - Cập nhật file_config_json trỏ vào <thu_muc_game>/launchercf/
-    - Copy file tạm sang vị trí mới nếu config chính thức chưa có.
-    - Ghi file pointer để lần sau biết đường dẫn ngay khi khởi động.
-    - Lưu lại config ngay để chắc chắn.
+    - Chỉ copy file tạm → chính thức khi file chính thức CHƯA tồn tại.
+    - KHÔNG gọi luu_toan_bo_cau_hinh nếu file chính thức đã có (tránh ghi đè).
     """
     global file_config_json
     duong_dan_moi = _lay_duong_dan_config(thu_muc_game)
 
-    # Luôn ghi pointer dù path có thay đổi hay không
+    # Luôn ghi pointer để lần khởi động sau đọc được ngay
     _ghi_pointer(thu_muc_game)
 
-    if duong_dan_moi == file_config_json:
+    # Cập nhật con trỏ nội bộ dù path cũ hay mới
+    file_config_json = duong_dan_moi
+
+    # Nếu file chính thức đã tồn tại → không động vào, load đã xong trong tai_toan_bo_cau_hinh
+    if os.path.exists(duong_dan_moi):
         return
 
+    # File chính thức chưa có → tạo thư mục + copy từ file tạm nếu có
     os.makedirs(os.path.dirname(duong_dan_moi), exist_ok=True)
-
-    # Nếu config chính thức chưa có, copy từ file tạm (nếu tồn tại)
-    if not os.path.exists(duong_dan_moi) and os.path.exists(_FILE_CONFIG_TAM):
+    if os.path.exists(_FILE_CONFIG_TAM):
         import shutil
         try:
             shutil.copy2(_FILE_CONFIG_TAM, duong_dan_moi)
+            return  # copy thành công, không cần lưu lại
         except Exception as e:
             print(f"Không thể sao chép file config: {e}")
 
-    file_config_json = duong_dan_moi
+    # Không có file nào để copy → lưu current_config mới vào vị trí chính thức
     luu_toan_bo_cau_hinh()
 
 

@@ -110,12 +110,26 @@ def _mo_cua_so_wizard(root) -> bool:
             lbl_loi.config(text="⚠  Không thể tạo thư mục tại đường dẫn này. Vui lòng chọn lại!")
             return
 
-        config.current_config["thu_muc_game"] = duong_dan
-        # Chuyển file_config_json sang <thu_muc_game>/launchercf/ TRƯỚC khi lưu.
-        # Nếu gọi luu_toan_bo_cau_hinh() trước bước này, config sẽ bị ghi vào
-        # file tạm cạnh .exe thay vì vào thư mục game người dùng vừa chọn.
-        config.cap_nhat_duong_dan_config(duong_dan)
-        config.luu_toan_bo_cau_hinh()
+        # Kiểm tra xem thư mục này đã có launcher_config.json chưa
+        import json as _json
+        file_chinh_thuc = config._lay_duong_dan_config(duong_dan)
+        if os.path.exists(file_chinh_thuc):
+            # Đã có config cũ → load lại vào current_config, KHÔNG ghi đè
+            try:
+                with open(file_chinh_thuc, "r", encoding="utf-8") as _f:
+                    data_cu = _json.load(_f)
+                config.current_config.clear()
+                config.current_config.update(data_cu)
+            except Exception as e:
+                lbl_loi.config(text=f"⚠  Đọc config thất bại: {e}")
+                return
+            # Chỉ cập nhật pointer + trỏ file_config_json, không lưu
+            config.cap_nhat_duong_dan_config(duong_dan)
+        else:
+            # Chưa có → ghi thu_muc_game vào config hiện tại rồi lưu mới
+            config.current_config["thu_muc_game"] = duong_dan
+            config.cap_nhat_duong_dan_config(duong_dan)
+            config.luu_toan_bo_cau_hinh()
 
         ket_qua["ok"] = True
         win.grab_release()

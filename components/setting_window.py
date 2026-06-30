@@ -171,8 +171,9 @@ class SettingFrame(tk.Frame):
             except: return 2048
 
         def mb_to_display(mb):
+            # Luon tra ve so nguyen MB hoac GB - KHONG bao gio sinh so thap phan
+            # (vi du "3.5 GB") vi core.py / JVM khong parse duoc dang nay.
             if mb >= 1024 and mb % 1024 == 0: return f"{mb // 1024} GB"
-            elif mb >= 1024: return f"{mb / 1024:.1f} GB"
             return f"{mb} MB"
 
         def mb_to_step(mb): return round((mb - RAM_MIN_MB) / RAM_STEP)
@@ -664,10 +665,10 @@ class SettingWindow(tk.Toplevel):
             except: return 2048
 
         def mb_to_display(mb):
+            # Luon tra ve so nguyen MB hoac GB - KHONG bao gio sinh so thap phan
+            # (vi du "3.5 GB") vi core.py / JVM khong parse duoc dang nay.
             if mb >= 1024 and mb % 1024 == 0:
                 return f"{mb // 1024} GB"
-            elif mb >= 1024:
-                return f"{mb / 1024:.1f} GB"
             return f"{mb} MB"
 
         def mb_to_step(mb):

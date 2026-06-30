@@ -179,19 +179,50 @@ def _apply_to_widget(w, mapping):
                 except Exception:
                     pass
 
-    # Tat highlight mau xanh khi click/focus/select text: dat
-    # selectbackground/selectforeground = bg/fg binh thuong cua widget
-    # (tk.Entry, tk.Spinbox, tk.Text, tk.Listbox...).
-    if "selectbackground" in opts and "bg" in opts:
+    # Mau "select" (bom xanh) khi bo den / Ctrl+A trong tk.Entry, tk.Text,
+    # tk.Spinbox, tk.Listbox: PHAI ro rang de nguoi dung thay vung dang
+    # chon. Rieng Combobox (entry con ben trong ttk.Combobox) thi tat di
+    # vi no dung mau xanh he thong gay loi mau khi readonly.
+    is_combobox_entry = False
+    try:
+        parent = w.nametowidget(w.winfo_parent())
+        if isinstance(parent, ttk.Combobox):
+            is_combobox_entry = True
+    except Exception:
+        pass
+
+    if "selectbackground" in opts:
         try:
-            w.configure(selectbackground=w.cget("bg"))
+            if is_combobox_entry and "bg" in opts:
+                w.configure(selectbackground=w.cget("bg"))
+            else:
+                w.configure(selectbackground="#1E88E5")
         except Exception:
             pass
-    if "selectforeground" in opts and "fg" in opts:
+    if "selectforeground" in opts:
         try:
-            w.configure(selectforeground=w.cget("fg"))
+            if is_combobox_entry and "fg" in opts:
+                w.configure(selectforeground=w.cget("fg"))
+            else:
+                w.configure(selectforeground="white")
         except Exception:
             pass
+
+    # Cho phep Ctrl+A select-all trong tk.Entry / tk.Text (mac dinh tk
+    # khong co san binding nay tren Windows/Linux).
+    if isinstance(w, (tk.Entry, tk.Spinbox)):
+        def _select_all_entry(event, widget=w):
+            widget.selection_range(0, "end")
+            widget.icursor("end")
+            return "break"
+        w.bind("<Control-a>", _select_all_entry)
+        w.bind("<Control-A>", _select_all_entry)
+    elif isinstance(w, tk.Text):
+        def _select_all_text(event, widget=w):
+            widget.tag_add("sel", "1.0", "end")
+            return "break"
+        w.bind("<Control-a>", _select_all_text)
+        w.bind("<Control-A>", _select_all_text)
 
 
 def _apply_to_ttk_style(root, mapping, dark):
@@ -228,12 +259,20 @@ def _apply_to_ttk_style(root, mapping, dark):
         style.configure("TFrame", background=bg)
         style.configure("TLabel", background=bg, foreground=fg)
 
-        style.configure("TNotebook", background=bg, borderwidth=0)
-        style.configure("TNotebook.Tab", background=trough, foreground=fg,
-                        padding=(10, 4))
+        tab_inactive_bg = "#37474F" if dark else "#dde2e8"
+        tab_inactive_fg = "#b0bac4" if dark else "#5a6470"
+        tab_active_bg   = "#1E88E5"
+        tab_active_fg   = "white"
+
+        style.configure("TNotebook", background=bg, borderwidth=0,
+                        tabmargins=(4, 4, 4, 0))
+        style.configure("TNotebook.Tab", background=tab_inactive_bg,
+                        foreground=tab_inactive_fg, padding=(14, 6),
+                        borderwidth=0, font=("Arial", 9, "bold"))
         style.map("TNotebook.Tab",
-                  background=[("selected", bg)],
-                  foreground=[("selected", fg)])
+                  background=[("selected", tab_active_bg)],
+                  foreground=[("selected", tab_active_fg)],
+                  expand=[("selected", (1, 1, 1, 0))])
 
         style.configure("TCombobox", fieldbackground=field, background=field,
                         foreground=fg, arrowcolor=fg,

@@ -37,30 +37,86 @@ ICON_SIZE = 56
 
 
 class FilterBar(tk.Frame):
-    LOADERS = ["Tat ca", "Fabric", "Forge", "Quilt", "NeoForge"]
+    LOADERS = ["Tất cả", "Fabric", "Forge", "Quilt", "NeoForge"]
     CATEGORIES = [
-        "Tat ca", "Adventure", "Combat", "Decoration", "Economy",
+        "Tất cả", "Adventure", "Combat", "Decoration", "Economy",
         "Equipment", "Fantasy", "Game Mechanics", "Library",
         "Lightweight", "Magic", "Multiplayer", "Optimization",
         "Quests", "Realistic", "RPG", "Simulation", "Social",
         "Storage", "Technology", "Transportation", "Utility", "Worldgen",
     ]
 
+    # Fallback khi chua/khong goi duoc API Mojang
+    _MC_FALLBACK = [
+        "26.3","26.2", "26.1",
+        "1.21.5", "1.21.4", "1.21.3", "1.21.2", "1.21.1", "1.21",
+        "1.20.6", "1.20.4", "1.20.2", "1.20.1", "1.20",
+        "1.19.4", "1.19.2", "1.19",
+        "1.18.2", "1.18", "1.17.1", "1.17",
+        "1.16.5", "1.16.1", "1.16",
+        "1.15.2", "1.15", "1.14.4", "1.14",
+        "1.13.2", "1.13", "1.12.2", "1.12",
+        "1.11.2", "1.10.2", "1.9.4", "1.8.9", "1.7.10",
+    ]
+
+    # Cache dung chung cho ca chuong trinh
+    _ver_cache   = []    # list[dict]: {"id": "...", "type": "release"/"snapshot"/...}
+    _cache_ready = False
+    _cache_busy  = False
+
+    @classmethod
+    def _load_versions_async(cls, on_done=None):
+        """Goi API Mojang 1 lan, luu vao _ver_cache, goi on_done() khi xong."""
+        if cls._cache_ready:
+            if on_done: on_done()
+            return
+        if cls._cache_busy:
+            return
+        cls._cache_busy = True
+        def _t():
+            import urllib.request, json as _json
+            try:
+                req = urllib.request.Request(
+                    "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json",
+                    headers={"User-Agent": "MinecraftLauncher/1.0"})
+                with urllib.request.urlopen(req, timeout=8) as r:
+                    data = _json.loads(r.read())
+                cls._ver_cache = data.get("versions", [])
+            except Exception:
+                cls._ver_cache = [{"id": v, "type": "release"} for v in cls._MC_FALLBACK]
+            cls._cache_ready = True
+            cls._cache_busy  = False
+            if on_done:
+                try: on_done()
+                except Exception: pass
+        threading.Thread(target=_t, daemon=True).start()
+
     def __init__(self, parent, on_filter_callback, accent_color="#1E88E5",
                  show_loader=True, show_category=False, **kwargs):
         super().__init__(parent, **kwargs)
         self._cb = on_filter_callback
+        self._incl_snap = tk.BooleanVar(value=False)
 
         tk.Label(self, text="MC Ver:", font=("Arial", 9), bg=self["bg"]).pack(side="left", padx=(0, 2))
-        self.ent_ver = tk.Entry(self, font=("Arial", 9), width=8)
-        self.ent_ver.pack(side="left", padx=(0, 8))
-        self.ent_ver.bind("<Return>", lambda e: self._cb())
+        self.cbo_mc = ttk.Combobox(
+            self, font=("Arial", 9), state="readonly", width=10, height=12)
+        self.cbo_mc.set("Tất cả")
+        self.cbo_mc.pack(side="left", padx=(0, 4))
+        self.cbo_mc.bind("<<ComboboxSelected>>", lambda e: self._cb())
+        # Alias tuong thich nguoc
+        self.ent_ver = self.cbo_mc
+
+        tk.Checkbutton(
+            self, text="Snapshot", font=("Arial", 8),
+            variable=self._incl_snap, bg=self["bg"],
+            command=self._rebuild_ver_list,
+        ).pack(side="left", padx=(0, 8))
 
         if show_loader:
             tk.Label(self, text="Loader:", font=("Arial", 9), bg=self["bg"]).pack(side="left", padx=(0, 2))
             self.cbo_loader = ttk.Combobox(
                 self, values=self.LOADERS, font=("Arial", 9), state="readonly", width=10)
-            self.cbo_loader.set("Tat ca")
+            self.cbo_loader.set("Tất cả")
             self.cbo_loader.pack(side="left", padx=(0, 8))
             self.cbo_loader.bind("<<ComboboxSelected>>", lambda e: self._cb())
         else:
@@ -70,15 +126,12 @@ class FilterBar(tk.Frame):
             tk.Label(self, text="Loại:", font=("Arial", 9), bg=self["bg"]).pack(side="left", padx=(0, 2))
             self.cbo_category = ttk.Combobox(
                 self, values=self.CATEGORIES, font=("Arial", 9), state="readonly", width=14)
-            self.cbo_category.set("Tat ca")
+            self.cbo_category.set("Tất cả")
             self.cbo_category.pack(side="left", padx=(0, 8))
             self.cbo_category.bind("<<ComboboxSelected>>", lambda e: self._cb())
         else:
             self.cbo_category = None
 
-        # Map ten hien thi -> id thuc (chi dung cho CurseForge, category_id
-        # so nguyen). Voi Modrinth, category la chuoi nen khong can map nay
-        # (xem get(), se tra ve ten chuoi truc tiep neu map rong).
         self._category_id_map = {}
 
         tk.Button(self, text="Lọc", font=("Arial", 8, "bold"),
@@ -87,6 +140,22 @@ class FilterBar(tk.Frame):
         tk.Button(self, text="Xóa", font=("Arial", 8),
                   bg="#78909C", fg="white", activebackground="#78909C",
                   activeforeground="white", pady=1, command=self._reset).pack(side="left")
+
+        # Hien danh sach fallback ngay, sau do cap nhat khi API xong
+        self._rebuild_ver_list()
+        FilterBar._load_versions_async(on_done=lambda: self.after(0, self._rebuild_ver_list))
+
+    def _rebuild_ver_list(self):
+        """Cap nhat dropdown phien ban tuy theo checkbox Snapshot."""
+        cur = self.cbo_mc.get()
+        incl = self._incl_snap.get()
+        if FilterBar._cache_ready:
+            allowed = {"release", "snapshot"} if incl else {"release"}
+            vers = ["Tất cả"] + [v["id"] for v in FilterBar._ver_cache if v["type"] in allowed]
+        else:
+            vers = ["Tất cả"] + list(self._MC_FALLBACK)
+        self.cbo_mc.config(values=vers)
+        self.cbo_mc.set(cur if cur in vers else "Tất cả")
 
     def set_categories(self, categories):
         """
@@ -98,24 +167,25 @@ class FilterBar(tk.Frame):
         """
         if not self.cbo_category:
             return
-        names = ["Tat ca"] + [c["name"] for c in categories]
+        names = ["Tất cả"] + [c["name"] for c in categories]
         self._category_id_map = {c["name"]: c["id"] for c in categories}
         cur = self.cbo_category.get()
         self.cbo_category.configure(values=names)
         # Giu lai lua chon cu neu ten do van con trong danh sach moi
-        self.cbo_category.set(cur if cur in names else "Tat ca")
+        self.cbo_category.set(cur if cur in names else "Tất cả")
 
     def get(self):
         """
         Tra ve (mc_version, loader, category).
         'category' la chuoi ten (Modrinth) HOAC id so (CurseForge, neu
         set_categories() da duoc goi truoc do voi du lieu that tu API) -
-        tra ve None/"" khi dang chon "Tat ca" (khong loc theo category).
+        tra ve None/"" khi dang chon "Tất cả" (khong loc theo category).
         """
-        ver    = self.ent_ver.get().strip()
-        loader = self.cbo_loader.get() if self.cbo_loader else "Tat ca"
-        cat_ten = self.cbo_category.get() if self.cbo_category else "Tat ca"
-        if cat_ten in ("Tat ca", ""):
+        ver_raw = self.cbo_mc.get().strip()
+        ver     = "" if ver_raw in ("Tất cả", "") else ver_raw
+        loader = self.cbo_loader.get() if self.cbo_loader else "Tất cả"
+        cat_ten = self.cbo_category.get() if self.cbo_category else "Tất cả"
+        if cat_ten in ("Tất cả", ""):
             category = ""
         elif self._category_id_map:
             category = self._category_id_map.get(cat_ten, "")
@@ -124,11 +194,13 @@ class FilterBar(tk.Frame):
         return ver, loader, category
 
     def _reset(self):
-        self.ent_ver.delete(0, "end")
+        self._incl_snap.set(False)
+        self._rebuild_ver_list()
+        self.cbo_mc.set("Tất cả")
         if self.cbo_loader:
-            self.cbo_loader.set("Tat ca")
+            self.cbo_loader.set("Tất cả")
         if self.cbo_category:
-            self.cbo_category.set("Tat ca")
+            self.cbo_category.set("Tất cả")
         self._cb()
 
 
@@ -297,8 +369,9 @@ class ContentTableWidget(tk.Frame):
             _IconCache.get(self, row["icon_url"], row["on_icon_ready"])
 
     def load(self, data_list):
-        self._data     = data_list
-        self._selected = -1
+        self._c         = theme.colors()
+        self._data      = data_list
+        self._selected  = -1
 
         for r in self._rows:
             try:
@@ -423,6 +496,10 @@ class ContentTableWidget(tk.Frame):
     def _select(self, idx, install=False):
         if idx < 0 or idx >= len(self._rows):
             return
+        # Doc mau theme MOI NHAT moi lan chon/bo chon, tranh dung mau
+        # da cu (cache tu luc khoi tao) gay sai mau (vd den) khi theme
+        # (app hoac he thong) da doi sau khi bang duoc dung.
+        self._c = theme.colors()
         if self._selected != -1 and self._selected < len(self._rows):
             self._set_row_bg(self._selected, self._c["row_bg"])
         self._selected = idx

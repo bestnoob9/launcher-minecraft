@@ -56,9 +56,9 @@ def _modrinth_search(project_type, tu_khoa="", mc_version="", loader="", categor
     facets = [[f"project_type:{project_type}"]]
     if mc_version:
         facets.append([f"versions:{mc_version}"])
-    if loader and loader not in ("Tat ca", ""):
+    if loader and loader not in ("Tất cả", ""):
         facets.append([f"categories:{loader.lower()}"])
-    if category and category not in ("Tat ca", ""):
+    if category and category not in ("Tất cả", ""):
         facets.append([f"categories:{category.lower()}"])
     params = urllib.parse.urlencode({
         "query": tu_khoa,
@@ -134,7 +134,7 @@ def tim_kiem_curseforge(tu_khoa, mc_version="", loader="", limit=50, class_id=44
          "pageSize": limit, "index": offset, "sortField": 2, "sortOrder": "desc"}
     if mc_version:
         p["gameVersion"] = mc_version
-    if loader and loader != "Tat ca":
+    if loader and loader != "Tất cả":
         lm = {"Fabric": 4, "Forge": 1, "Quilt": 5, "NeoForge": 6}
         if loader in lm:
             p["modLoaderType"] = lm[loader]

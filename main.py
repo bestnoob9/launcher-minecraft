@@ -13,6 +13,16 @@ from components.instance_frame import InstanceFrame
 from setup_wizard import kiem_tra_va_chay_wizard
 
 
+def _can_giua_man_hinh(win, width, height):
+    """Canh cửa sổ ra giữa màn hình theo kích thước width x height."""
+    win.update_idletasks()
+    sw = win.winfo_screenwidth()
+    sh = win.winfo_screenheight()
+    x = (sw - width) // 2
+    y = (sh - height) // 2
+    win.geometry(f"{width}x{height}+{x}+{y}")
+
+
 def _doc_cau_hinh_may():
     import math
 
@@ -177,6 +187,7 @@ class MinecraftLauncherApp:
         self.root.minsize(1280, 720)
         self.root.resizable(True, True)
         _gan_icon_app(self.root)
+        _can_giua_man_hinh(self.root, 1280, 720)
 
         config.current_config = config.tai_toan_bo_cau_hinh()
         self._game_process = None

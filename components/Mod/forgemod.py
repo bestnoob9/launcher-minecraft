@@ -332,29 +332,39 @@ class ForgeModMixin:
 
         self.fb_modcf = FilterBar(lv, self._search_modcf, accent_color="#F9A825", show_category=True, bg=BG)
         self.fb_modcf.pack(fill="x", padx=10, pady=(8, 4))
+        # Khoa han o "MC Ver" o thanh loc - phien ban gio da duoc xac dinh
+        # tu dong qua Instance + dropdown "Phien ban mod" ben duoi, khong
+        # can loc theo MC Ver o day nua (du co/khong chon Instance).
+        try:
+            self.fb_modcf.cbo_mc.set("Tất cả")
+            self.fb_modcf.cbo_mc.config(state="disabled")
+        except Exception:
+            pass
         self._load_categories_async(self.fb_modcf, 6)
-        self.list_modcf = ContentTableWidget(lv, "curseforge", self._select_modcf)
-        self.list_modcf.pack(fill="both", expand=True, padx=10)
-
-        self.pg_modcf = PaginationBar(lv, self._goto_modcf_page, accent_color="#F9A825", bg=BG)
-        self.pg_modcf.pack(fill="x", padx=10, pady=(2, 0))
 
         bp = tk.Frame(lv, bg=BG)
-        bp.pack(fill="x", padx=10, pady=(4, 8))
+        bp.pack(fill="x", padx=10, pady=(0, 4))
         tk.Label(bp, text="Phiên bản mod:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
         self.cbo_modcf_ver = ttk.Combobox(bp, font=("Arial", 9), state="readonly", width=42)
         self.cbo_modcf_ver.grid(row=0, column=1, padx=6)
-        tk.Label(bp, text="Cài vào Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=4)
+        tk.Label(bp, text="Cài vào Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=2)
         ds_inst = list(config.current_config.get("danh_sach_instances", {}).keys())
-        self.cbo_modcf_inst = ttk.Combobox(bp, values=ds_inst, font=("Arial", 9), width=42)
+        self.cbo_modcf_inst = ttk.Combobox(bp, values=ds_inst, font=("Arial", 9), width=42, height=5)
         cur = config.current_config.get("current_instance", "")
         if cur in ds_inst:  self.cbo_modcf_inst.set(cur)
         elif ds_inst:       self.cbo_modcf_inst.set(ds_inst[0])
         self.cbo_modcf_inst.grid(row=1, column=1, padx=6)
         self.cbo_modcf_inst.bind("<<ComboboxSelected>>", lambda e: self._filter_modcf_ver())
+        self.cbo_modcf_inst.bind("<ButtonPress>", lambda e: self._sync_inst_cbo(self.cbo_modcf_inst))
         tk.Button(bp, text="Cài Mod", font=("Arial", 9, "bold"),
                   bg="#F9A825", fg="white", activebackground="#F9A825", activeforeground="white",
                   width=14, pady=4, command=self._install_modcf).grid(row=0, column=2, rowspan=2, padx=8)
+
+        self.list_modcf = ContentTableWidget(lv, "curseforge", self._select_modcf)
+        self.list_modcf.pack(fill="both", expand=True, padx=10)
+
+        self.pg_modcf = PaginationBar(lv, self._goto_modcf_page, accent_color="#F9A825", bg=BG)
+        self.pg_modcf.pack(fill="x", padx=10, pady=(2, 0))
 
     def _load_modcf_top(self, page=1):
         self._modcf_page    = page
@@ -420,6 +430,13 @@ class ForgeModMixin:
                 ten_inst = self.cbo_modcf_inst.get().strip()
                 if not ten_inst:
                     messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self)
+                    _finish()
+                    return
+                _, loader = self._get_inst_mc_loader(ten_inst)
+                if loader and loader.lower() == "vanilla":
+                    messagebox.showwarning("Không thể cài Mod",
+                        f"Instance '{ten_inst}' dùng Vanilla (không có mod loader).\n"
+                        "Hãy chọn instance dùng Fabric, Forge, Quilt hoặc NeoForge.", parent=self)
                     _finish()
                     return
                 self.lbl_status.config(text="Đang tải Mod từ CurseForge...", fg="#F9A825")
@@ -512,18 +529,18 @@ class ForgeModMixin:
             self.cbo_modcf_ver.config(values=ds_all)
             if ds_all: self.cbo_modcf_ver.set(ds_all[0])
             else:       self.cbo_modcf_ver.set("")
-            if mcv:
-                self.lbl_status.config(
-                    text=f"Không có phiên bản khớp với {ten_inst} (MC {mcv}"
-                         + (f", {loader}" if loader and loader != "Vanilla" else "")
-                         + "). Hien thi tat ca - kiem tra ky truoc khi cai.",
-                    fg="#E64A19")
 
     def _install_modcf(self):
         from components.mod_mc import TacVuBiHuy
         ten_inst = self.cbo_modcf_inst.get().strip()
         if not ten_inst:
             messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self); return
+        _, loader = self._get_inst_mc_loader(ten_inst)
+        if loader and loader.lower() == "vanilla":
+            messagebox.showwarning("Không thể cài Mod",
+                f"Instance '{ten_inst}' dùng Vanilla (không có mod loader).\n"
+                "Hãy chọn instance dùng Fabric, Forge, Quilt hoặc NeoForge.", parent=self)
+            return
         iv = self.cbo_modcf_ver.current()
         if iv < 0 or not self._modcf_files:
             messagebox.showwarning("Chú ý", "Chọn phiên bản!", parent=self); return
@@ -593,28 +610,31 @@ class ForgeModMixin:
         self.fb_rsp_cf = FilterBar(lv, self._search_rsp_cf, accent_color="#AB47BC", show_loader=False, show_category=True, bg=BG)
         self.fb_rsp_cf.pack(fill="x", padx=10, pady=(8, 4))
         self._load_categories_async(self.fb_rsp_cf, 12)
+
+        bp = tk.Frame(lv, bg=BG)
+        bp.pack(fill="x", padx=10, pady=(0, 4))
+        tk.Label(bp, text="Phiên bản:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
+        self.cbo_rsp_cf_ver = ttk.Combobox(bp, font=("Arial", 9), state="readonly", width=42)
+        self.cbo_rsp_cf_ver.grid(row=0, column=1, padx=6)
+        tk.Label(bp, text="Cài vào Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=2)
+        ds_inst = list(config.current_config.get("danh_sach_instances", {}).keys())
+        self.cbo_rsp_cf_inst = ttk.Combobox(bp, values=ds_inst, font=("Arial", 9), width=42, height=5)
+        cur = config.current_config.get("current_instance", "")
+        if cur in ds_inst: self.cbo_rsp_cf_inst.set(cur)
+        elif ds_inst:      self.cbo_rsp_cf_inst.set(ds_inst[0])
+        self.cbo_rsp_cf_inst.grid(row=1, column=1, padx=6)
+        # RSP khong can loc phien ban theo Instance - chi dong bo lai
+        # danh sach Instance.
+        self.cbo_rsp_cf_inst.bind("<ButtonPress>", lambda e: self._sync_inst_cbo(self.cbo_rsp_cf_inst))
+        tk.Button(bp, text="Cài RSP", font=("Arial", 9, "bold"),
+                  bg="#AB47BC", fg="white", activebackground="#AB47BC", activeforeground="white",
+                  width=14, pady=4, command=self._install_rsp_cf).grid(row=0, column=2, rowspan=2, padx=8)
+
         self.list_rsp_cf = ContentTableWidget(lv, "curseforge", self._select_rsp_cf)
         self.list_rsp_cf.pack(fill="both", expand=True, padx=10)
 
         self.pg_rsp_cf = PaginationBar(lv, self._goto_rsp_cf_page, accent_color="#AB47BC", bg=BG)
         self.pg_rsp_cf.pack(fill="x", padx=10, pady=(2, 0))
-
-        bp = tk.Frame(lv, bg=BG)
-        bp.pack(fill="x", padx=10, pady=(4, 8))
-        tk.Label(bp, text="Phiên bản:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
-        self.cbo_rsp_cf_ver = ttk.Combobox(bp, font=("Arial", 9), state="readonly", width=42)
-        self.cbo_rsp_cf_ver.grid(row=0, column=1, padx=6)
-        tk.Label(bp, text="Cài vào Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=4)
-        ds_inst = list(config.current_config.get("danh_sach_instances", {}).keys())
-        self.cbo_rsp_cf_inst = ttk.Combobox(bp, values=ds_inst, font=("Arial", 9), width=42)
-        cur = config.current_config.get("current_instance", "")
-        if cur in ds_inst: self.cbo_rsp_cf_inst.set(cur)
-        elif ds_inst:      self.cbo_rsp_cf_inst.set(ds_inst[0])
-        self.cbo_rsp_cf_inst.grid(row=1, column=1, padx=6)
-        self.cbo_rsp_cf_inst.bind("<<ComboboxSelected>>", lambda e: self._filter_rsp_cf_ver())
-        tk.Button(bp, text="Cài RSP", font=("Arial", 9, "bold"),
-                  bg="#AB47BC", fg="white", activebackground="#AB47BC", activeforeground="white",
-                  width=14, pady=4, command=self._install_rsp_cf).grid(row=0, column=2, rowspan=2, padx=8)
 
     def _load_rsp_cf_top(self, page=1):
         self._rsp_cf_page    = page
@@ -737,46 +757,18 @@ class ForgeModMixin:
         threading.Thread(target=_t, daemon=True).start()
 
     def _filter_rsp_cf_ver(self):
+        """RSP khong can loc/khoa theo Instance - chi hien toan bo
+        phien ban, nguoi dung tu chon neu can."""
         files  = self._rsp_cf_files
         ds_all = [f"{fi.get('displayName', fi.get('fileName',''))}  -  MC {', '.join(fi.get('gameVersions',[]))}"
                   for fi in files]
-
-        ten_inst = self.cbo_rsp_cf_inst.get().strip()
-        mcv, _   = self._get_inst_mc_loader(ten_inst) if ten_inst else ("", "")
-
-        if ten_inst and mcv:
-            try:
-                self.fb_rsp_cf.cbo_mc.set(mcv)
-                self.fb_rsp_cf.cbo_mc.config(state="disabled")
-            except Exception:
-                pass
+        self._rsp_cf_ver_idx_map = list(range(len(files)))
+        self.cbo_rsp_cf_ver.config(values=ds_all)
+        if ds_all:
+            self.cbo_rsp_cf_ver.set(ds_all[0])
+            self.lbl_status.config(text="Chon phien ban roi nhan Cài RSP.", fg="gray")
         else:
-            try:
-                self.fb_rsp_cf.cbo_mc.config(state="readonly")
-            except Exception:
-                pass
-
-        idxs = [i for i, fi in enumerate(files) if mcv in fi.get("gameVersions", [])] if mcv \
-               else list(range(len(files)))
-
-        if idxs:
-            ds = [ds_all[i] for i in idxs]
-            self._rsp_cf_ver_idx_map = idxs
-            self.cbo_rsp_cf_ver.config(values=ds)
-            self.cbo_rsp_cf_ver.set(ds[0])
-            self.lbl_status.config(
-                text=f"Đã lọc {len(ds)} phiên bản phù hợp với {ten_inst} (MC {mcv})." if mcv
-                     else "Chon phien ban roi nhan Cài RSP.",
-                fg="gray")
-        else:
-            self._rsp_cf_ver_idx_map = list(range(len(files)))
-            self.cbo_rsp_cf_ver.config(values=ds_all)
-            if ds_all: self.cbo_rsp_cf_ver.set(ds_all[0])
-            else:       self.cbo_rsp_cf_ver.set("")
-            if mcv:
-                self.lbl_status.config(
-                    text=f"Không có phiên bản khớp với {ten_inst} (MC {mcv}). Hiển thị tất cả.",
-                    fg="#E64A19")
+            self.cbo_rsp_cf_ver.set("")
 
     def _install_rsp_cf(self):
         from components.mod_mc import TacVuBiHuy
@@ -852,28 +844,31 @@ class ForgeModMixin:
         self.fb_sh_cf = FilterBar(lv, self._search_sh_cf, accent_color="#FB8C00", show_loader=False, show_category=True, bg=BG)
         self.fb_sh_cf.pack(fill="x", padx=10, pady=(8, 4))
         self._load_categories_async(self.fb_sh_cf, 6552)
+
+        bp = tk.Frame(lv, bg=BG)
+        bp.pack(fill="x", padx=10, pady=(0, 4))
+        tk.Label(bp, text="Phiên bản:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
+        self.cbo_sh_cf_ver = ttk.Combobox(bp, font=("Arial", 9), state="readonly", width=42)
+        self.cbo_sh_cf_ver.grid(row=0, column=1, padx=6)
+        tk.Label(bp, text="Cài vào Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=2)
+        ds_inst = list(config.current_config.get("danh_sach_instances", {}).keys())
+        self.cbo_sh_cf_inst = ttk.Combobox(bp, values=ds_inst, font=("Arial", 9), width=42, height=5)
+        cur = config.current_config.get("current_instance", "")
+        if cur in ds_inst: self.cbo_sh_cf_inst.set(cur)
+        elif ds_inst:      self.cbo_sh_cf_inst.set(ds_inst[0])
+        self.cbo_sh_cf_inst.grid(row=1, column=1, padx=6)
+        # Shader khong can loc phien ban theo Instance - chi dong bo lai
+        # danh sach Instance.
+        self.cbo_sh_cf_inst.bind("<ButtonPress>", lambda e: self._sync_inst_cbo(self.cbo_sh_cf_inst))
+        tk.Button(bp, text="Cài Shader", font=("Arial", 9, "bold"),
+                  bg="#FB8C00", fg="white", activebackground="#FB8C00", activeforeground="white",
+                  width=14, pady=4, command=self._install_sh_cf).grid(row=0, column=2, rowspan=2, padx=8)
+
         self.list_sh_cf = ContentTableWidget(lv, "curseforge", self._select_sh_cf)
         self.list_sh_cf.pack(fill="both", expand=True, padx=10)
 
         self.pg_sh_cf = PaginationBar(lv, self._goto_sh_cf_page, accent_color="#FB8C00", bg=BG)
         self.pg_sh_cf.pack(fill="x", padx=10, pady=(2, 0))
-
-        bp = tk.Frame(lv, bg=BG)
-        bp.pack(fill="x", padx=10, pady=(4, 8))
-        tk.Label(bp, text="Phiên bản:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
-        self.cbo_sh_cf_ver = ttk.Combobox(bp, font=("Arial", 9), state="readonly", width=42)
-        self.cbo_sh_cf_ver.grid(row=0, column=1, padx=6)
-        tk.Label(bp, text="Cài vào Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=4)
-        ds_inst = list(config.current_config.get("danh_sach_instances", {}).keys())
-        self.cbo_sh_cf_inst = ttk.Combobox(bp, values=ds_inst, font=("Arial", 9), width=42)
-        cur = config.current_config.get("current_instance", "")
-        if cur in ds_inst: self.cbo_sh_cf_inst.set(cur)
-        elif ds_inst:      self.cbo_sh_cf_inst.set(ds_inst[0])
-        self.cbo_sh_cf_inst.grid(row=1, column=1, padx=6)
-        self.cbo_sh_cf_inst.bind("<<ComboboxSelected>>", lambda e: self._filter_sh_cf_ver())
-        tk.Button(bp, text="Cài Shader", font=("Arial", 9, "bold"),
-                  bg="#FB8C00", fg="white", activebackground="#FB8C00", activeforeground="white",
-                  width=14, pady=4, command=self._install_sh_cf).grid(row=0, column=2, rowspan=2, padx=8)
 
     def _load_sh_cf_top(self, page=1):
         self._sh_cf_page    = page
@@ -996,46 +991,18 @@ class ForgeModMixin:
         threading.Thread(target=_t, daemon=True).start()
 
     def _filter_sh_cf_ver(self):
+        """Shader khong can loc/khoa theo Instance - chi hien toan bo
+        phien ban, nguoi dung tu chon neu can."""
         files  = self._sh_cf_files
         ds_all = [f"{fi.get('displayName', fi.get('fileName',''))}  -  MC {', '.join(fi.get('gameVersions',[]))}"
                   for fi in files]
-
-        ten_inst = self.cbo_sh_cf_inst.get().strip()
-        mcv, _   = self._get_inst_mc_loader(ten_inst) if ten_inst else ("", "")
-
-        if ten_inst and mcv:
-            try:
-                self.fb_sh_cf.cbo_mc.set(mcv)
-                self.fb_sh_cf.cbo_mc.config(state="disabled")
-            except Exception:
-                pass
+        self._sh_cf_ver_idx_map = list(range(len(files)))
+        self.cbo_sh_cf_ver.config(values=ds_all)
+        if ds_all:
+            self.cbo_sh_cf_ver.set(ds_all[0])
+            self.lbl_status.config(text="Chon phien ban roi nhan Cài Shader.", fg="gray")
         else:
-            try:
-                self.fb_sh_cf.cbo_mc.config(state="readonly")
-            except Exception:
-                pass
-
-        idxs = [i for i, fi in enumerate(files) if mcv in fi.get("gameVersions", [])] if mcv \
-               else list(range(len(files)))
-
-        if idxs:
-            ds = [ds_all[i] for i in idxs]
-            self._sh_cf_ver_idx_map = idxs
-            self.cbo_sh_cf_ver.config(values=ds)
-            self.cbo_sh_cf_ver.set(ds[0])
-            self.lbl_status.config(
-                text=f"Đã lọc {len(ds)} phiên bản phù hợp với {ten_inst} (MC {mcv})." if mcv
-                     else "Chon phien ban roi nhan Cài Shader.",
-                fg="gray")
-        else:
-            self._sh_cf_ver_idx_map = list(range(len(files)))
-            self.cbo_sh_cf_ver.config(values=ds_all)
-            if ds_all: self.cbo_sh_cf_ver.set(ds_all[0])
-            else:       self.cbo_sh_cf_ver.set("")
-            if mcv:
-                self.lbl_status.config(
-                    text=f"Không có phiên bản khớp với {ten_inst} (MC {mcv}). Hiển thị tất cả.",
-                    fg="#E64A19")
+            self.cbo_sh_cf_ver.set("")
 
     def _install_sh_cf(self):
         from components.mod_mc import TacVuBiHuy

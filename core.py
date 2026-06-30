@@ -458,11 +458,21 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
     def _parse_ram(val, default):
         import re as _re
         val = str(val).strip().upper().replace(" ", "")
-        m = _re.match(r"^(\d+)\s*(GB|MB|G|M)?$", val)
+        # Ho tro ca so thap phan (vd "3.5GB" tu config cu) de tranh am tham
+        # rot ve gia tri default 4G khi RAM nguoi dung chon khong tron GB.
+        m = _re.match(r"^(\d+(?:\.\d+)?)\s*(GB|MB|G|M)?$", val)
         if m:
-            num, unit = m.group(1), (m.group(2) or "G")
+            num_str, unit = m.group(1), (m.group(2) or "G")
             unit = unit.replace("GB", "G").replace("MB", "M")
-            return f"{num}{unit}"
+            num = float(num_str)
+            if unit == "G":
+                # JVM khong nhan duoc so thap phan sau -Xmx/-Xms (vd -Xmx3.5G la loi)
+                # nen quy doi sang MB nguyen khi co phan thap phan.
+                if num != int(num):
+                    return f"{int(round(num * 1024))}M"
+                return f"{int(num)}G"
+            else:
+                return f"{int(round(num))}M"
         return default
     ram_min = _parse_ram(config.current_config.get("ram_min", "2GB"), "2G")
     ram_max = _parse_ram(config.current_config.get("ram_max", "4GB"), "4G")

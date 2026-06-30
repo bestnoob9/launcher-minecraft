@@ -10,8 +10,14 @@ def _lay_phien_ban_moi_nhat():
     except:
         return "1.21.1"
 
-# Thư mục chứa file launcher (không phụ thuộc vào working directory khi chạy)
-_LAUNCHER_DIR    = os.path.dirname(os.path.abspath(__file__))
+# Thư mục chứa file launcher — hoạt động đúng cả khi chạy từ .py lẫn .exe (PyInstaller).
+# Khi đóng gói, __file__ trỏ vào thư mục temp (_MEIPASS), không phải chỗ đặt .exe.
+# sys.frozen được PyInstaller set → dùng sys.executable để lấy đúng thư mục .exe.
+import sys as _sys
+if getattr(_sys, "frozen", False):
+    _LAUNCHER_DIR = os.path.dirname(os.path.abspath(_sys.executable))
+else:
+    _LAUNCHER_DIR = os.path.dirname(os.path.abspath(__file__))
 _FILE_CONFIG_TAM = os.path.join(_LAUNCHER_DIR, "launcher_config.json")
 _THU_MUC_LAUNCHERCF = "launchercf"
 _TEN_FILE_CONFIG    = "launcher_config.json"

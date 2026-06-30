@@ -14,7 +14,6 @@ class VersionFrame(tk.Frame):
         self.create_widgets()
 
     def create_widgets(self):
-        # Chọn phiên bản chính
         lbl_ver = tk.Label(self, text="Chọn phiên bản chính (Vanilla):", font=("Arial", 10))
         lbl_ver.pack()
         
@@ -25,7 +24,6 @@ class VersionFrame(tk.Frame):
         self.cbo_versions.pack(pady=5)
         self.cbo_versions.bind("<<ComboboxSelected>>", self.cap_nhat_tuy_chon_mod_loader)
 
-        # Chọn Loại Mod Loader
         lbl_mod = tk.Label(self, text="Chọn Loại Game (Mod Loader):", font=("Arial", 10))
         lbl_mod.pack()
         
@@ -34,7 +32,7 @@ class VersionFrame(tk.Frame):
         self.cbo_mod_loader.pack(pady=5)
         self.cbo_mod_loader.bind("<<ComboboxSelected>>", self.cap_nhat_danh_sach_mod_version)
 
-        # Chọn Phiên bản Mod chi tiết (Mặc định chuẩn bị sẵn cấu trúc ẩn/hiện)
+        # Chưa pack() ngay - ẩn/hiện tùy theo loại mod loader được chọn
         self.lbl_mod_ver = tk.Label(self, text="Chọn Phiên bản Mod Loader cụ thể:", font=("Arial", 10, "bold"), fg="#2E7D32")
         self.cbo_mod_versions = ttk.Combobox(self, font=("Arial", 10), state="readonly", width=35)
 

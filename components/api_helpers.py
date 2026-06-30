@@ -10,17 +10,9 @@ import urllib.parse
 import urllib.error
 import json
 
-# =====================================================================
-# CONSTANTS
-# =====================================================================
-
 CURSEFORGE_API_KEY  = "$2a$10$tlioOAg8vpMZg3nN1c5lautxofMN2DXCzLn4.8nyr.MTBG4IYHVT2"
 MODRINTH_USER_AGENT = "MinecraftLauncher/1.0 (github.com/user/mc-launcher)"
 
-
-# =====================================================================
-# LOW-LEVEL HTTP HELPERS
-# =====================================================================
 
 def _request_json(url, headers=None):
     req_headers = {"User-Agent": MODRINTH_USER_AGENT, "Accept": "application/json"}
@@ -60,10 +52,6 @@ def _fetch_image_bytes(url):
         return None
 
 
-# =====================================================================
-# MODRINTH API
-# =====================================================================
-
 def _modrinth_search(project_type, tu_khoa="", mc_version="", loader="", category="", limit=50, offset=0):
     facets = [[f"project_type:{project_type}"]]
     if mc_version:
@@ -95,9 +83,14 @@ def lay_phien_ban_modrinth(project_id):
     return _request_json(f"https://api.modrinth.com/v2/project/{project_id}/version")
 
 
-# =====================================================================
-# CURSEFORGE API
-# =====================================================================
+def lay_project_modrinth(project_id):
+    """
+    Lay thong tin chi tiet day du cua 1 project Modrinth (bao gom gallery anh).
+    Endpoint /v2/search (dung de hien danh sach) KHONG tra ve field 'gallery',
+    chi co o endpoint chi tiet nay - vi vay can goi rieng khi mo ModDetailWindow.
+    """
+    return _request_json(f"https://api.modrinth.com/v2/project/{project_id}")
+
 
 def lay_curseforge_popular(class_id=4471, limit=50, offset=0):
     """class_id: 4471=modpack, 6=mod"""

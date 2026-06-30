@@ -27,13 +27,9 @@ from components.install_utils import dang_cai_modpack
 
 
 class TacVuBiHuy(Exception):
-    """Duoc nem ra khi nguoi dung nhan nut 'Huy' trong khi dang tai/cai dat."""
+    """Duoc nem ra khi nguoi dung nhan nut 'Hủy' trong khi dang tai/cai dat."""
     pass
 
-
-# =====================================================================
-# PAGINATION BAR
-# =====================================================================
 
 class PaginationBar(tk.Frame):
     """Thanh chuyen trang: <  1  2  ...  N  >"""
@@ -89,10 +85,6 @@ class PaginationBar(tk.Frame):
         self._btn(">", (lambda: self._go(self.page + 1)) if self.page < tp else None)
 
 
-# =====================================================================
-# CUA SO CHINH  (Toplevel)
-# =====================================================================
-
 class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
 
     def __init__(self, parent, callback_lam_moi=None):
@@ -112,7 +104,6 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         self._last_progress_label = ""
         self._debounce_search     = None
 
-        # idx_map khoi tao san de tranh AttributeError neu tab chua load
         self._modmr_ver_idx_map = []
         self._modcf_ver_idx_map = []
         self._rsp_ver_idx_map   = []
@@ -122,10 +113,6 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
 
         self.protocol("WM_DELETE_WINDOW", self._xu_ly_dong_cua_so)
         self._build_ui()
-
-    # ------------------------------------------------------------------
-    # QUAN LY TAC VU
-    # ------------------------------------------------------------------
 
     def _tang_tac_vu(self):
         self._so_tac_vu_dang_chay += 1
@@ -180,10 +167,6 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
             return
         self.destroy()
 
-    # ------------------------------------------------------------------
-    # VIEW SWITCHING
-    # ------------------------------------------------------------------
-
     def _swap_to_detail(self, lv_frame, dv_frame, source, data, versions,
                         install_cb, accent):
         def _back():
@@ -202,10 +185,6 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         for w in dv_frame.winfo_children():
             w.destroy()
         lv_frame.pack(fill="both", expand=True)
-
-    # ------------------------------------------------------------------
-    # BUILD UI
-    # ------------------------------------------------------------------
 
     def _build_ui(self):
         tk.Label(self, text="Content Manager  —  Modpack / Mod / Resource Pack / Shader",
@@ -226,7 +205,6 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
                   background=[("selected", BG_SEL)],
                   foreground=[("selected", "#1a1a1a")])
 
-        # O tim kiem chung
         search_bar = tk.Frame(self)
         search_bar.pack(fill="x", padx=14, pady=(0, 4))
         tk.Label(search_bar, text="Tìm kiếm:", font=("Arial", 10)).pack(side="left")
@@ -235,7 +213,7 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         self.ent_search.bind("<Return>", lambda e: self._search_current_tab())
         self.ent_search.bind("<KeyRelease>",
                              lambda e: self._debounce("_debounce_search", 400, self._search_current_tab))
-        tk.Button(search_bar, text="Tim", font=("Arial", 9, "bold"),
+        tk.Button(search_bar, text="Tìm", font=("Arial", 9, "bold"),
                   bg="#1E88E5", fg="white", activebackground="#1E88E5", activeforeground="white",
                   width=6, command=self._search_current_tab).pack(side="left")
         tk.Button(search_bar, text="Top", font=("Arial", 9), bg="#607D8B", fg="white",
@@ -248,7 +226,7 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         # trong (vd ModDetailWindow) qua dai.
         status_bar = tk.Frame(self)
         status_bar.pack(side="bottom", fill="x", padx=14, pady=(2, 6))
-        self.lbl_status = tk.Label(status_bar, text="Dang tai...",
+        self.lbl_status = tk.Label(status_bar, text="Đang tải...",
                                    font=("Arial", 9, "italic"), fg="#1E88E5", anchor="w")
         self.lbl_status.pack(side="left", fill="x", expand=True)
         self.btn_huy = tk.Button(status_bar, text="Hủy", font=("Arial", 9, "bold"),
@@ -262,7 +240,6 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
 
         BG = "#f5f5f7"
 
-        # Tab cap 1
         self.tab_modrinth   = tk.Frame(self.nb, bg=BG)
         self.tab_curseforge = tk.Frame(self.nb, bg=BG)
         self.tab_f          = tk.Frame(self.nb)
@@ -270,7 +247,6 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         self.nb.add(self.tab_curseforge, text="  CurseForge  ")
         self.nb.add(self.tab_f,          text="  Import  ")
 
-        # Sub-notebook Modrinth
         self.nb_mr = ttk.Notebook(self.tab_modrinth)
         self.nb_mr.pack(fill="both", expand=True)
         self.tab_mr    = tk.Frame(self.nb_mr, bg=BG)
@@ -282,7 +258,6 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         self.nb_mr.add(self.tab_rsp,   text="  Resource Pack  ")
         self.nb_mr.add(self.tab_sh,    text="  Shader  ")
 
-        # Sub-notebook CurseForge
         self.nb_cf = ttk.Notebook(self.tab_curseforge)
         self.nb_cf.pack(fill="both", expand=True)
         self.tab_cf     = tk.Frame(self.nb_cf, bg=BG)
@@ -294,7 +269,6 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         self.nb_cf.add(self.tab_rsp_cf, text="  Resource Pack  ")
         self.nb_cf.add(self.tab_sh_cf,  text="  Shader  ")
 
-        # Goi builder tu mixin
         self._build_modpack_modrinth()
         self._build_modpack_curseforge()
         self._build_mod_modrinth()
@@ -305,22 +279,16 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         self._build_shader_cf_tab()
         self._build_file()
 
-        # Bat dau load ngay cac tab luon hien thi
         threading.Thread(target=self._load_mr_top,  daemon=True).start()
         threading.Thread(target=self._load_cf_top,  daemon=True).start()
         threading.Thread(target=self._load_rsp_top, daemon=True).start()
         threading.Thread(target=self._load_sh_top,  daemon=True).start()
 
-        # Cac tab con lai: load lazy khi user click
         self.nb.bind("<<NotebookTabChanged>>",    self._on_tab_changed)
         self.nb_mr.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self.nb_cf.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
         theme.apply_theme(self)
-
-    # ------------------------------------------------------------------
-    # XAC DINH TAB HIEN TAI
-    # ------------------------------------------------------------------
 
     def _current_tab_key(self):
         outer = self.nb.index(self.nb.select())
@@ -362,10 +330,6 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
             if cur_kw != kw:
                 self._search_current_tab()
 
-    # ------------------------------------------------------------------
-    # O TIM KIEM CHUNG
-    # ------------------------------------------------------------------
-
     def _search_current_tab(self, page=1):
         key = self._current_tab_key()
         fn = {
@@ -396,10 +360,6 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         if fn:
             threading.Thread(target=fn, daemon=True).start()
 
-    # ------------------------------------------------------------------
-    # HELPERS
-    # ------------------------------------------------------------------
-
     def _debounce(self, attr, ms, fn):
         old = getattr(self, attr, None)
         if old:
@@ -417,10 +377,6 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         messagebox.showinfo("Thành công",
             "Đã cài đặt thành công!\nInstance mới đã xuất hiện trong danh sách.", parent=self)
 
-
-# =====================================================================
-# ModMcFrame — phien ban tk.Frame nhung inline vao main.py
-# =====================================================================
 
 class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
     """
@@ -455,9 +411,6 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
         nen thread cai dat van song binh thuong va co the tiep tuc/huy duoc."""
         return True
 
-    # Cac method dung chung voi ModMcWindow duoc dinh nghia lai o day
-    # de Frame khong phu thuoc vao viec copy tu Toplevel.
-
     def _tang_tac_vu(self):
         self._so_tac_vu_dang_chay += 1
         self._cancel_event.clear()
@@ -491,7 +444,7 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
         if self._so_tac_vu_dang_chay <= 0:
             return
         self._cancel_event.set()
-        self.lbl_status.config(text="Dang huy...", fg="#E53935")
+        self.lbl_status.config(text="Đang hủy...", fg="#E53935")
 
     def _dang_co_tac_vu(self):
         dang_chay_local = self._so_tac_vu_dang_chay > 0
@@ -534,8 +487,8 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
     def _done(self):
         if self.callback_lam_moi:
             self.callback_lam_moi()
-        messagebox.showinfo("Thanh cong",
-            "Da cai dat thanh cong!\nInstance moi da xuat hien trong danh sach.", parent=self)
+        messagebox.showinfo("Thành công",
+            "Đã cài đặt thành công!\nInstance mới đã xuất hiện trong danh sách.", parent=self)
 
     def _build_ui(self):
         tk.Label(self, text="Content Manager  —  Modpack / Mod / Resource Pack / Shader",
@@ -558,13 +511,13 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
 
         search_bar = tk.Frame(self)
         search_bar.pack(fill="x", padx=14, pady=(0, 4))
-        tk.Label(search_bar, text="Tim kiem:", font=("Arial", 10)).pack(side="left")
+        tk.Label(search_bar, text="Tìm kiếm:", font=("Arial", 10)).pack(side="left")
         self.ent_search = tk.Entry(search_bar, font=("Arial", 10), width=34)
         self.ent_search.pack(side="left", padx=6)
         self.ent_search.bind("<Return>", lambda e: self._search_current_tab())
         self.ent_search.bind("<KeyRelease>",
                              lambda e: self._debounce("_debounce_search", 400, self._search_current_tab))
-        tk.Button(search_bar, text="Tim", font=("Arial", 9, "bold"),
+        tk.Button(search_bar, text="Tìm", font=("Arial", 9, "bold"),
                   bg="#1E88E5", fg="white", activebackground="#1E88E5", activeforeground="white",
                   width=6, command=self._search_current_tab).pack(side="left")
         tk.Button(search_bar, text="Top", font=("Arial", 9), bg="#607D8B", fg="white",
@@ -577,7 +530,7 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
         # trong (vd ModDetailWindow) qua dai.
         status_bar = tk.Frame(self)
         status_bar.pack(side="bottom", fill="x", padx=14, pady=(2, 6))
-        self.lbl_status = tk.Label(status_bar, text="Dang tai...",
+        self.lbl_status = tk.Label(status_bar, text="Đang tải...",
                                    font=("Arial", 9, "italic"), fg="#1E88E5", anchor="w")
         self.lbl_status.pack(side="left", fill="x", expand=True)
         self.btn_huy = tk.Button(status_bar, text="Hủy", font=("Arial", 9, "bold"),
@@ -620,7 +573,6 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
         self.nb_cf.add(self.tab_rsp_cf, text="  Resource Pack  ")
         self.nb_cf.add(self.tab_sh_cf,  text="  Shader  ")
 
-        # Goi builder tu mixin
         self._build_modpack_modrinth()
         self._build_modpack_curseforge()
         self._build_mod_modrinth()

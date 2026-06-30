@@ -26,14 +26,9 @@ import config
 _NATIVE_TTK_THEME = None
 
 
-# =====================================================================
-# BANG MAU
-# =====================================================================
-
 # Mau nen / chu trung tinh dung trong toan bo code (light mode "goc")
 # -> mau tuong ung khi o Dark mode.
 _LIGHT_TO_DARK = {
-    # --- nen ---
     "#ffffff": "#1e1e1e",
     "white":   "#1e1e1e",
     "#f5f5f7": "#252526",
@@ -48,7 +43,6 @@ _LIGHT_TO_DARK = {
     "SystemWindow":     "#1e1e1e",
     "SystemWindowText": "#e8e8e8",
 
-    # --- chu ---
     "#1a1a1a": "#e8e8e8",
     "black":   "#e8e8e8",
     "#222":    "#d0d0d0",
@@ -62,7 +56,6 @@ _LIGHT_TO_DARK = {
     "#888888": "#9a9a9a",
     "gray":    "#a0a0a0",
     "grey":    "#a0a0a0",
-    # --- mau trang thai / highlight ---
     "#2e7d32": "#66bb6a",   # xanh la "luot tai" (ModDetailWindow)
     "#b35900": "#ffb74d",   # cam "tag" (ContentTableWidget)
 }
@@ -102,10 +95,6 @@ def set_theme(name):
     config.current_config["theme"] = name
 
 
-# =====================================================================
-# MAU CHINH DUNG CHO CUA SO / WIDGET MOI TAO
-# =====================================================================
-
 def colors():
     """Tra ve dict mau chinh theo theme hien tai — dung khi tao widget moi
     (vd ContentTableWidget trong widgets.py)."""
@@ -143,10 +132,6 @@ def colors():
         "entry_fg":  "#1a1a1a",
     }
 
-
-# =====================================================================
-# AP DUNG THEME LEN CAY WIDGET (hoi quy)
-# =====================================================================
 
 # Cac option mau theo loai widget tk
 _BG_OPTS = ("bg", "background", "highlightbackground",

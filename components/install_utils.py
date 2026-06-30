@@ -30,10 +30,22 @@ from components.api_helpers import (
     _request_json,
 )
 
+# Cac ky tu Windows khong cho phep trong ten file/thu muc.
+# Khoang trang KHONG nam trong danh sach nay - ten instance giu nguyen
+# khoang trang khi tao thu muc tren disk (vd "End of Dragon" -> thu muc
+# cung ten "End of Dragon", khong doi thanh "End_of_Dragon").
+_KY_TU_CAM_FOLDER = '\\/:*?"<>|'
 
-# =====================================================================
-# TAI FILE CO PROGRESS
-# =====================================================================
+
+def ten_folder_an_toan(ten_instance: str) -> str:
+    """
+    Chuyen ten instance (hien thi) sang ten thu muc an toan tren disk.
+    Chi loai bo cac ky tu Windows cam dung trong ten file/thu muc, KHONG
+    doi khoang trang sang gach duoi - de ten thu muc giong y ten hien thi.
+    """
+    ten = "".join(c for c in ten_instance if c not in _KY_TU_CAM_FOLDER)
+    return ten.strip().rstrip(".") or "instance"
+
 
 def tai_file(url, duong_dan_luu, callback_tien_do=None, extra_headers=None):
     """Tai 1 file lon, co progress callback(da_tai, tong)."""
@@ -83,21 +95,18 @@ def _tai_file_don_gian(url, dest_path, cancel_event=None, so_lan_thu=3):
                         f.write(block)
                         da_tai += len(block)
 
-            # Kiem tra du byte
             if content_length > 0 and da_tai < content_length:
                 raise IOError(
                     f"Tai thieu byte: nhan {da_tai}/{content_length} "
                     f"({os.path.basename(dest_path)})"
                 )
 
-            # Thanh cong — rename file tam thanh file that
             if os.path.exists(dest_path):
                 os.remove(dest_path)
             os.rename(tmp_path, dest_path)
-            return  # thoat thanh cong
+            return
 
         except Exception as e:
-            # Xoa file tam neu con
             try:
                 if os.path.exists(tmp_path):
                     os.remove(tmp_path)
@@ -105,18 +114,14 @@ def _tai_file_don_gian(url, dest_path, cancel_event=None, so_lan_thu=3):
                 pass
 
             if isinstance(e, Exception) and str(e) == "__HUY__":
-                raise  # truyen huy len tren, khong retry
+                raise
 
             if lan < so_lan_thu - 1:
                 print(f"[retry {lan+1}/{so_lan_thu}] {os.path.basename(dest_path)}: {e}")
                 import time; time.sleep(1.5 * (lan + 1))  # back-off
             else:
-                raise  # het luot thu, nem loi len tren
+                raise
 
-
-# =====================================================================
-# CAI RESOURCE PACK / SHADER
-# =====================================================================
 
 def cai_rsp_shader_tu_file(duong_dan_zip, ten_instance, loai, lbl_status,
                             callback_xong=None, progress_cb=None):
@@ -127,7 +132,7 @@ def cai_rsp_shader_tu_file(duong_dan_zip, ten_instance, loai, lbl_status,
                  nen chi bao (0, 1) luc bat dau va (1, 1) luc xong.
     """
     thu_muc_game     = config.current_config.get("thu_muc_game", "")
-    ten_folder       = ten_instance.replace(" ", "_")
+    ten_folder       = ten_folder_an_toan(ten_instance)
     thu_muc_instance = os.path.join(thu_muc_game, "Instances", ten_folder)
     sub_dir          = "resourcepacks" if loai == "rsp" else "shaderpacks"
     thu_muc_dest     = os.path.join(thu_muc_instance, sub_dir)
@@ -143,26 +148,22 @@ def cai_rsp_shader_tu_file(duong_dan_zip, ten_instance, loai, lbl_status,
             ten_file = os.path.basename(duong_dan_zip)
             dest     = os.path.join(thu_muc_dest, ten_file)
             shutil.copy2(duong_dan_zip, dest)
-            _cap(f"Da cai: {ten_file} -> {sub_dir}/", "#2b8c54")
+            _cap(f"Đã cài: {ten_file} -> {sub_dir}/", "#2b8c54")
             if progress_cb:
                 lbl_status.after(0, lambda: progress_cb(1, 1))
             if callback_xong:
                 lbl_status.after(500, callback_xong)
         except Exception as e:
-            _cap(f"Loi cai dat: {e}", "red")
+            _cap(f"Lỗi cài đặt: {e}", "red")
 
     threading.Thread(target=_chay, daemon=True).start()
 
-
-# =====================================================================
-# CAI MOD (.jar)
-# =====================================================================
 
 def cai_mod_tu_file(duong_dan_jar, ten_instance, lbl_status, callback_xong=None, progress_cb=None):
     """Copy file .jar mod vao thu muc mods/ cua instance.
     progress_cb: callable(da, tong) tuy chon - bao (0, 1) luc bat dau, (1, 1) luc xong."""
     thu_muc_game     = config.current_config.get("thu_muc_game", "")
-    ten_folder       = ten_instance.replace(" ", "_")
+    ten_folder       = ten_folder_an_toan(ten_instance)
     thu_muc_instance = os.path.join(thu_muc_game, "Instances", ten_folder)
     thu_muc_mods     = os.path.join(thu_muc_instance, "mods")
     os.makedirs(thu_muc_mods, exist_ok=True)
@@ -177,20 +178,16 @@ def cai_mod_tu_file(duong_dan_jar, ten_instance, lbl_status, callback_xong=None,
             ten_file = os.path.basename(duong_dan_jar)
             dest     = os.path.join(thu_muc_mods, ten_file)
             shutil.copy2(duong_dan_jar, dest)
-            _cap(f"Da cai mod: {ten_file}", "#2b8c54")
+            _cap(f"Đã cài mod: {ten_file}", "#2b8c54")
             if progress_cb:
                 lbl_status.after(0, lambda: progress_cb(1, 1))
             if callback_xong:
                 lbl_status.after(500, callback_xong)
         except Exception as e:
-            _cap(f"Loi cai mod: {e}", "red")
+            _cap(f"Lỗi cài mod: {e}", "red")
 
     threading.Thread(target=_chay, daemon=True).start()
 
-
-# =====================================================================
-# CAI MODPACK (.mrpack Modrinth / .zip CurseForge)
-# =====================================================================
 
 # Bien toan cuc theo doi trang thai dang cai modpack
 _dang_cai_modpack = False
@@ -220,9 +217,8 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                    tuong thich nguoc voi code cu).
     """
     thu_muc_game = config.current_config.get("thu_muc_game", "")
-    # ten_instance dung cho key config (dau cach), ten_folder dung cho thu muc (gach duoi)
-    ten_instance     = ten_instance.replace("_", " ").strip()
-    ten_folder       = ten_instance.replace(" ", "_")
+    ten_instance     = ten_instance.strip()
+    ten_folder       = ten_folder_an_toan(ten_instance)
     thu_muc_instance = os.path.join(thu_muc_game, "Instances", ten_folder)
     os.makedirs(thu_muc_instance, exist_ok=True)
 
@@ -260,7 +256,7 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
         global _dang_cai_modpack
         _dang_cai_modpack = True
         try:
-            _cap("Dang giai nen modpack...", "#1E88E5")
+            _cap("Đang giải nén modpack...", "#1E88E5")
             loai_game, version_goc, version_mod = "Vanilla", "1.21.1", "Vanilla"
             modrinth_files = []
             cf_mods        = []
@@ -268,7 +264,6 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
             with zipfile.ZipFile(duong_dan_zip, "r") as z:
                 names = z.namelist()
 
-                # ── Modrinth .mrpack ──────────────────────────────────
                 if "modrinth.index.json" in names:
                     index_data  = json.loads(z.read("modrinth.index.json"))
                     deps        = index_data.get("dependencies", {})
@@ -306,7 +301,6 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                     modrinth_files = index_data.get("files", [])
                     prefix         = "overrides/"
 
-                # ── CurseForge .zip ───────────────────────────────────
                 elif "manifest.json" in names:
                     manifest   = json.loads(z.read("manifest.json"))
                     mc_info    = manifest.get("minecraft", {})
@@ -326,7 +320,6 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
 
                     cf_mods = manifest.get("files", [])
 
-                    # Giai nen overrides CurseForge
                     matched_prefix = None
                     for candidate in ("overrides/", "Overrides/"):
                         if any(n.startswith(candidate) for n in names):
@@ -349,11 +342,9 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                                     dst.write(src.read())
                         prefix = None  # da xu ly o tren, bo qua vong lap chung ben duoi
 
-                # ── ZIP thong thuong ──────────────────────────────────
                 else:
                     prefix = None
 
-                # Giai nen files overrides / tat ca (chi cho Modrinth va ZIP thuong)
                 if prefix is not None:
                     for member in names:
                         _check_huy()
@@ -381,10 +372,8 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                             with z.open(member) as src, open(dest, "wb") as dst:
                                 dst.write(src.read())
 
-            # Kiem tra huy sau khi giai nen xong, truoc khi tai mod
             _check_huy()
 
-            # ── Tai mod tu Modrinth (mrpack) — SONG SONG ────────────────────
             if modrinth_files:
                 tong_mod = len(modrinth_files)
                 loi_tai  = []
@@ -410,7 +399,7 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                         if kich_thuoc_thuc == kich_thuoc_mong_doi:
                             with lock:
                                 da_tai[0] += 1
-                                _cap(f"Bo qua (da co): {os.path.basename(rel_path)}  ({da_tai[0]}/{tong_mod})", "#607D8B")
+                                _cap(f"Bỏ qua (đã có): {os.path.basename(rel_path)}  ({da_tai[0]}/{tong_mod})", "#607D8B")
                                 _bao_tien_do(da_tai[0], tong_mod)
                             return
                         else:
@@ -437,7 +426,7 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                     with lock:
                         da_tai[0] += 1
                         if thanh_cong:
-                            _cap(f"Da tai ({da_tai[0]}/{tong_mod}): {ten_mod}", "#1E88E5")
+                            _cap(f"Đã tải ({da_tai[0]}/{tong_mod}): {ten_mod}", "#1E88E5")
                         else:
                             loi_tai.append(ten_mod)
                         _bao_tien_do(da_tai[0], tong_mod)
@@ -450,7 +439,7 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                     while con_lai:
                         if cancel_event and cancel_event.is_set():
                             # Huy ngay: bo het task chua chay, KHONG cho doi cac
-                            # luong dang tai hoan tat (tranh "Huy" bi tre/vo hieu).
+                            # luong dang tai hoan tat (tranh "Hủy" bi tre/vo hieu).
                             try:
                                 pool.shutdown(wait=False, cancel_futures=True)
                             except TypeError:
@@ -477,11 +466,10 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
 
                 _check_huy()
                 if loi_tai:
-                    _cap(f"Hoan thanh (loi {len(loi_tai)} mod): {', '.join(loi_tai[:3])}...", "orange")
+                    _cap(f"Hoàn thành (lỗi {len(loi_tai)} mod): {', '.join(loi_tai[:3])}...", "orange")
                 else:
-                    _cap(f"Da tai xong {tong_mod} mod!", "#2b8c54")
+                    _cap(f"Đã tải xong {tong_mod} mod!", "#2b8c54")
 
-            # ── Tai mod tu CurseForge manifest — SONG SONG ─────────────────
             if cf_mods:
                 tong_cf  = len(cf_mods)
                 loi_cf   = []
@@ -592,19 +580,17 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
 
                 _check_huy()
                 if loi_cf:
-                    _cap(f"Hoan thanh CF (loi {len(loi_cf)} mod). Kiem tra thu cong.", "orange")
+                    _cap(f"Hoàn thành CF (lỗi {len(loi_cf)} mod). Kiểm tra thủ công.", "orange")
                 else:
-                    _cap(f"Da tai xong {tong_cf} mod CurseForge!", "#2b8c54")
+                    _cap(f"Đã tải xong {tong_cf} mod CurseForge!", "#2b8c54")
 
 
-            # Ghi instance_info.json
             with open(os.path.join(thu_muc_instance, "instance_info.json"), "w", encoding="utf-8") as f:
                 json.dump(
                     {"loai_game": loai_game, "version_goc": version_goc, "version_mod": version_mod},
                     f, indent=4, ensure_ascii=False,
                 )
 
-            # Cap nhat config
             config.current_config["danh_sach_instances"][ten_instance] = {
                 "version_goc": version_goc, "loai_game": loai_game, "version_mod": version_mod,
             }
@@ -612,15 +598,15 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
             config.luu_toan_bo_cau_hinh()
 
             print(f"[modpack] Da luu: {ten_instance} | {loai_game} {version_goc} | mod={version_mod}")
-            _cap(f"Da cai dat: {ten_instance}  ({loai_game} {version_goc})", "#2b8c54")
+            _cap(f"Đã cài đặt: {ten_instance}  ({loai_game} {version_goc})", "#2b8c54")
             if callback_xong:
                 lbl_status.after(500, callback_xong)
 
         except Exception as e:
             if str(e) == "__HUY__":
-                _cap("Da huy. Da xoa du lieu cai dat do.", "#E53935")
+                _cap("Đã hủy. Đã xóa dữ liệu cài đặt đó.", "#E53935")
             else:
-                _cap(f"Loi cai dat: {e}", "red")
+                _cap(f"Lỗi cài đặt: {e}", "red")
             # QUAN TRONG: mot trong 2 callback PHAI duoc goi du thanh cong hay
             # bi huy/loi, de ben goi (modrinthmod.py/forgemod.py) biet thread
             # nay da ket thuc va tu cap nhat lai UI (thanh % + nut Cai dat).

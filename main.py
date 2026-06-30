@@ -36,7 +36,6 @@ def _doc_cau_hinh_may():
         total_bytes = psutil.virtual_memory().total
         if total_bytes > 0:
             total_mb = total_bytes // (1024 * 1024)
-            #print(f"[System] Doc RAM bang psutil: {total_mb} MB")
     except Exception as e:
         print(f"[System] psutil that bai: {e}")
 
@@ -60,7 +59,6 @@ def _doc_cau_hinh_may():
             ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
             if stat.ullTotalPhys > 0:
                 total_mb = stat.ullTotalPhys // (1024 * 1024)
-                #print(f"[System] Doc RAM bang ctypes/WinAPI: {total_mb} MB")
         except Exception as e:
             print(f"[System] ctypes that bai: {e}")
 
@@ -71,7 +69,6 @@ def _doc_cau_hinh_may():
             tong = sum(int(cs.TotalPhysicalMemory) for cs in c.Win32_ComputerSystem())
             if tong > 0:
                 total_mb = tong // (1024 * 1024)
-                #print(f"[System] Doc RAM bang wmi: {total_mb} MB")
         except Exception as e:
             print(f"[System] wmi that bai: {e}")
 
@@ -79,7 +76,7 @@ def _doc_cau_hinh_may():
         info["ram_total_mb"] = total_mb
         info["ram_total_gb"] = _lam_tron_ram_gb(total_mb)
     else:
-        print("[System] lỗi à ko thấy ram, dùng tạm 8 GB.")
+        print("[System] Không phát hiện được RAM, dùng tạm 8 GB.")
 
     config.current_config["_system_info"] = info
 
@@ -200,16 +197,13 @@ class MinecraftLauncherApp:
 
     # ------------------------------------------------------------------ #
     #  SKELETON LAYOUT                                                     #
-    # ------------------------------------------------------------------ #
     def create_widgets(self):
-        # ── Tiêu đề ──────────────────────────────────────────────────── #
         lbl_main_title = tk.Label(
             self.root, text="Bacontete MCL",
             font=("Arial", 16, "bold"), fg="#1E88E5"
         )
         lbl_main_title.pack(pady=(14, 6))
 
-        # ── Tab bar ───────────────────────────────────────────────────── #
         self._tab_bar = tk.Frame(self.root, bg="#263238")
         self._tab_bar.pack(fill="x", padx=0, pady=(0, 4))
 
@@ -258,11 +252,9 @@ class MinecraftLauncherApp:
         )
         btn_console.pack(side="right")
 
-        # ── Container chứa các view ───────────────────────────────────── #
         self._container = tk.Frame(self.root)
         self._container.pack(fill="both", expand=True)
 
-        # Tạo các view frame
         self._view_frames["home"]     = self._build_home_view(self._container)
         self._view_frames["modpack"]  = self._build_modpack_view(self._container)
         self._view_frames["settings"] = self._build_settings_view(self._container)
@@ -270,9 +262,6 @@ class MinecraftLauncherApp:
         # Bắt đầu polling trạng thái tiến trình Modpack (chạy ngầm dù đổi tab)
         self._poll_modpack_progress()
 
-    # ------------------------------------------------------------------ #
-    #  VIEW SWITCHING                                                      #
-    # ------------------------------------------------------------------ #
     def _switch_view(self, name: str):
         if self._current_view == name:
             return
@@ -290,30 +279,22 @@ class MinecraftLauncherApp:
                     )
                     return
 
-        # Ẩn tất cả frame
         for frame in self._view_frames.values():
             frame.pack_forget()
 
-        # Hiện frame được chọn
         self._view_frames[name].pack(fill="both", expand=True)
         self._current_view = name
 
-        # Cập nhật màu tab
         for tab_name, btn in self._tab_buttons.items():
             if tab_name == name:
                 btn.configure(bg=self._TAB_ACTIVE_BG, relief="sunken")
             else:
                 btn.configure(bg=self._TAB_INACTIVE_BG, relief="flat")
 
-    # ------------------------------------------------------------------ #
-    #  VIEW: HOME                                                          #
-    # ------------------------------------------------------------------ #
     def _build_home_view(self, parent) -> tk.Frame:
-        # Frame gốc dùng place để stack các layer
         frame = tk.Frame(parent)
         frame.pack_propagate(True)
 
-        # ── Layer chính (main_layer) ──────────────────────────────────
         self._home_main = tk.Frame(frame)
         self._home_main.place(relx=0, rely=0, relwidth=1, relheight=1)
 
@@ -326,7 +307,6 @@ class MinecraftLauncherApp:
         self.lbl_status = tk.Label(self._home_main, text="Sẵn sàng", font=("Arial", 10, "italic"), fg="gray")
         self.lbl_status.pack(pady=(5, 2))
 
-        # Thanh progress
         self.frame_progress = tk.Frame(self._home_main)
         self.frame_progress.pack(fill="x", padx=40, pady=(0, 4))
         self.progress_bar = ttk.Progressbar(self.frame_progress, orient="horizontal", mode="determinate", length=400)
@@ -336,7 +316,6 @@ class MinecraftLauncherApp:
         self.frame_progress.pack_forget()
         self.lbl_progress.pack_forget()
 
-        # Nút Launch
         self.btn_launch = tk.Button(
             self._home_main, text="▶ VÀO GAME",
             font=("Arial", 12, "bold"), bg="#1E88E5", fg="white",
@@ -344,7 +323,6 @@ class MinecraftLauncherApp:
         )
         self.btn_launch.pack(pady=(10, 8))
 
-        # Toolbar dưới
         toolbar = tk.Frame(self._home_main)
         toolbar.pack(side="bottom", fill="x", padx=10, pady=(0, 10))
         self.btn_open_folder = tk.Button(
@@ -353,11 +331,9 @@ class MinecraftLauncherApp:
         )
         self.btn_open_folder.pack(side="left")
 
-        # ── Layer overlay (panel nhúng) ───────────────────────────────
         self._home_overlay = tk.Frame(frame)
         # Không place ngay — chỉ show khi cần
 
-        # Wire callback từ instance_frame và account_frame
         self.instance_frame.on_open_create_panel = self._show_create_instance_panel
         self.account_frame.on_open_add_panel = self._show_add_account_panel
 
@@ -367,7 +343,6 @@ class MinecraftLauncherApp:
         """Hiện overlay, ẩn main layer."""
         self._home_main.place_forget()
         self._home_overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
-        # Xóa nội dung overlay cũ
         for w in self._home_overlay.winfo_children():
             w.destroy()
 
@@ -392,17 +367,11 @@ class MinecraftLauncherApp:
         import theme
         theme.apply_theme(self._home_overlay)
 
-    # ------------------------------------------------------------------ #
-    #  VIEW: MODPACK (nhúng ModMcFrame trực tiếp)                        #
-    # ------------------------------------------------------------------ #
     def _build_modpack_view(self, parent) -> tk.Frame:
         from components.mod_mc import ModMcFrame
         frame = ModMcFrame(parent, callback_lam_moi=self._lam_moi_instance_frame)
         return frame
 
-    # ------------------------------------------------------------------ #
-    #  VIEW: SETTINGS (nhúng SettingFrame trực tiếp)                     #
-    # ------------------------------------------------------------------ #
     def _build_settings_view(self, parent) -> tk.Frame:
         from components.setting_window import SettingFrame
         frame = SettingFrame(parent, on_save_callback=self.khi_thay_doi_instance)
@@ -454,7 +423,7 @@ class MinecraftLauncherApp:
         if mod_mc.dang_cai_modpack():
             chon = messagebox.askyesno(
                 "Đang tải modpack",
-                "Nếu thoát có thể bị lỗi dữ liệu.Có thoát ko?",
+                "Nếu thoát có thể bị lỗi dữ liệu. Có thoát không?",
                 icon="warning"
             )
             if not chon:

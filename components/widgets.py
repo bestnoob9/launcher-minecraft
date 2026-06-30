@@ -23,10 +23,6 @@ try:
 except Exception:
     _PIL_OK = False
 
-# =====================================================================
-# MAU SAC GIAO DIEN
-# =====================================================================
-
 BG_DARK   = "#ffffff"
 BG_HOVER  = "#eef3f9"
 BG_SEL    = "#cfe3fb"
@@ -39,10 +35,6 @@ FG_TAG    = "#b35900"
 ICON_BG   = "#e1e4ea"
 ICON_SIZE = 56
 
-
-# =====================================================================
-# WIDGET: FILTER BAR
-# =====================================================================
 
 class FilterBar(tk.Frame):
     LOADERS = ["Tat ca", "Fabric", "Forge", "Quilt", "NeoForge"]
@@ -75,7 +67,7 @@ class FilterBar(tk.Frame):
             self.cbo_loader = None
 
         if show_category:
-            tk.Label(self, text="Loai:", font=("Arial", 9), bg=self["bg"]).pack(side="left", padx=(0, 2))
+            tk.Label(self, text="Loại:", font=("Arial", 9), bg=self["bg"]).pack(side="left", padx=(0, 2))
             self.cbo_category = ttk.Combobox(
                 self, values=self.CATEGORIES, font=("Arial", 9), state="readonly", width=14)
             self.cbo_category.set("Tat ca")
@@ -89,10 +81,10 @@ class FilterBar(tk.Frame):
         # (xem get(), se tra ve ten chuoi truc tiep neu map rong).
         self._category_id_map = {}
 
-        tk.Button(self, text="Loc", font=("Arial", 8, "bold"),
+        tk.Button(self, text="Lọc", font=("Arial", 8, "bold"),
                   bg=accent_color, fg="white", activebackground=accent_color,
                   activeforeground="white", pady=1, command=self._cb).pack(side="left", padx=(0, 4))
-        tk.Button(self, text="Xoa", font=("Arial", 8),
+        tk.Button(self, text="Xóa", font=("Arial", 8),
                   bg="#78909C", fg="white", activebackground="#78909C",
                   activeforeground="white", pady=1, command=self._reset).pack(side="left")
 
@@ -139,10 +131,6 @@ class FilterBar(tk.Frame):
             self.cbo_category.set("Tat ca")
         self._cb()
 
-
-# =====================================================================
-# ICON CACHE: tai thumbnail bat dong bo, cache trong RAM theo URL
-# =====================================================================
 
 class _IconCache:
     """
@@ -255,10 +243,6 @@ class ContentTableWidget(tk.Frame):
 
         self._visible_check_id = None
 
-    # ------------------------------------------------------------
-    # scroll / resize plumbing
-    # ------------------------------------------------------------
-
     def _on_inner_configure(self, e):
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         self._schedule_visible_check()
@@ -312,10 +296,6 @@ class ContentTableWidget(tk.Frame):
             row["icon_loaded"] = True
             _IconCache.get(self, row["icon_url"], row["on_icon_ready"])
 
-    # ------------------------------------------------------------
-    # data loading
-    # ------------------------------------------------------------
-
     def load(self, data_list):
         self._data     = data_list
         self._selected = -1
@@ -367,7 +347,6 @@ class ContentTableWidget(tk.Frame):
         row.pack(fill="x")
         row.pack_propagate(False)
 
-        # --- icon ---
         ph = _IconCache.placeholder(self)
         icon_lbl = tk.Label(row, bg=c["row_bg"], bd=0)
         if ph is not None:
@@ -387,7 +366,6 @@ class ContentTableWidget(tk.Frame):
         # Khong tai icon ngay - se duoc tai khi dong nay vao khung nhin
         # (xem _load_visible_icons), tranh tai hang chuc anh cung luc.
 
-        # --- text (name / author / desc) ---
         text_col = tk.Frame(row, bg=c["row_bg"])
         text_col.pack(side="left", fill="both", expand=True, pady=8)
 
@@ -404,7 +382,6 @@ class ContentTableWidget(tk.Frame):
                              fg=c["fg_desc"], bg=c["row_bg"], anchor="w", justify="left")
         lbl_desc.pack(fill="x", anchor="w")
 
-        # --- right side (downloads / mc version) ---
         right_col = tk.Frame(row, bg=c["row_bg"])
         right_col.pack(side="right", padx=(8, 14), pady=8)
 
@@ -443,10 +420,6 @@ class ContentTableWidget(tk.Frame):
             "icon_loaded": False, "y": i * self.ROW_H,
         })
 
-    # ------------------------------------------------------------
-    # selection
-    # ------------------------------------------------------------
-
     def _select(self, idx, install=False):
         if idx < 0 or idx >= len(self._rows):
             return
@@ -468,10 +441,6 @@ class ContentTableWidget(tk.Frame):
     def get_selected(self):
         return self._selected
 
-
-# =====================================================================
-# HELPER: tao bottom panel chon phien ban + instance
-# =====================================================================
 
 def make_install_panel(parent, bg, lbl_phien_ban, lbl_instance, btn_text, btn_color, btn_cmd):
     """

@@ -9,6 +9,7 @@ import config
 import core
 import theme
 from icon_utils import gan_icon_app
+from components.install_utils import ten_folder_an_toan
 
 
 def kiem_tra_ten_hop_le(ten):
@@ -64,18 +65,21 @@ class InstanceFrame(tk.Frame):
             config.current_config["current_instance"] = ten_mac_dinh
             config.luu_toan_bo_cau_hinh()
             ds_instance = list(config.current_config["danh_sach_instances"].keys())
-            os.makedirs(os.path.join(self.thu_muc_instances, "Latest_Version"), exist_ok=True)
+            # Không tạo folder Latest_Version trên disk — instance ảo chỉ trong config.
 
-        # Tự động cập nhật version_goc cho "Latest Version" mỗi lần mở
+        # Tự động cập nhật version_goc cho "Latest Version" mỗi lần mở.
+        # Chỉ cập nhật config RAM + lưu file cấu hình, KHÔNG tạo folder trên disk
+        # để watcher không nhầm đây là instance thật và tạo lại mỗi lần khởi động.
         if "Latest Version" in config.current_config["danh_sach_instances"]:
             try:
                 release_versions = core.lay_danh_sach_phien_ban_chinh()
                 ban_moi_nhat = release_versions[0] if release_versions else "1.21.5"
-                config.current_config["danh_sach_instances"]["Latest Version"]["version_goc"] = ban_moi_nhat
-                config.luu_toan_bo_cau_hinh()
-            except:
-                pass
-            os.makedirs(os.path.join(self.thu_muc_instances, "Latest_Version"), exist_ok=True)
+                data_latest = config.current_config["danh_sach_instances"]["Latest Version"]
+                if ban_moi_nhat != data_latest.get("version_goc", ""):
+                    data_latest["version_goc"] = ban_moi_nhat
+                    config.luu_toan_bo_cau_hinh()
+            except Exception as e:
+                print(f"[LatestVersion] Không thể cập nhật phiên bản: {e}")
 
         self.cbo_instance = ttk.Combobox(frame_inner, values=ds_instance, font=("Arial", 10), state="readonly", width=22)
         current_saved = config.current_config.get("current_instance", "Latest Version")
@@ -108,7 +112,7 @@ class InstanceFrame(tk.Frame):
             return result
         for name in os.listdir(self.thu_muc_instances):
             if os.path.isdir(os.path.join(self.thu_muc_instances, name)):
-                result.add(name.replace("_", " "))
+                result.add(name)
         return result
 
     def _sync_watcher(self):
@@ -126,18 +130,24 @@ class InstanceFrame(tk.Frame):
         instances_config = set(config.current_config.get("danh_sach_instances", {}).keys())
 
         # Folder mới trên disk nhưng chưa có trong config → thêm vào
-        them_moi = folders_disk - instances_config - {"Latest Version"}
+        # Loại trừ cả "Latest_Version" (dạng folder trên disk) vì "Latest Version"
+        # là instance đặc biệt chỉ tồn tại trong config, không cần folder thực sự.
+        # Nếu không loại trừ, watcher sẽ thấy folder Latest_Version trên disk
+        # (được tạo tự động bởi os.makedirs) nhưng không khớp key "Latest Version"
+        # trong config → cứ tạo instance mới mỗi lần khởi động.
+        _SPECIAL_INSTANCES = {"Latest Version", "Latest_Version"}
+        them_moi = folders_disk - instances_config - _SPECIAL_INSTANCES
         # Instance trong config nhưng folder đã bị xóa ngoài disk → xóa khỏi config
         # (không xóa "Latest Version" dù không có folder)
-        bi_xoa = instances_config - folders_disk - {"Latest Version"}
+        bi_xoa = instances_config - folders_disk - _SPECIAL_INSTANCES
 
         if not them_moi and not bi_xoa:
-            return  # Không có gì thay đổi
+            return
 
         changed = False
 
         for ten in them_moi:
-            ten_folder = ten.replace(" ", "_")
+            ten_folder = ten_folder_an_toan(ten)
             file_info = os.path.join(self.thu_muc_instances, ten_folder, "instance_info.json")
 
             # Đợi tối đa 3 giây để cai_modpack_tu_file ghi xong instance_info.json
@@ -243,7 +253,7 @@ class InstanceFrame(tk.Frame):
             del config.current_config["danh_sach_instances"][ten_instance]
         config.current_config["current_instance"] = "Latest Version"
         config.luu_toan_bo_cau_hinh()
-        ten_folder = ten_instance.replace(" ", "_")
+        ten_folder = ten_folder_an_toan(ten_instance)
         duong_dan_folder = os.path.join(self.thu_muc_instances, ten_folder)
         if os.path.exists(duong_dan_folder):
             try:
@@ -311,7 +321,6 @@ class InstanceFrame(tk.Frame):
         win_create.resizable(False, False)
         win_create.grab_set()
         gan_icon_app(win_create)
-        # 1. Nhập tên phiên bản
         tk.Label(win_create, text="Tên thư mục phiên bản (Instance):", font=("Arial", 10, "bold")).pack(pady=(15, 2))
         ent_name = tk.Entry(win_create, font=("Arial", 10), width=28)
         ent_name.pack()
@@ -330,7 +339,6 @@ class InstanceFrame(tk.Frame):
 
         ent_name.bind("<KeyRelease>", kiem_tra_realtime)
 
-        # 2. Chọn loại phiên bản (Release / Snapshot / Beta / Alpha)
         tk.Label(win_create, text="Loại phiên bản:", font=("Arial", 10, "bold")).pack(pady=(10, 2))
         cbo_loai_ver = ttk.Combobox(
             win_create,
@@ -340,7 +348,6 @@ class InstanceFrame(tk.Frame):
         cbo_loai_ver.set("Release")
         cbo_loai_ver.pack()
 
-        # 3. Chọn phiên bản cụ thể
         tk.Label(win_create, text="Chọn phiên bản Minecraft:", font=("Arial", 10, "bold")).pack(pady=(10, 2))
         cbo_ver = ttk.Combobox(win_create, values=[], font=("Arial", 10), state="readonly", width=25)
         cbo_ver.pack()
@@ -397,7 +404,6 @@ class InstanceFrame(tk.Frame):
         cbo_loai_ver.bind("<<ComboboxSelected>>", lambda e: [cap_nhat_danh_sach_ver(), cap_nhat_mod_loader_theo_loai()])
         cap_nhat_danh_sach_ver()  # load Release ngay khi mở
 
-        # 4. Chọn loại Mod Loader
         tk.Label(win_create, text="Chọn Loại Game (Mod Loader):", font=("Arial", 10, "bold")).pack(pady=(10, 2))
         cbo_mod_type = ttk.Combobox(
             win_create,
@@ -407,7 +413,6 @@ class InstanceFrame(tk.Frame):
         cbo_mod_type.set("Vanilla")
         cbo_mod_type.pack()
 
-        # 5. Chọn phiên bản Mod Loader cụ thể
         lbl_mod_detail = tk.Label(
             win_create, text="Chọn Phiên bản Mod Loader:",
             font=("Arial", 10, "bold"), fg="#2E7D32"
@@ -469,7 +474,7 @@ class InstanceFrame(tk.Frame):
                 messagebox.showwarning("Chú ý", "Vui lòng chọn phiên bản Minecraft!", parent=win_create)
                 return
 
-            ten_thu_muc = ten_nhap.replace(" ", "_")
+            ten_thu_muc = ten_folder_an_toan(ten_nhap)
 
             if ten_nhap in config.current_config["danh_sach_instances"]:
                 messagebox.showwarning("Chú ý", "Tên phiên bản này đã tồn tại!", parent=win_create)
@@ -512,9 +517,8 @@ class InstanceFrame(tk.Frame):
         on_close() được gọi khi người dùng hủy hoặc tạo xong.
         Trả về frame chứa toàn bộ form để caller pack/show.
         """
-        p = parent  # alias ngắn gọn
+        p = parent
 
-        # Tiêu đề + nút đóng
         bar = tk.Frame(p)
         bar.pack(fill="x", padx=16, pady=(12, 4))
         tk.Label(bar, text="➕ Tạo phiên bản mới", font=("Arial", 12, "bold"), fg="#4CAF50").pack(side="left")
@@ -524,7 +528,6 @@ class InstanceFrame(tk.Frame):
         content = tk.Frame(p)
         content.pack(fill="both", expand=True, padx=16)
 
-        # 1. Tên instance
         tk.Label(content, text="Tên thư mục phiên bản (Instance):", font=("Arial", 10, "bold")).pack(pady=(8, 2))
         ent_name = tk.Entry(content, font=("Arial", 10), width=28)
         ent_name.pack()
@@ -539,28 +542,24 @@ class InstanceFrame(tk.Frame):
 
         ent_name.bind("<KeyRelease>", kiem_tra_realtime)
 
-        # 2. Loại phiên bản
         tk.Label(content, text="Loại phiên bản:", font=("Arial", 10, "bold")).pack(pady=(8, 2))
         cbo_loai_ver = ttk.Combobox(content, values=["Release", "Snapshot", "Beta", "Alpha"],
                                      font=("Arial", 10), state="readonly", width=25)
         cbo_loai_ver.set("Release")
         cbo_loai_ver.pack()
 
-        # 3. Phiên bản Minecraft
         tk.Label(content, text="Chọn phiên bản Minecraft:", font=("Arial", 10, "bold")).pack(pady=(8, 2))
         cbo_ver = ttk.Combobox(content, values=[], font=("Arial", 10), state="readonly", width=25)
         cbo_ver.pack()
         lbl_loading_ver = tk.Label(content, text="", font=("Arial", 8, "italic"), fg="gray")
         lbl_loading_ver.pack()
 
-        # 4. Mod Loader type
         tk.Label(content, text="Chọn Loại Game (Mod Loader):", font=("Arial", 10, "bold")).pack(pady=(8, 2))
         cbo_mod_type = ttk.Combobox(content, values=["Vanilla", "Fabric", "Forge", "Quilt", "NeoForge"],
                                      font=("Arial", 10), state="readonly", width=25)
         cbo_mod_type.set("Vanilla")
         cbo_mod_type.pack()
 
-        # 5. Phiên bản Mod Loader (ẩn mặc định)
         lbl_mod_detail = tk.Label(content, text="Chọn Phiên bản Mod Loader:",
                                    font=("Arial", 10, "bold"), fg="#2E7D32")
         cbo_mod_ver = ttk.Combobox(content, font=("Arial", 10), state="readonly", width=35)
@@ -657,7 +656,7 @@ class InstanceFrame(tk.Frame):
             config.current_config["current_instance"] = ten_nhap
             config.luu_toan_bo_cau_hinh()
 
-            ten_thu_muc = ten_nhap.replace(" ", "_")
+            ten_thu_muc = ten_folder_an_toan(ten_nhap)
             os.makedirs(os.path.join(self.thu_muc_instances, ten_thu_muc), exist_ok=True)
 
             ds_moi = list(config.current_config["danh_sach_instances"].keys())

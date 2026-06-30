@@ -31,7 +31,6 @@ def kiem_tra_va_chay_wizard(root) -> bool:
     """
     thu_muc_hien_tai = config.current_config.get("thu_muc_game", "").strip()
 
-    # Kiểm tra xem đường dẫn có phải là giá trị mặc định chưa được người dùng chọn không
     duong_dan_mac_dinh = os.path.normpath(os.path.join(os.getcwd(), ".MinecraftFile"))
     da_cau_hinh = (
         thu_muc_hien_tai
@@ -40,9 +39,8 @@ def kiem_tra_va_chay_wizard(root) -> bool:
     )
 
     if da_cau_hinh:
-        return True  # Đã có đường dẫn hợp lệ, không cần wizard
+        return True
 
-    # Chạy wizard
     return _mo_cua_so_wizard(root)
 
 
@@ -56,24 +54,24 @@ def _mo_cua_so_wizard(root) -> bool:
     win.grab_set()
     win.protocol("WM_DELETE_WINDOW", lambda: _dong_cua_so(win, ket_qua, root))
 
-    # ── Tiêu đề ──────────────────────────────────────────────
-    tk.Label(
+    lbl_title = tk.Label(
         win,
         text="Chào mừng đến với Minecraft Launcher!",
         font=("Arial", 13, "bold"),
         fg="#1E88E5",
-    ).pack(pady=(22, 4))
+    )
+    lbl_title.pack(pady=(22, 4))
 
-    tk.Label(
+    lbl_intro = tk.Label(
         win,
         text="Vui lòng chọn thư mục để lưu dữ liệu game.\n"
              "Thư mục này sẽ chứa game files, mod, resource pack, v.v.",
         font=("Arial", 10),
         fg="#444",
         justify="center",
-    ).pack(pady=(0, 16))
+    )
+    lbl_intro.pack(pady=(0, 16))
 
-    # ── Ô nhập đường dẫn ─────────────────────────────────────
     frame_path = tk.Frame(win)
     frame_path.pack(padx=28, fill="x")
 
@@ -100,11 +98,9 @@ def _mo_cua_so_wizard(root) -> bool:
         command=chon_thu_muc,
     ).pack(side="left", padx=(6, 0))
 
-    # ── Nhãn lỗi ─────────────────────────────────────────────
     lbl_loi = tk.Label(win, text="", font=("Arial", 9), fg="red")
-    lbl_loi.pack(pady=(6, 0))
+    lbl_loi.pack(pady=(10, 0))
 
-    # ── Nút xác nhận ─────────────────────────────────────────
     def xac_nhan():
         duong_dan = var_path.get().strip()
         if not duong_dan:
@@ -114,7 +110,6 @@ def _mo_cua_so_wizard(root) -> bool:
             lbl_loi.config(text="⚠  Không thể tạo thư mục tại đường dẫn này. Vui lòng chọn lại!")
             return
 
-        # Lưu vào config
         config.current_config["thu_muc_game"] = duong_dan
         config.luu_toan_bo_cau_hinh()
 
@@ -131,9 +126,8 @@ def _mo_cua_so_wizard(root) -> bool:
         padx=16,
         pady=6,
         command=xac_nhan,
-    ).pack(pady=(14, 0))
+    ).pack(pady=(18, 0))
 
-    # Đợi cửa sổ đóng
     root.wait_window(win)
     return ket_qua["ok"]
 
@@ -148,4 +142,4 @@ def _dong_cua_so(win, ket_qua, root):
         ket_qua["ok"] = False
         win.grab_release()
         win.destroy()
-        root.destroy()  # Đóng toàn bộ ứng dụng
+        root.destroy()

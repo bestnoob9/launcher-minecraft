@@ -581,6 +581,14 @@ if __name__ == "__main__":
     _doc_cau_hinh_may()
     kiem_tra_va_chay_wizard(root)
 
+    # Đồng bộ lại file_config_json về đúng vị trí sau wizard.
+    # Trường hợp wizard bỏ qua (đã cấu hình từ trước), tai_toan_bo_cau_hinh()
+    # có thể đã trỏ đúng; trường hợp wizard vừa chạy, cap_nhat_duong_dan_config
+    # đảm bảo file tạm cạnh .exe không bị dùng lại trong phiên làm việc này.
+    thu_muc = config.current_config.get("thu_muc_game", "").strip()
+    if thu_muc:
+        config.cap_nhat_duong_dan_config(thu_muc)
+
     try:
         root.deiconify()
     except Exception:

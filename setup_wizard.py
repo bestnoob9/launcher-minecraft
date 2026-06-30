@@ -111,6 +111,10 @@ def _mo_cua_so_wizard(root) -> bool:
             return
 
         config.current_config["thu_muc_game"] = duong_dan
+        # Chuyển file_config_json sang <thu_muc_game>/launchercf/ TRƯỚC khi lưu.
+        # Nếu gọi luu_toan_bo_cau_hinh() trước bước này, config sẽ bị ghi vào
+        # file tạm cạnh .exe thay vì vào thư mục game người dùng vừa chọn.
+        config.cap_nhat_duong_dan_config(duong_dan)
         config.luu_toan_bo_cau_hinh()
 
         ket_qua["ok"] = True

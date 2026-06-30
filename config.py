@@ -16,6 +16,29 @@ _FILE_CONFIG_TAM = os.path.join(_LAUNCHER_DIR, "launcher_config.json")
 _THU_MUC_LAUNCHERCF = "launchercf"
 _TEN_FILE_CONFIG    = "launcher_config.json"
 
+# File pointer nhỏ nằm cạnh .exe, chỉ lưu {"thu_muc_game": "..."}
+# Không bao giờ bị xoá hay move → launcher luôn biết thư mục game khi khởi động lại.
+_FILE_POINTER = os.path.join(_LAUNCHER_DIR, "launcher_path.json")
+
+
+def _doc_pointer() -> str:
+    """Đọc thu_muc_game từ file pointer. Trả về '' nếu không có."""
+    try:
+        with open(_FILE_POINTER, "r", encoding="utf-8") as f:
+            return json.load(f).get("thu_muc_game", "").strip()
+    except Exception:
+        return ""
+
+
+def _ghi_pointer(thu_muc_game: str):
+    """Ghi (hoặc cập nhật) file pointer cạnh .exe."""
+    try:
+        with open(_FILE_POINTER, "w", encoding="utf-8") as f:
+            json.dump({"thu_muc_game": thu_muc_game}, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Không thể ghi file pointer: {e}")
+
+
 def _lay_duong_dan_config(thu_muc_game: str = "") -> str:
     """Trả về đường dẫn tuyệt đối tới file config JSON."""
     if thu_muc_game and thu_muc_game.strip():
@@ -26,24 +49,30 @@ file_config_json = _FILE_CONFIG_TAM
 
 def cap_nhat_duong_dan_config(thu_muc_game: str):
     """
-    Gọi sau khi wizard xác nhận thu_muc_game.
+    Gọi sau khi wizard xác nhận thu_muc_game (hoặc khi main.py khởi động).
     - Cập nhật file_config_json trỏ vào <thu_muc_game>/launchercf/
-    - Di chuyển file tạm (nếu có) sang vị trí mới.
+    - Copy file tạm sang vị trí mới nếu config chính thức chưa có.
+    - Ghi file pointer để lần sau biết đường dẫn ngay khi khởi động.
     - Lưu lại config ngay để chắc chắn.
     """
     global file_config_json
     duong_dan_moi = _lay_duong_dan_config(thu_muc_game)
+
+    # Luôn ghi pointer dù path có thay đổi hay không
+    _ghi_pointer(thu_muc_game)
+
     if duong_dan_moi == file_config_json:
         return
 
     os.makedirs(os.path.dirname(duong_dan_moi), exist_ok=True)
 
-    if os.path.exists(file_config_json) and not os.path.exists(duong_dan_moi):
+    # Nếu config chính thức chưa có, copy từ file tạm (nếu tồn tại)
+    if not os.path.exists(duong_dan_moi) and os.path.exists(_FILE_CONFIG_TAM):
         import shutil
         try:
-            shutil.move(file_config_json, duong_dan_moi)
+            shutil.copy2(_FILE_CONFIG_TAM, duong_dan_moi)
         except Exception as e:
-            print(f"Không thể di chuyển file config: {e}")
+            print(f"Không thể sao chép file config: {e}")
 
     file_config_json = duong_dan_moi
     luu_toan_bo_cau_hinh()
@@ -71,22 +100,20 @@ config_mac_dinh = {
 def tai_toan_bo_cau_hinh():
     """
     Thử đọc config theo thứ tự ưu tiên:
-    1. File tạm bên cạnh launcher (để lấy thu_muc_game đã lưu trước)
-    2. File chính thức trong <thu_muc_game>/launchercf/
+    1. File pointer (_FILE_POINTER) cạnh .exe → lấy thu_muc_game
+    2. File config chính thức trong <thu_muc_game>/launchercf/  ← load đầy đủ
+    3. File tạm _FILE_CONFIG_TAM (fallback nếu chưa có pointer)
+    4. config_mac_dinh nếu không tìm thấy gì
     Sau khi đọc xong, cập nhật file_config_json trỏ đúng vị trí.
     """
     global file_config_json
 
     data = None
 
-    if os.path.exists(_FILE_CONFIG_TAM):
-        try:
-            with open(_FILE_CONFIG_TAM, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except:
-            data = None
+    # Bước 1: đọc pointer để biết thu_muc_game ngay lập tức
+    thu_muc = _doc_pointer()
 
-    thu_muc = (data or {}).get("thu_muc_game", "").strip()
+    # Bước 2: nếu có thu_muc_game, load config chính thức trước
     if thu_muc:
         file_chinh_thuc = _lay_duong_dan_config(thu_muc)
         if os.path.exists(file_chinh_thuc):
@@ -94,14 +121,32 @@ def tai_toan_bo_cau_hinh():
                 with open(file_chinh_thuc, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 file_config_json = file_chinh_thuc
-            except:
-                pass
+            except Exception:
+                data = None
         else:
+            # Config chính thức chưa có → trỏ đến đó để lần lưu đầu tiên ghi đúng chỗ
             file_config_json = file_chinh_thuc
 
+    # Bước 3: fallback sang file tạm cạnh .exe (trường hợp pointer mới tạo
+    # nhưng config chính thức chưa kịp copy, hoặc người dùng chuyển thư mục)
+    if data is None and os.path.exists(_FILE_CONFIG_TAM):
+        try:
+            with open(_FILE_CONFIG_TAM, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            # Nếu file tạm có thu_muc_game thì cập nhật lại pointer & path
+            thu_muc_trong_tam = data.get("thu_muc_game", "").strip()
+            if thu_muc_trong_tam and not thu_muc:
+                thu_muc = thu_muc_trong_tam
+                file_config_json = _lay_duong_dan_config(thu_muc)
+                _ghi_pointer(thu_muc)
+        except Exception:
+            data = None
+
+    # Bước 4: không có gì → dùng mặc định
     if data is None:
         data = config_mac_dinh.copy()
 
+    # Điền các key còn thiếu từ default
     for key in config_mac_dinh:
         if key not in data:
             data[key] = config_mac_dinh[key]

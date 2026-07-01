@@ -35,6 +35,20 @@ from components.install_utils import (
 
 _NO_INST = "— Chưa chọn —"   # Gia tri placeholder "khong chon instance"
 
+# CurseForge dung version string rieng (vd "26.2") thay vi "1.21.4".
+# Bang mapping MC ver -> CF ver de loc phien ban dung format.
+_MC_TO_CF = {
+    "1.21.5": "26.3", "1.21.4": "26.2", "1.21.3": "26.1", "1.21.2": "26.1",
+    "1.21.1": "26.1", "1.21":   "26.0",
+    "1.20.6": "25.2", "1.20.4": "25.2", "1.20.2": "25.1", "1.20.1": "25.0",
+    "1.20":   "25.0",
+    "1.19.4": "24.4", "1.19.2": "24.2", "1.19.1": "24.1", "1.19": "24.0",
+    "1.18.2": "23.2", "1.18.1": "23.1", "1.18": "23.0",
+    "1.17.1": "22.1", "1.17": "22.0",
+    "1.16.5": "21.5", "1.16.4": "21.4", "1.16.3": "21.3",
+    "1.16.2": "21.2", "1.16.1": "21.1", "1.16": "21.0",
+}
+
 
 def _cf_build_url(version_data):
     """Tra ve download URL tu version_data CurseForge (xu ly truong hop CF an URL)."""
@@ -112,11 +126,12 @@ class ForgeModMixin:
                   bg="#4CAF50", fg="white", activebackground="#4CAF50", activeforeground="white",
                   width=14, pady=4, command=self._install_cf).grid(row=0, column=2, rowspan=2, padx=8)
 
-        self._cf_data    = []
-        self._cf_files   = []
-        self._cf_page    = 1
-        self._cf_total   = 0
-        self._cf_last_kw = None
+        self._cf_data        = []
+        self._cf_files       = []
+        self._cf_ver_idx_map = []
+        self._cf_page        = 1
+        self._cf_total       = 0
+        self._cf_last_kw     = None
 
     def _load_cf_top(self, page=1):
         self._cf_page    = page
@@ -251,13 +266,31 @@ class ForgeModMixin:
             try:
                 files = lay_phien_ban_curseforge(mid)
                 self._cf_files = files
-                ds = [f"{fi.get('displayName', fi.get('fileName',''))}  -  MC {', '.join(fi.get('gameVersions',[]))}"
-                      for fi in files]
-                self.after(0, lambda: (
-                    self.cbo_cf_ver.config(values=ds),
-                    self.cbo_cf_ver.set(ds[0]) if ds else None,
-                    self.lbl_status.config(text="Chọn phiên bản rồi nhấn Cài Modpack.", fg="gray"),
-                ))
+                ds_all = [f"{fi.get('displayName', fi.get('fileName',''))}  -  MC {', '.join(fi.get('gameVersions',[]))}"
+                          for fi in files]
+                def _apply(ds_all=ds_all, files=files):
+                    try:
+                        fb_mc, _, _ = self.fb_cf.get()
+                    except Exception:
+                        fb_mc = ""
+                    if fb_mc and fb_mc != "Tất cả":
+                        # Doi MC ver sang CF ver neu can (vd "1.21.4" -> "26.2")
+                        cf_ver = _MC_TO_CF.get(fb_mc, fb_mc)
+                        idxs = [i for i, fi in enumerate(files)
+                                if cf_ver in fi.get("gameVersions", [])
+                                or fb_mc in fi.get("gameVersions", [])]
+                    else:
+                        idxs = list(range(len(files)))
+                    if idxs:
+                        ds = [ds_all[i] for i in idxs]
+                        self._cf_ver_idx_map = idxs
+                    else:
+                        ds = ds_all
+                        self._cf_ver_idx_map = list(range(len(files)))
+                    self.cbo_cf_ver.config(values=ds)
+                    self.cbo_cf_ver.set(ds[0]) if ds else None
+                    self.lbl_status.config(text="Chọn phiên bản rồi nhấn Cài Modpack.", fg="gray")
+                self.after(0, _apply)
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi CF ver: {e}", fg="red"))
         threading.Thread(target=_t, daemon=True).start()
@@ -272,7 +305,8 @@ class ForgeModMixin:
         iv = self.cbo_cf_ver.current()
         if iv < 0 or not self._cf_files:
             messagebox.showwarning("Chú ý", "Chọn phiên bản!", parent=self); return
-        fd  = self._cf_files[iv]
+        raw_iv = self._cf_ver_idx_map[iv] if self._cf_ver_idx_map and iv < len(self._cf_ver_idx_map) else iv
+        fd  = self._cf_files[raw_iv]
         url = _cf_build_url(fd)
         if not url:
             messagebox.showerror("Lỗi",
@@ -520,11 +554,12 @@ class ForgeModMixin:
         use_ld = fb_ld or loader
 
         if use_mc:
+            cf_ver = _MC_TO_CF.get(use_mc, use_mc)
             idxs = []
             for i, fi in enumerate(files):
                 gvs = fi.get("gameVersions", [])
                 gvs_lower = [g.lower() for g in gvs]
-                if use_mc not in gvs:
+                if cf_ver not in gvs and use_mc not in gvs:
                     continue
                 if use_ld and use_ld not in ("Tất cả", "Vanilla") and use_ld.lower() not in gvs_lower:
                     continue

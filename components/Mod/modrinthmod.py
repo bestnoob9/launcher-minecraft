@@ -83,11 +83,12 @@ class ModrinthModMixin:
                   bg="#4CAF50", fg="white", activebackground="#4CAF50", activeforeground="white",
                   width=14, pady=4, command=self._install_mr).grid(row=0, column=2, rowspan=2, padx=8)
 
-        self._mr_data     = []
-        self._mr_vers_raw = []
-        self._mr_page     = 1
-        self._mr_total    = 0
-        self._mr_last_kw  = None
+        self._mr_data        = []
+        self._mr_vers_raw    = []
+        self._mr_ver_idx_map = []
+        self._mr_page        = 1
+        self._mr_total       = 0
+        self._mr_last_kw     = None
 
     def _load_mr_top(self, page=1):
         self._mr_page    = page
@@ -224,12 +225,27 @@ class ModrinthModMixin:
             try:
                 vs = lay_phien_ban_modrinth(pid)
                 self._mr_vers_raw = vs
-                ds = [f"{v.get('name','?')}  -  MC {', '.join(v.get('game_versions',[]))}" for v in vs]
-                self.after(0, lambda: (
-                    self.cbo_mr_ver.config(values=ds),
-                    self.cbo_mr_ver.set(ds[0]) if ds else None,
-                    self.lbl_status.config(text="Chọn phiên bản rồi nhấn Cài Modpack.", fg="gray"),
-                ))
+                ds_all = [f"{v.get('name','?')}  -  MC {', '.join(v.get('game_versions',[]))}" for v in vs]
+                def _apply(ds_all=ds_all, vs=vs):
+                    # Loc theo MC Ver dang chon tren FilterBar (neu co)
+                    try:
+                        fb_mc, _, _ = self.fb_mr.get()
+                    except Exception:
+                        fb_mc = ""
+                    if fb_mc and fb_mc != "Tất cả":
+                        idxs = [i for i, v in enumerate(vs) if fb_mc in v.get("game_versions", [])]
+                    else:
+                        idxs = list(range(len(vs)))
+                    if idxs:
+                        ds = [ds_all[i] for i in idxs]
+                        self._mr_ver_idx_map = idxs
+                    else:
+                        ds = ds_all
+                        self._mr_ver_idx_map = list(range(len(vs)))
+                    self.cbo_mr_ver.config(values=ds)
+                    self.cbo_mr_ver.set(ds[0]) if ds else None
+                    self.lbl_status.config(text="Chọn phiên bản rồi nhấn Cài Modpack.", fg="gray")
+                self.after(0, _apply)
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi: {e}", fg="red"))
         threading.Thread(target=_t, daemon=True).start()
@@ -244,7 +260,8 @@ class ModrinthModMixin:
         iv = self.cbo_mr_ver.current()
         if iv < 0 or not self._mr_vers_raw:
             messagebox.showwarning("Chú ý", "Chọn phiên bản!", parent=self); return
-        vd    = self._mr_vers_raw[iv]
+        raw_iv = self._mr_ver_idx_map[iv] if self._mr_ver_idx_map and iv < len(self._mr_ver_idx_map) else iv
+        vd    = self._mr_vers_raw[raw_iv]
         files = vd.get("files", [])
         prim  = next((f for f in files if f.get("primary")), files[0] if files else None)
         if not prim:

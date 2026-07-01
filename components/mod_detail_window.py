@@ -18,9 +18,11 @@ Tuong thich ca Modrinth lan CurseForge.
 """
 
 import io
+import re
 import html
 import threading
 import urllib.request
+import webbrowser
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -54,15 +56,73 @@ def _fetch_image(url, size=(500, 180)):
         return None
 
 
+def _html_to_md(text):
+    """Quy doi tho HTML (mo ta CurseForge) ve dang gan-markdown de dung
+    chung 1 bo render voi Modrinth (markdown that)."""
+    if not text:
+        return ""
+    t = text
+    t = re.sub(r"(?is)<h([1-6])[^>]*>(.*?)</h\1>", lambda m: "\n" + "#" * int(m.group(1)) + " " + m.group(2) + "\n", t)
+    t = re.sub(r"(?is)<(strong|b)[^>]*>(.*?)</\1>", r"**\2**", t)
+    t = re.sub(r"(?is)<(em|i)[^>]*>(.*?)</\1>", r"*\2*", t)
+    t = re.sub(r'(?is)<img[^>]*src="([^"]+)"[^>]*>', r"\n![](\1)\n", t)
+    t = re.sub(r'(?is)<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', r"[\2](\1)", t)
+    t = re.sub(r"(?is)<li[^>]*>(.*?)</li>", lambda m: "\n- " + m.group(1), t)
+    t = re.sub(r"(?is)</p>|<br\s*/?>", "\n", t)
+    t = re.sub(r"(?is)<[^>]+>", "", t)
+    t = html.unescape(t)
+    return t
+
+
+def _parse_rich_blocks(raw):
+    """Tach noi dung markdown(-hoa) thanh danh sach block:
+    ('h', level, text) | ('li', text) | ('p', text) | ('img', url)"""
+    blocks = []
+    para_lines = []
+
+    def _flush():
+        if para_lines:
+            blocks.append(("p", " ".join(para_lines).strip()))
+            para_lines.clear()
+
+    for line in (raw or "").splitlines():
+        line = line.strip()
+        if not line:
+            _flush()
+            continue
+        m_img = re.match(r"^!\[[^\]]*\]\(([^)]+)\)$", line)
+        m_h   = re.match(r"^(#{1,6})\s+(.*)$", line)
+        m_li  = re.match(r"^[-*]\s+(.*)$", line)
+        if m_img:
+            _flush()
+            blocks.append(("img", m_img.group(1)))
+        elif m_h:
+            _flush()
+            blocks.append(("h", len(m_h.group(1)), m_h.group(2).strip()))
+        elif m_li:
+            _flush()
+            blocks.append(("li", m_li.group(1).strip()))
+        else:
+            para_lines.append(line)
+    _flush()
+    return blocks
+
+
+_INLINE_RE = re.compile(r"\*\*([^*]+)\*\*|\*([^*]+)\*|\[([^\]]+)\]\(([^)]+)\)")
+
+
 def _strip_md(text):
-    """Loai bo mot so markdown don gian de hien thi trong Text widget."""
-    import re
+    """Loai bo mot so markdown don gian de hien thi dang text thuan
+    (dung cho tab Bản ghi thay đổi)."""
     text = re.sub(r"^#{1,6}\s*", "", text, flags=re.MULTILINE)
     text = re.sub(r"\*{1,2}([^*]+)\*{1,2}", r"\1", text)
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
     text = re.sub(r"<[^>]+>", "", text)
     text = html.unescape(text)
     return text.strip()
+
+
+
 
 
 class ModDetailWindow(tk.Frame):
@@ -113,6 +173,7 @@ class ModDetailWindow(tk.Frame):
             self._dl      = data.get("downloads", 0)
             self._icon_url  = data.get("icon_url", "")
             self._pid     = data.get("project_id", data.get("slug", ""))
+            self._project_url = f"https://modrinth.com/project/{self._pid}" if self._pid else ""
             # Gallery: du lieu tu /v2/search KHONG co field 'gallery' (chi co
             # o /v2/project/{id} chi tiet) - neu data da co san (vd truyen tu
             # noi khac) thi dung luon, neu khong se tu goi API rieng trong
@@ -122,6 +183,10 @@ class ModDetailWindow(tk.Frame):
             self._gallery_urls = [
                 g.get("url", "") for g in gallery if isinstance(g, dict) and g.get("url")
             ]
+            # 'description' tu /v2/search la tom tat ngan - mo ta day du
+            # (markdown) nam o field 'body', chi co khi goi /v2/project/{id}.
+            # Neu data da co san 'body' (vd truyen tu noi khac) thi dung luon.
+            self._desc_full = data.get("body") or self._desc
         else:  # curseforge
             self._title   = data.get("name", "")
             authors       = data.get("authors", [])
@@ -132,6 +197,8 @@ class ModDetailWindow(tk.Frame):
             self._icon_url = (logo.get("url", "") or
                               logo.get("thumbnailUrl", ""))
             self._pid     = data.get("id", "")
+            links = data.get("links") or {}
+            self._project_url = links.get("websiteUrl", "") or (f"https://www.curseforge.com/projects/{self._pid}" if self._pid else "")
             self._gallery_pending = False
             # Gallery: screenshots cua CurseForge
             shots = data.get("screenshots") or []
@@ -140,6 +207,11 @@ class ModDetailWindow(tk.Frame):
                 for s in shots if isinstance(s, dict)
             ]
             self._gallery_urls = [u for u in self._gallery_urls if u]
+            # CurseForge: field 'description' (HTML day du) thuong khong co
+            # trong ket qua tim kiem - chi co 'summary' ngan. Dung tam
+            # 'summary' lam noi dung Gioi thieu, se khong fetch them vi
+            # khong co san ham lay chi tiet rieng cho phan nay.
+            self._desc_full = data.get("description") or self._desc
 
         self._gallery_photos = []   # giu ref PhotoImage tranh GC
         self._gallery_big_photo = None
@@ -255,6 +327,40 @@ class ModDetailWindow(tk.Frame):
         self.nb = ttk.Notebook(self)
         self.nb.grid(row=4, column=0, sticky="nsew", padx=12, pady=(4, 0))
 
+        tab_intro = tk.Frame(self.nb, bg=BG)
+        self.nb.add(tab_intro, text="  Giới thiệu  ")
+
+        intro_frame = tk.Frame(tab_intro, bg=BG)
+        intro_frame.pack(fill="both", expand=True, padx=4, pady=4)
+
+        self.txt_intro = tk.Text(
+            intro_frame, wrap="word", font=("Arial", 9),
+            bg=TXT_BG, fg=TXT_FG, relief="flat",
+            state="disabled", padx=10, pady=8, spacing3=4, cursor="arrow")
+        intro_sb = ttk.Scrollbar(intro_frame, orient="vertical",
+                                  command=self.txt_intro.yview)
+        self.txt_intro.configure(yscrollcommand=intro_sb.set)
+        intro_sb.pack(side="right", fill="y")
+        self.txt_intro.pack(side="left", fill="both", expand=True)
+
+        link_color = self._accent
+        self.txt_intro.tag_configure("h1", font=("Arial", 15, "bold"),
+                                      foreground=FG, spacing1=10, spacing3=8)
+        self.txt_intro.tag_configure("h2", font=("Arial", 13, "bold"),
+                                      foreground=FG, spacing1=8, spacing3=6)
+        self.txt_intro.tag_configure("h3", font=("Arial", 11, "bold"),
+                                      foreground=FG, spacing1=6, spacing3=4)
+        self.txt_intro.tag_configure("b", font=("Arial", 9, "bold"))
+        self.txt_intro.tag_configure("i", font=("Arial", 9, "italic"))
+        self.txt_intro.tag_configure("li", lmargin1=18, lmargin2=30, spacing3=3)
+        self.txt_intro.tag_configure("p", spacing3=6)
+        self.txt_intro.tag_configure("link", foreground=link_color, underline=True)
+        self.txt_intro.tag_configure("img_pad", spacing1=4, spacing3=8)
+
+        self._intro_photos = []   # giu ref PhotoImage trong tab Gioi thieu
+        self._intro_render_id = 0
+        self._render_intro_async(self._desc_full)
+
         tab_log = tk.Frame(self.nb, bg=BG)
         self.nb.add(tab_log, text="  Bản ghi thay đổi  ")
 
@@ -349,6 +455,16 @@ class ModDetailWindow(tk.Frame):
             command=self._on_install_or_cancel)
         self.btn_install.pack(side="left", padx=(0, 8))
 
+        if self._project_url:
+            tk.Button(
+                row_btn, text="🌐  Mở trình duyệt",
+                font=("Arial", 9),
+                bg=BG, fg=FG,
+                activebackground="#3a3a3a", activeforeground=FG,
+                relief="flat", padx=12, pady=6,
+                command=lambda: webbrowser.open(self._project_url)
+            ).pack(side="left", padx=(0, 8))
+
         self.lbl_detail_status = tk.Label(
             row_btn, text="", font=("Arial", 9, "italic"),
             fg=self._accent, bg=BG, anchor="w")
@@ -400,6 +516,7 @@ class ModDetailWindow(tk.Frame):
         """
         def _t():
             urls = []
+            body = ""
             try:
                 from components.api_helpers import lay_project_modrinth
                 proj = lay_project_modrinth(self._pid)
@@ -409,15 +526,22 @@ class ModDetailWindow(tk.Frame):
                     if isinstance(g, dict) and g.get("url")
                 ]
                 urls = [u for u in urls if u]
+                body = proj.get("body") or ""
             except Exception:
                 urls = []
-            self._safe_after(lambda: self._on_modrinth_gallery_fetched(urls))
+            self._safe_after(lambda: self._on_modrinth_gallery_fetched(urls, body))
 
         threading.Thread(target=_t, daemon=True).start()
 
-    def _on_modrinth_gallery_fetched(self, urls):
+    def _on_modrinth_gallery_fetched(self, urls, body=""):
         self._gallery_pending = False
         self._gallery_urls = urls
+        if body and body != self._desc_full:
+            self._desc_full = body
+            try:
+                self._render_intro_async(body)
+            except tk.TclError:
+                pass
         if not urls:
             try:
                 self.lbl_gallery_status.config(text="Mod này chưa có hình ảnh nào.")
@@ -612,6 +736,91 @@ class ModDetailWindow(tk.Frame):
             text = "(Không có bản ghi thay đổi cho phiên bản này.)"
 
         self._set_changelog(text)
+
+    def _render_intro_async(self, raw):
+        """Render mo ta dang 'rich text' (tieu de, in dam/nghieng, gach
+        dau dong, link, anh chen trong noi dung) thay vi chi text thuan.
+        Tai anh trong thread rieng roi chen vao Text mot lan tren main
+        thread de tranh giat/flicker."""
+        self._intro_render_id += 1
+        token = self._intro_render_id
+
+        if not raw:
+            self._fill_intro_blocks([("p", "(Không có giới thiệu cho mục này.)")], [], token)
+            return
+
+        md = _html_to_md(raw) if self._source == "curseforge" else raw
+
+        def _worker():
+            blocks = _parse_rich_blocks(md)
+            photos = []
+            for b in blocks:
+                if b[0] == "img":
+                    photo = _fetch_image(b[1], size=(480, 260))
+                    photos.append(photo)
+                else:
+                    photos.append(None)
+            self._safe_after(lambda: self._fill_intro_blocks(blocks, photos, token))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _fill_intro_blocks(self, blocks, photos, token):
+        if token != self._intro_render_id:
+            return  # da co lan render moi hon (vd doi version) - bo qua
+        try:
+            w = self.txt_intro
+            w.config(state="normal")
+            w.delete("1.0", "end")
+            self._intro_photos = []
+
+            for i, b in enumerate(blocks):
+                kind = b[0]
+                if kind == "h":
+                    _, level, text = b
+                    tag = "h1" if level <= 1 else ("h2" if level == 2 else "h3")
+                    self._insert_inline(w, text, (tag,))
+                    w.insert("end", "\n")
+                elif kind == "li":
+                    w.insert("end", "•  ", ("li",))
+                    self._insert_inline(w, b[1], ("li",))
+                    w.insert("end", "\n")
+                elif kind == "img":
+                    photo = photos[i] if i < len(photos) else None
+                    if photo is not None:
+                        self._intro_photos.append(photo)
+                        w.image_create("end", image=photo)
+                        w.insert("end", "\n", ("img_pad",))
+                elif kind == "p":
+                    self._insert_inline(w, b[1], ("p",))
+                    w.insert("end", "\n")
+
+            w.config(state="disabled")
+            w.yview_moveto(0)
+        except tk.TclError:
+            pass  # widget da bi destroy (vd nguoi dung quay lai danh sach)
+
+    def _insert_inline(self, w, text, base_tags):
+        """Chen 1 doan text vao Text widget, xu ly **dam**, *nghieng*,
+        [link](url) trong cung dong."""
+        pos = 0
+        for m in _INLINE_RE.finditer(text):
+            if m.start() > pos:
+                w.insert("end", text[pos:m.start()], base_tags)
+            if m.group(1) is not None:
+                w.insert("end", m.group(1), base_tags + ("b",))
+            elif m.group(2) is not None:
+                w.insert("end", m.group(2), base_tags + ("i",))
+            else:
+                link_text, url = m.group(3), m.group(4)
+                tag = f"link_{id(m)}"
+                w.tag_configure(tag, foreground=self._accent, underline=True)
+                w.tag_bind(tag, "<Button-1>", lambda e, u=url: webbrowser.open(u))
+                w.tag_bind(tag, "<Enter>", lambda e: w.config(cursor="hand2"))
+                w.tag_bind(tag, "<Leave>", lambda e: w.config(cursor="arrow"))
+                w.insert("end", link_text, base_tags + ("link", tag))
+            pos = m.end()
+        if pos < len(text):
+            w.insert("end", text[pos:], base_tags)
 
     def _set_changelog(self, text):
         self.txt_log.config(state="normal")

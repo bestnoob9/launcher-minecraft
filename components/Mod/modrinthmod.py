@@ -33,6 +33,9 @@ from components.install_utils import (
 )
 
 
+_NO_INST = "— Chưa chọn —"   # Gia tri placeholder "khong chon instance"
+
+
 class ModrinthModMixin:
     """
     Mixin chua toan bo logic cho cac tab Modrinth (Modpack / Mod / RSP / Shader)
@@ -303,14 +306,6 @@ class ModrinthModMixin:
 
         self.fb_modmr = FilterBar(lv, self._search_modmr, accent_color="#00897B", show_category=True, bg=BG)
         self.fb_modmr.pack(fill="x", padx=10, pady=(8, 4))
-        # Khoa han o "MC Ver" o thanh loc - phien ban gio da duoc xac dinh
-        # tu dong qua Instance + dropdown "Phien ban mod" ben duoi, khong
-        # can loc theo MC Ver o day nua (du co/khong chon Instance).
-        try:
-            self.fb_modmr.cbo_mc.set("Tất cả")
-            self.fb_modmr.cbo_mc.config(state="disabled")
-        except Exception:
-            pass
 
         bp = tk.Frame(lv, bg=BG)
         bp.pack(fill="x", padx=10, pady=(0, 4))
@@ -319,10 +314,8 @@ class ModrinthModMixin:
         self.cbo_modmr_ver.grid(row=0, column=1, padx=6)
         tk.Label(bp, text="Cài vào Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=2)
         ds_inst = list(config.current_config.get("danh_sach_instances", {}).keys())
-        self.cbo_modmr_inst = ttk.Combobox(bp, values=ds_inst, font=("Arial", 9), width=42, height=5)
-        cur = config.current_config.get("current_instance", "")
-        if cur in ds_inst:  self.cbo_modmr_inst.set(cur)
-        elif ds_inst:       self.cbo_modmr_inst.set(ds_inst[0])
+        self.cbo_modmr_inst = ttk.Combobox(bp, values=[_NO_INST] + ds_inst, font=("Arial", 9), width=42, height=5)
+        self.cbo_modmr_inst.set(_NO_INST)
         self.cbo_modmr_inst.grid(row=1, column=1, padx=6)
         self.cbo_modmr_inst.bind("<<ComboboxSelected>>", lambda e: self._filter_modmr_ver())
         self.cbo_modmr_inst.bind("<ButtonPress>", lambda e: self._sync_inst_cbo(self.cbo_modmr_inst))
@@ -396,7 +389,7 @@ class ModrinthModMixin:
                     return
                 url      = prim["url"]
                 fname    = prim.get("filename", "mod.jar")
-                ten_inst = self.cbo_modmr_inst.get().strip()
+                ten_inst = self.cbo_modmr_inst.get().strip(); ten_inst = "" if ten_inst == _NO_INST else ten_inst
                 if not ten_inst:
                     messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self)
                     _finish()
@@ -464,24 +457,57 @@ class ModrinthModMixin:
         """Dong bo danh sach instance voi config hien tai moi khi mo dropdown."""
         ds_inst = list(config.current_config.get("danh_sach_instances", {}).keys())
         cur_val = cbo.get()
-        cbo.config(values=ds_inst)
-        if cur_val not in ds_inst:
+        cbo.config(values=[_NO_INST] + ds_inst)
+        if cur_val not in ds_inst and cur_val != _NO_INST:
             cur = config.current_config.get("current_instance", "")
-            cbo.set(cur if cur in ds_inst else (ds_inst[0] if ds_inst else ""))
+            cbo.set(cur if cur in ds_inst else _NO_INST)
 
     def _filter_modmr_ver(self):
         vs     = self._modmr_vers_raw
         ds_all = [f"{v.get('name','?')}  -  MC {', '.join(v.get('game_versions',[]))}  [{', '.join(v.get('loaders',[]))}]"
                   for v in vs]
-        ten_inst        = self.cbo_modmr_inst.get().strip()
-        mcv, loader     = self._get_inst_mc_loader(ten_inst) if ten_inst else ("", "")
+        ten_inst = self.cbo_modmr_inst.get().strip(); ten_inst = "" if ten_inst == _NO_INST else ten_inst
+        mcv, loader = self._get_inst_mc_loader(ten_inst) if ten_inst else ("", "")
 
+        # Dong bo MC Ver va Loader len FilterBar khi chon Instance,
+        # nhung KHONG khoa - nguoi dung van co the tu chinh lai.
         if mcv:
+            try:
+                cbo_mc = self.fb_modmr.cbo_mc
+                mc_vals = cbo_mc.cget("values") if hasattr(cbo_mc, "cget") else []
+                if mcv in mc_vals:
+                    cbo_mc.set(mcv)
+                else:
+                    cbo_mc.set(mcv)
+            except Exception:
+                pass
+        if loader:
+            try:
+                cbo_ld = self.fb_modmr.cbo_loader
+                ld_vals = cbo_ld.cget("values") if hasattr(cbo_ld, "cget") else []
+                ld_cap = loader.capitalize()
+                if ld_cap in ld_vals:
+                    cbo_ld.set(ld_cap)
+                elif loader in ld_vals:
+                    cbo_ld.set(loader)
+            except Exception:
+                pass
+
+        # Lay mc ver / loader tu FilterBar (co the da duoc nguoi dung tu chinh)
+        try:
+            fb_mc, fb_ld, _ = self.fb_modmr.get()
+        except Exception:
+            fb_mc, fb_ld = mcv, loader
+
+        use_mc = fb_mc or mcv
+        use_ld = fb_ld or loader
+
+        if use_mc:
             idxs = [
                 i for i, v in enumerate(vs)
-                if mcv in v.get("game_versions", [])
-                and (not loader or loader == "Vanilla"
-                     or loader.lower() in [l.lower() for l in v.get("loaders", [])])
+                if use_mc in v.get("game_versions", [])
+                and (not use_ld or use_ld == "Tất cả" or use_ld == "Vanilla"
+                     or use_ld.lower() in [l.lower() for l in v.get("loaders", [])])
             ]
         else:
             idxs = list(range(len(vs)))
@@ -491,11 +517,13 @@ class ModrinthModMixin:
             self._modmr_ver_idx_map = idxs
             self.cbo_modmr_ver.config(values=ds)
             self.cbo_modmr_ver.set(ds[0])
-            self.lbl_status.config(
-                text=f"Đã lọc {len(ds)} phiên bản phù hợp với {ten_inst} (MC {mcv}"
-                     + (f", {loader}" if loader and loader != "Vanilla" else "") + ")."
-                if mcv else "Chon phien ban roi nhan Cài Mod.",
-                fg="gray")
+            if ten_inst and use_mc:
+                self.lbl_status.config(
+                    text=f"Đã lọc {len(ds)} phiên bản phù hợp với {ten_inst} (MC {use_mc}"
+                         + (f", {use_ld}" if use_ld and use_ld not in ("Tất cả", "Vanilla") else "") + ").",
+                    fg="gray")
+            else:
+                self.lbl_status.config(text="Chọn phiên bản rồi nhấn Cài Mod.", fg="gray")
         else:
             self._modmr_ver_idx_map = list(range(len(vs)))
             self.cbo_modmr_ver.config(values=ds_all)
@@ -504,7 +532,7 @@ class ModrinthModMixin:
 
     def _install_modmr(self):
         from components.mod_mc import TacVuBiHuy
-        ten_inst = self.cbo_modmr_inst.get().strip()
+        ten_inst = self.cbo_modmr_inst.get().strip(); ten_inst = "" if ten_inst == _NO_INST else ten_inst
         if not ten_inst:
             messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self); return
         _, loader = self._get_inst_mc_loader(ten_inst)
@@ -587,10 +615,8 @@ class ModrinthModMixin:
         self.cbo_rsp_ver.grid(row=0, column=1, padx=6)
         tk.Label(bp, text="Cài vào Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=2)
         ds_inst = list(config.current_config.get("danh_sach_instances", {}).keys())
-        self.cbo_rsp_inst = ttk.Combobox(bp, values=ds_inst, font=("Arial", 9), width=42, height=5)
-        cur = config.current_config.get("current_instance", "")
-        if cur in ds_inst: self.cbo_rsp_inst.set(cur)
-        elif ds_inst:      self.cbo_rsp_inst.set(ds_inst[0])
+        self.cbo_rsp_inst = ttk.Combobox(bp, values=[_NO_INST] + ds_inst, font=("Arial", 9), width=42, height=5)
+        self.cbo_rsp_inst.set(_NO_INST)
         self.cbo_rsp_inst.grid(row=1, column=1, padx=6)
         # RSP khong can loc phien ban theo Instance (khong phu thuoc chat
         # vao MC version nhu Mod) - chi dong bo lai danh sach Instance.
@@ -665,7 +691,7 @@ class ModrinthModMixin:
                     return
                 url      = prim["url"]
                 fname    = prim.get("filename", "resourcepack.zip")
-                ten_inst = self.cbo_rsp_inst.get().strip()
+                ten_inst = self.cbo_rsp_inst.get().strip(); ten_inst = "" if ten_inst == _NO_INST else ten_inst
                 if not ten_inst:
                     messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self)
                     _finish()
@@ -737,7 +763,7 @@ class ModrinthModMixin:
 
     def _install_rsp(self):
         from components.mod_mc import TacVuBiHuy
-        ten_inst = self.cbo_rsp_inst.get().strip()
+        ten_inst = self.cbo_rsp_inst.get().strip(); ten_inst = "" if ten_inst == _NO_INST else ten_inst
         if not ten_inst:
             messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self); return
         iv = self.cbo_rsp_ver.current()
@@ -814,10 +840,8 @@ class ModrinthModMixin:
         self.cbo_sh_ver.grid(row=0, column=1, padx=6)
         tk.Label(bp, text="Cài vào Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=2)
         ds_inst = list(config.current_config.get("danh_sach_instances", {}).keys())
-        self.cbo_sh_inst = ttk.Combobox(bp, values=ds_inst, font=("Arial", 9), width=42, height=5)
-        cur = config.current_config.get("current_instance", "")
-        if cur in ds_inst: self.cbo_sh_inst.set(cur)
-        elif ds_inst:      self.cbo_sh_inst.set(ds_inst[0])
+        self.cbo_sh_inst = ttk.Combobox(bp, values=[_NO_INST] + ds_inst, font=("Arial", 9), width=42, height=5)
+        self.cbo_sh_inst.set(_NO_INST)
         self.cbo_sh_inst.grid(row=1, column=1, padx=6)
         # Shader khong can loc phien ban theo Instance - chi dong bo lai
         # danh sach Instance.
@@ -892,7 +916,7 @@ class ModrinthModMixin:
                     return
                 url      = prim["url"]
                 fname    = prim.get("filename", "shader.zip")
-                ten_inst = self.cbo_sh_inst.get().strip()
+                ten_inst = self.cbo_sh_inst.get().strip(); ten_inst = "" if ten_inst == _NO_INST else ten_inst
                 if not ten_inst:
                     messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self)
                     _finish()
@@ -964,7 +988,7 @@ class ModrinthModMixin:
 
     def _install_sh(self):
         from components.mod_mc import TacVuBiHuy
-        ten_inst = self.cbo_sh_inst.get().strip()
+        ten_inst = self.cbo_sh_inst.get().strip(); ten_inst = "" if ten_inst == _NO_INST else ten_inst
         if not ten_inst:
             messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self); return
         iv = self.cbo_sh_ver.current()

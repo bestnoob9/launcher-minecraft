@@ -33,6 +33,8 @@ from components.install_utils import (
     cai_modpack_tu_file,
 )
 
+_NO_INST = "— Chưa chọn —"   # Gia tri placeholder "khong chon instance"
+
 
 def _cf_build_url(version_data):
     """Tra ve download URL tu version_data CurseForge (xu ly truong hop CF an URL)."""
@@ -332,14 +334,6 @@ class ForgeModMixin:
 
         self.fb_modcf = FilterBar(lv, self._search_modcf, accent_color="#F9A825", show_category=True, bg=BG)
         self.fb_modcf.pack(fill="x", padx=10, pady=(8, 4))
-        # Khoa han o "MC Ver" o thanh loc - phien ban gio da duoc xac dinh
-        # tu dong qua Instance + dropdown "Phien ban mod" ben duoi, khong
-        # can loc theo MC Ver o day nua (du co/khong chon Instance).
-        try:
-            self.fb_modcf.cbo_mc.set("Tất cả")
-            self.fb_modcf.cbo_mc.config(state="disabled")
-        except Exception:
-            pass
         self._load_categories_async(self.fb_modcf, 6)
 
         bp = tk.Frame(lv, bg=BG)
@@ -349,10 +343,8 @@ class ForgeModMixin:
         self.cbo_modcf_ver.grid(row=0, column=1, padx=6)
         tk.Label(bp, text="Cài vào Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=2)
         ds_inst = list(config.current_config.get("danh_sach_instances", {}).keys())
-        self.cbo_modcf_inst = ttk.Combobox(bp, values=ds_inst, font=("Arial", 9), width=42, height=5)
-        cur = config.current_config.get("current_instance", "")
-        if cur in ds_inst:  self.cbo_modcf_inst.set(cur)
-        elif ds_inst:       self.cbo_modcf_inst.set(ds_inst[0])
+        self.cbo_modcf_inst = ttk.Combobox(bp, values=[_NO_INST] + ds_inst, font=("Arial", 9), width=42, height=5)
+        self.cbo_modcf_inst.set(_NO_INST)
         self.cbo_modcf_inst.grid(row=1, column=1, padx=6)
         self.cbo_modcf_inst.bind("<<ComboboxSelected>>", lambda e: self._filter_modcf_ver())
         self.cbo_modcf_inst.bind("<ButtonPress>", lambda e: self._sync_inst_cbo(self.cbo_modcf_inst))
@@ -427,7 +419,7 @@ class ForgeModMixin:
                     _finish()
                     return
                 fname    = version_data.get("fileName", "mod.jar")
-                ten_inst = self.cbo_modcf_inst.get().strip()
+                ten_inst = self.cbo_modcf_inst.get().strip(); ten_inst = "" if ten_inst == _NO_INST else ten_inst
                 if not ten_inst:
                     messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self)
                     _finish()
@@ -498,17 +490,43 @@ class ForgeModMixin:
         ds_all = [f"{fi.get('displayName', fi.get('fileName',''))}  -  MC {', '.join(fi.get('gameVersions',[]))}"
                   for fi in files]
 
-        ten_inst    = self.cbo_modcf_inst.get().strip()
+        ten_inst = self.cbo_modcf_inst.get().strip(); ten_inst = "" if ten_inst == _NO_INST else ten_inst
         mcv, loader = self._get_inst_mc_loader(ten_inst) if ten_inst else ("", "")
 
+        # Dong bo MC Ver va Loader len FilterBar khi chon Instance,
+        # nhung KHONG khoa - nguoi dung van co the tu chinh lai.
         if mcv:
+            try:
+                cbo_mc = self.fb_modcf.cbo_mc
+                cbo_mc.set(mcv)
+            except Exception:
+                pass
+        if loader:
+            try:
+                cbo_ld = self.fb_modcf.cbo_loader
+                ld_vals = cbo_ld.cget("values") if hasattr(cbo_ld, "cget") else []
+                ld_cap = loader.capitalize()
+                if ld_cap in ld_vals:    cbo_ld.set(ld_cap)
+                elif loader in ld_vals:  cbo_ld.set(loader)
+            except Exception:
+                pass
+
+        try:
+            fb_mc, fb_ld, _ = self.fb_modcf.get()
+        except Exception:
+            fb_mc, fb_ld = mcv, loader
+
+        use_mc = fb_mc or mcv
+        use_ld = fb_ld or loader
+
+        if use_mc:
             idxs = []
             for i, fi in enumerate(files):
                 gvs = fi.get("gameVersions", [])
                 gvs_lower = [g.lower() for g in gvs]
-                if mcv not in gvs:
+                if use_mc not in gvs:
                     continue
-                if loader and loader != "Vanilla" and loader.lower() not in gvs_lower:
+                if use_ld and use_ld not in ("Tất cả", "Vanilla") and use_ld.lower() not in gvs_lower:
                     continue
                 idxs.append(i)
         else:
@@ -519,11 +537,13 @@ class ForgeModMixin:
             self._modcf_ver_idx_map = idxs
             self.cbo_modcf_ver.config(values=ds)
             self.cbo_modcf_ver.set(ds[0])
-            self.lbl_status.config(
-                text=f"Đã lọc {len(ds)} phiên bản phù hợp với {ten_inst} (MC {mcv}"
-                     + (f", {loader}" if loader and loader != "Vanilla" else "") + ")."
-                if mcv else "Chon phien ban roi nhan Cài Mod.",
-                fg="gray")
+            if ten_inst and use_mc:
+                self.lbl_status.config(
+                    text=f"Đã lọc {len(ds)} phiên bản phù hợp với {ten_inst} (MC {use_mc}"
+                         + (f", {use_ld}" if use_ld and use_ld not in ("Tất cả", "Vanilla") else "") + ").",
+                    fg="gray")
+            else:
+                self.lbl_status.config(text="Chọn phiên bản rồi nhấn Cài Mod.", fg="gray")
         else:
             self._modcf_ver_idx_map = list(range(len(files)))
             self.cbo_modcf_ver.config(values=ds_all)
@@ -532,7 +552,7 @@ class ForgeModMixin:
 
     def _install_modcf(self):
         from components.mod_mc import TacVuBiHuy
-        ten_inst = self.cbo_modcf_inst.get().strip()
+        ten_inst = self.cbo_modcf_inst.get().strip(); ten_inst = "" if ten_inst == _NO_INST else ten_inst
         if not ten_inst:
             messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self); return
         _, loader = self._get_inst_mc_loader(ten_inst)
@@ -618,10 +638,8 @@ class ForgeModMixin:
         self.cbo_rsp_cf_ver.grid(row=0, column=1, padx=6)
         tk.Label(bp, text="Cài vào Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=2)
         ds_inst = list(config.current_config.get("danh_sach_instances", {}).keys())
-        self.cbo_rsp_cf_inst = ttk.Combobox(bp, values=ds_inst, font=("Arial", 9), width=42, height=5)
-        cur = config.current_config.get("current_instance", "")
-        if cur in ds_inst: self.cbo_rsp_cf_inst.set(cur)
-        elif ds_inst:      self.cbo_rsp_cf_inst.set(ds_inst[0])
+        self.cbo_rsp_cf_inst = ttk.Combobox(bp, values=[_NO_INST] + ds_inst, font=("Arial", 9), width=42, height=5)
+        self.cbo_rsp_cf_inst.set(_NO_INST)
         self.cbo_rsp_cf_inst.grid(row=1, column=1, padx=6)
         # RSP khong can loc phien ban theo Instance - chi dong bo lai
         # danh sach Instance.
@@ -697,7 +715,7 @@ class ForgeModMixin:
                     _finish()
                     return
                 fname    = version_data.get("fileName", "resourcepack.zip")
-                ten_inst = self.cbo_rsp_cf_inst.get().strip()
+                ten_inst = self.cbo_rsp_cf_inst.get().strip(); ten_inst = "" if ten_inst == _NO_INST else ten_inst
                 if not ten_inst:
                     messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self)
                     _finish()
@@ -772,7 +790,7 @@ class ForgeModMixin:
 
     def _install_rsp_cf(self):
         from components.mod_mc import TacVuBiHuy
-        ten_inst = self.cbo_rsp_cf_inst.get().strip()
+        ten_inst = self.cbo_rsp_cf_inst.get().strip(); ten_inst = "" if ten_inst == _NO_INST else ten_inst
         if not ten_inst:
             messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self); return
         iv = self.cbo_rsp_cf_ver.current()
@@ -852,10 +870,8 @@ class ForgeModMixin:
         self.cbo_sh_cf_ver.grid(row=0, column=1, padx=6)
         tk.Label(bp, text="Cài vào Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=2)
         ds_inst = list(config.current_config.get("danh_sach_instances", {}).keys())
-        self.cbo_sh_cf_inst = ttk.Combobox(bp, values=ds_inst, font=("Arial", 9), width=42, height=5)
-        cur = config.current_config.get("current_instance", "")
-        if cur in ds_inst: self.cbo_sh_cf_inst.set(cur)
-        elif ds_inst:      self.cbo_sh_cf_inst.set(ds_inst[0])
+        self.cbo_sh_cf_inst = ttk.Combobox(bp, values=[_NO_INST] + ds_inst, font=("Arial", 9), width=42, height=5)
+        self.cbo_sh_cf_inst.set(_NO_INST)
         self.cbo_sh_cf_inst.grid(row=1, column=1, padx=6)
         # Shader khong can loc phien ban theo Instance - chi dong bo lai
         # danh sach Instance.
@@ -931,7 +947,7 @@ class ForgeModMixin:
                     _finish()
                     return
                 fname    = version_data.get("fileName", "shader.zip")
-                ten_inst = self.cbo_sh_cf_inst.get().strip()
+                ten_inst = self.cbo_sh_cf_inst.get().strip(); ten_inst = "" if ten_inst == _NO_INST else ten_inst
                 if not ten_inst:
                     messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self)
                     _finish()
@@ -1006,7 +1022,7 @@ class ForgeModMixin:
 
     def _install_sh_cf(self):
         from components.mod_mc import TacVuBiHuy
-        ten_inst = self.cbo_sh_cf_inst.get().strip()
+        ten_inst = self.cbo_sh_cf_inst.get().strip(); ten_inst = "" if ten_inst == _NO_INST else ten_inst
         if not ten_inst:
             messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self); return
         iv = self.cbo_sh_cf_ver.current()

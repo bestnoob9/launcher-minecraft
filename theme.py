@@ -42,6 +42,12 @@ _LIGHT_TO_DARK = {
     "SystemButtonFace": "#2a2a2a",
     "SystemWindow":     "#1e1e1e",
     "SystemWindowText": "#e8e8e8",
+    "SystemButtonText": "#e8e8e8",
+
+    # Thanh tab tren cung (main.py: self._tab_bar, lbl_floating_progress)
+    # - mau "goc" khi o Sang la #dde2e8 (giong tab_inactive_bg trong
+    # _apply_to_ttk_style), khi sang Toi doi thanh #263238.
+    "#dde2e8": "#263238",
 
     "#1a1a1a": "#e8e8e8",
     "black":   "#e8e8e8",
@@ -71,6 +77,7 @@ _DARK_TO_LIGHT.update({
     "#a0a0a0": "gray",
     "#66bb6a": "#2e7d32",
     "#ffb74d": "#b35900",
+    "#263238": "#dde2e8",
 })
 
 
@@ -136,7 +143,7 @@ def colors():
 # Cac option mau theo loai widget tk
 _BG_OPTS = ("bg", "background", "highlightbackground",
             "selectbackground", "activebackground", "readonlybackground",
-            "insertbackground")
+            "insertbackground", "selectcolor")
 _FG_OPTS = ("fg", "foreground", "activeforeground", "selectforeground")
 
 

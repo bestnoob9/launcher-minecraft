@@ -314,14 +314,24 @@ class ContentTableWidget(tk.Frame):
         self._bind_scroll(self.canvas)
 
         self._visible_check_id = None
+        self._wrap_after_id = None
+        self._pending_canvas_width = None
 
     def _on_inner_configure(self, e):
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         self._schedule_visible_check()
 
     def _on_canvas_configure(self, e):
-        self.canvas.itemconfig(self._inner_id, width=e.width)
-        self._schedule_visible_check()
+        # QUAN TRONG: KHONG goi itemconfig(width=...) ngay tai day. Lam vay
+        # ep Tk sap xep lai (re-pack) TOAN BO cac dong (row) ben trong inner
+        # NGAY LAP TUC tren MOI tick resize - trong luc keo chuot thay doi
+        # kich thuoc cua so, co the co hang chuc tick/giay, nhan voi hang
+        # chuc dong trong danh sach -> day chinh la nguyen nhan gay giat/lag
+        # ro ret (nang hon nhieu so voi viec tinh lai wraplength). Thay vao
+        # do chi luu lai chieu rong moi nhat va debounce - sap xep lai CHI
+        # MOT LAN sau khi nguoi dung ngung keo ~70ms.
+        self._pending_canvas_width = e.width
+        self._schedule_wrap_refresh()
 
     def _on_scrollbar(self, *args):
         self.canvas.yview(*args)
@@ -372,6 +382,13 @@ class ContentTableWidget(tk.Frame):
         self._c         = theme.colors()
         self._data      = data_list
         self._selected  = -1
+
+        if self._wrap_after_id is not None:
+            try:
+                self.after_cancel(self._wrap_after_id)
+            except Exception:
+                pass
+            self._wrap_after_id = None
 
         for r in self._rows:
             try:
@@ -469,16 +486,15 @@ class ContentTableWidget(tk.Frame):
         sep = tk.Frame(self.inner, bg=c["row_sep"], height=1)
         sep.pack(fill="x")
 
-        # truncate text khi co kich thuoc thuc
-        def _wrap(lbl=lbl_name, txt=name):
-            w = max(text_col.winfo_width() - 4, 60)
-            lbl.configure(wraplength=w)
-        def _wrap_author(lbl=lbl_author):
-            lbl.configure(wraplength=max(text_col.winfo_width() - 4, 60))
-        def _wrap_desc(lbl=lbl_desc):
-            pass  # mo ta luon 1 dong, da cat ky tu o _extract
-
-        text_col.bind("<Configure>", lambda e: (_wrap(), _wrap_author(), _wrap_desc()))
+        # Tinh lai wraplength khi text_col doi kich thuoc (vd cua so duoc
+        # keo rong/hep). KHONG tinh ngay lap tuc trong lambda nay - trong
+        # luc keo chuot, Tk phat ra rat nhieu su kien <Configure> lien tiep
+        # cho MOI dong dang co trong bang, neu xu ly ngay se gay giat/lag
+        # ro ret voi danh sach nhieu dong. Thay vao do chi "danh dau can
+        # cap nhat" va goi _schedule_wrap_refresh() - gom (debounce) tat ca
+        # cac lan trigger lien tiep thanh DUY NHAT mot lan tinh lai sau khi
+        # nguoi dung ngung keo ~70ms (xem _schedule_wrap_refresh / _refresh_wraps).
+        text_col.bind("<Configure>", lambda e: self._schedule_wrap_refresh())
 
         widgets = [row, icon_lbl, text_col, lbl_name, lbl_author, lbl_desc,
                    right_col, lbl_dl, lbl_mc, sep]
@@ -489,9 +505,48 @@ class ContentTableWidget(tk.Frame):
 
         self._rows.append({
             "frame": row, "sep": sep, "widgets": widgets,
+            "text_col": text_col, "lbl_name": lbl_name, "lbl_author": lbl_author,
             "icon_url": icon_url, "on_icon_ready": _on_icon_ready,
             "icon_loaded": False, "y": i * self.ROW_H,
         })
+
+    def _schedule_wrap_refresh(self):
+        """Gom nhieu su kien <Configure> lien tiep (vd trong luc keo chuot
+        thay doi kich thuoc cua so) thanh MOT lan tinh lai wraplength duy
+        nhat cho tat ca cac dong, thay vi tinh lai ngay lap tuc cho tung
+        dong tren tung su kien - day la nguyen nhan chinh gay giat/lag khi
+        keo rong cua so o danh sach Mod/Modpack/Resource Pack/Shader."""
+        if getattr(self, "_wrap_after_id", None) is not None:
+            try:
+                self.after_cancel(self._wrap_after_id)
+            except Exception:
+                pass
+        self._wrap_after_id = self.after(70, self._refresh_wraps)
+
+    def _refresh_wraps(self):
+        self._wrap_after_id = None
+
+        # Ap dung chieu rong canvas moi nhat (bi hoan lai o _on_canvas_configure)
+        # NGAY TAI DAY - chi MOT LAN duy nhat cho ca danh sach, thay vi tren
+        # moi tick resize. Day la buoc gay "re-pack" toan bo cac dong nen can
+        # gom lai nhu the nay de tranh giat/lag.
+        if self._pending_canvas_width is not None:
+            try:
+                self.canvas.itemconfig(self._inner_id, width=self._pending_canvas_width)
+            except tk.TclError:
+                pass
+            self._pending_canvas_width = None
+
+        for row in self._rows:
+            text_col = row.get("text_col")
+            if text_col is None:
+                continue
+            try:
+                w = max(text_col.winfo_width() - 4, 60)
+                row["lbl_name"].configure(wraplength=w)
+                row["lbl_author"].configure(wraplength=w)
+            except tk.TclError:
+                pass  # dong da bi destroy (vd danh sach da duoc load() lai)
 
     def _select(self, idx, install=False):
         if idx < 0 or idx >= len(self._rows):

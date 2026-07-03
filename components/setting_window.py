@@ -90,6 +90,12 @@ class SettingFrame(tk.Frame):
         self._build_widgets(self._inner)
         theme.apply_theme(self._inner)
 
+        # ── Theo dõi thay đổi chưa lưu (dirty tracking) ─────────────
+        # Đặt SAU khi build + apply_theme xong, để các thao tác insert()
+        # giá trị ban đầu ở trên không bị tính nhầm là "người dùng đã sửa".
+        self._is_dirty = False
+        self._setup_dirty_tracking()
+
     def _build_widgets(self, p):
         """Build toàn bộ widgets settings vào frame p (thay vì self như trong Toplevel)."""
         import math
@@ -110,6 +116,53 @@ class SettingFrame(tk.Frame):
         self.var_theme = tk.StringVar(value=theme.get_theme_name())
         tk.Radiobutton(frame_theme, text="☀ Sáng", font=("Arial", 9), variable=self.var_theme, value="light", command=self._khi_doi_theme).pack(side=tk.LEFT, padx=(0, 12))
         tk.Radiobutton(frame_theme, text="🌙 Tối", font=("Arial", 9), variable=self.var_theme, value="dark", command=self._khi_doi_theme).pack(side=tk.LEFT)
+
+        # ── 1c. Kích thước cửa sổ launcher ──────────────────────────────
+        tk.Label(p, text="Kích thước cửa sổ launcher:", font=("Arial", 10, "bold")).pack(anchor="w", padx=20, pady=(15, 2))
+        frame_size_preset = tk.Frame(p)
+        frame_size_preset.pack(fill="x", padx=20, pady=2)
+        tk.Label(frame_size_preset, text="Chọn nhanh:", font=("Arial", 9)).pack(side=tk.LEFT)
+        self.cbo_size_preset = ttk.Combobox(
+            frame_size_preset,
+            values=["Tự tùy chỉnh", "1024x600", "1280x720", "1366x768", "1440x900", "1600x900", "1920x1080"],
+            width=20, state="readonly"
+        )
+        self.cbo_size_preset.pack(side=tk.LEFT, padx=10)
+        self.cbo_size_preset.bind("<<ComboboxSelected>>", self.khi_chon_preset_cua_so)
+
+        frame_size_custom = tk.Frame(p)
+        frame_size_custom.pack(fill="x", padx=20, pady=5)
+        tk.Label(frame_size_custom, text="Chiều rộng:", font=("Arial", 9)).pack(side=tk.LEFT)
+        self.ent_cs_width = tk.Entry(frame_size_custom, font=("Arial", 10), width=8, justify="center")
+        self.ent_cs_width.pack(side=tk.LEFT, padx=5)
+        tk.Label(frame_size_custom, text=" x ", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
+        tk.Label(frame_size_custom, text="Chiều cao:", font=("Arial", 9)).pack(side=tk.LEFT)
+        self.ent_cs_height = tk.Entry(frame_size_custom, font=("Arial", 10), width=8, justify="center")
+        self.ent_cs_height.pack(side=tk.LEFT, padx=5)
+
+        _cs_presets = ["1024x600", "1280x720", "1366x768", "1440x900", "1600x900", "1920x1080"]
+        cs_cu = str(config.current_config.get("kich_thuoc_cua_so", "1280x720"))
+        cs_match = re.search(r"(\d+)\s*x\s*(\d+)", cs_cu)
+        if cs_match:
+            cs_rong, cs_cao = cs_match.groups()
+            self.ent_cs_width.insert(0, cs_rong)
+            self.ent_cs_height.insert(0, cs_cao)
+            cs_chuoi = f"{cs_rong}x{cs_cao}"
+            self.cbo_size_preset.set(cs_chuoi if cs_chuoi in _cs_presets else "Tự tùy chỉnh")
+        else:
+            self.ent_cs_width.insert(0, "1280")
+            self.ent_cs_height.insert(0, "720")
+            self.cbo_size_preset.set("1280x720")
+
+        # ── 1d. Ẩn launcher khi vào game ─────────────────────────────
+        tk.Label(p, text="Khi vào game:", font=("Arial", 10, "bold")).pack(anchor="w", padx=20, pady=(15, 2))
+        frame_an_launcher = tk.Frame(p)
+        frame_an_launcher.pack(fill="x", padx=20)
+        self.var_an_launcher = tk.IntVar(value=1 if config.current_config.get("an_launcher_khi_choi", True) else 0)
+        tk.Radiobutton(frame_an_launcher, text="Ẩn launcher", font=("Arial", 9),
+                       variable=self.var_an_launcher, value=1).pack(side=tk.LEFT, padx=(0, 12))
+        tk.Radiobutton(frame_an_launcher, text="Không ẩn", font=("Arial", 9),
+                       variable=self.var_an_launcher, value=0).pack(side=tk.LEFT)
 
         # ── 2. RAM ────────────────────────────────────────────────────
         tk.Label(p, text="Bộ Nhớ Sử Dụng:", font=("Arial", 10, "bold")).pack(anchor="w", padx=20, pady=(15, 2))
@@ -318,6 +371,75 @@ class SettingFrame(tk.Frame):
                   bg="#2196F3", fg="white", width=18, height=2,
                   command=self.luu_cau_hinh).pack(pady=(20, 15))
 
+    # ── Theo dõi thay đổi chưa lưu ─────────────────────────────────────
+
+    def _setup_dirty_tracking(self):
+        """Gắn sự kiện lên tất cả widget nhập liệu để phát hiện khi người
+        dùng thay đổi bất kỳ giá trị nào mà chưa bấm LƯU."""
+
+        def _mark_dirty(*_args):
+            self._is_dirty = True
+
+        # Các biến tk.Variable (Radiobutton / Checkbutton / thanh trượt RAM)
+        for var in (self.var_theme, self.var_an_launcher,
+                    self.var_ram_auto, self.var_ram_mib):
+            try:
+                var.trace_add("write", _mark_dirty)
+            except Exception:
+                pass
+
+        # Các ô Entry nhập tay
+        for ent in (self.ent_path, self.ent_cs_width, self.ent_cs_height,
+                    self.ent_width, self.ent_height, self.ent_jvm_custom,
+                    self.ent_java_path):
+            try:
+                ent.bind("<KeyRelease>", _mark_dirty, add="+")
+            except Exception:
+                pass
+
+        # Các Combobox (chọn preset kích thước, độ phân giải, chế độ JVM...)
+        for cbo in (self.cbo_size_preset, self.cbo_res_preset,
+                    self.cbo_jvm_mode, self.cbo_jvm_presets):
+            try:
+                cbo.bind("<<ComboboxSelected>>", _mark_dirty, add="+")
+            except Exception:
+                pass
+
+        # Thanh trượt RAM (kéo bằng chuột)
+        try:
+            self.sld_ram.bind("<ButtonRelease-1>", _mark_dirty, add="+")
+        except Exception:
+            pass
+
+    def has_unsaved_changes(self) -> bool:
+        """True nếu người dùng đã thay đổi ít nhất 1 giá trị nhưng chưa
+        bấm LƯU CÀI ĐẶT."""
+        return getattr(self, "_is_dirty", False)
+
+    def confirm_discard_changes(self) -> bool:
+        """
+        Gọi hàm này TRƯỚC khi cho phép chuyển sang tab/view khác (ở
+        main.py, trong handler bấm nút chuyển tab).
+
+        Trả về:
+          - True  -> được phép rời đi (không có gì thay đổi, hoặc người
+                     dùng đã xác nhận bỏ qua thay đổi).
+          - False -> KHÔNG được rời đi, người dùng chọn ở lại để lưu.
+        """
+        if not self.has_unsaved_changes():
+            return True
+
+        dong_y_roi_di = messagebox.askyesno(
+            "Thay đổi chưa được lưu",
+            "Bạn có thay đổi trong Cài đặt chưa được lưu.\n"
+            "Bạn có chắc muốn rời đi khi chưa lưu không?"
+        )
+        if dong_y_roi_di:
+            # Người dùng chấp nhận bỏ thay đổi -> tắt cờ để lần sau
+            # không bị hỏi lại vì cùng một thay đổi cũ.
+            self._is_dirty = False
+        return dong_y_roi_di
+
     # ── Các method logic giống SettingWindow (copy nguyên) ────────────
 
     def _lay_ram_hien_tai(self) -> str:
@@ -404,6 +526,15 @@ class SettingFrame(tk.Frame):
             self.ent_height.delete(0, tk.END)
             self.ent_height.insert(0, cao.strip())
 
+    def khi_chon_preset_cua_so(self, event=None):
+        preset = self.cbo_size_preset.get()
+        if preset != "Tự tùy chỉnh":
+            rong, cao = preset.split("x")
+            self.ent_cs_width.delete(0, tk.END)
+            self.ent_cs_width.insert(0, rong.strip())
+            self.ent_cs_height.delete(0, tk.END)
+            self.ent_cs_height.insert(0, cao.strip())
+
     def _khi_doi_theme(self):
         theme.set_theme(self.var_theme.get())
         config.luu_toan_bo_cau_hinh()
@@ -451,6 +582,17 @@ class SettingFrame(tk.Frame):
             return
         res_chuan_hoa = f"{int_rong}x{int_cao}"
 
+        cs_rong_input = self.ent_cs_width.get().strip()
+        cs_cao_input = self.ent_cs_height.get().strip()
+        if not cs_rong_input.isdigit() or not cs_cao_input.isdigit():
+            messagebox.showerror("Lỗi nhập liệu", "Kích thước cửa sổ launcher phải là số nguyên dương!\nVí dụ: Rộng 1280 - Cao 720")
+            return
+        cs_int_rong, cs_int_cao = int(cs_rong_input), int(cs_cao_input)
+        if cs_int_rong < 800 or cs_int_cao < 600:
+            messagebox.showwarning("Cảnh báo", "Kích thước cửa sổ launcher tối thiểu là 800 x 600!")
+            return
+        cs_chuan_hoa = f"{cs_int_rong}x{cs_int_cao}"
+
         try:
             max_mb = int(self.var_ram_mib.get().strip())
             if max_mb < 256:
@@ -465,6 +607,8 @@ class SettingFrame(tk.Frame):
         config.current_config["ram_max"] = ram_max_val
         config.current_config.pop("ram_min", None)
         config.current_config["do_phan_giai"] = res_chuan_hoa
+        config.current_config["kich_thuoc_cua_so"] = cs_chuan_hoa
+        config.current_config["an_launcher_khi_choi"] = bool(self.var_an_launcher.get())
         config.current_config["java_path"] = self.ent_java_path.get().strip()
 
         jvm_ui_mode = self.cbo_jvm_mode.get()
@@ -483,6 +627,7 @@ class SettingFrame(tk.Frame):
         self.ent_jvm_custom.configure(state="readonly" if jvm_ui_mode == "Sử dụng gói tối ưu sẵn" else "normal")
 
         config.luu_toan_bo_cau_hinh()
+        self._is_dirty = False  # đã lưu xong -> không còn thay đổi "treo"
         messagebox.showinfo("Thành công", "Đã lưu toàn bộ cấu hình hệ thống!")
         if self.on_save_callback:
             self.on_save_callback()
@@ -1023,8 +1168,16 @@ class SettingWindow(tk.Toplevel):
             self.ent_height.delete(0, tk.END)
             self.ent_height.insert(0, cao.strip())
 
+    def khi_chon_preset_cua_so(self, event=None):
+        preset = self.cbo_size_preset.get()
+        if preset != "Tự tùy chỉnh":
+            rong, cao = preset.split("x")
+            self.ent_cs_width.delete(0, tk.END)
+            self.ent_cs_width.insert(0, rong.strip())
+            self.ent_cs_height.delete(0, tk.END)
+            self.ent_cs_height.insert(0, cao.strip())
+
     def _khi_doi_theme(self):
-        """Doi giao dien Sang/Toi ngay (xem truoc) va luu vao config."""
         theme.set_theme(self.var_theme.get())
         config.luu_toan_bo_cau_hinh()
         try:

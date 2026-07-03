@@ -171,16 +171,19 @@ def get_all_jvm_presets():
         ]
     }
 
-def build_jvm_arguments(current_config, ram_min, ram_max):
+def build_jvm_arguments(current_config, ram_min, ram_max, version_goc=None):
     final_args = []
     final_args.append(f"-Xms{ram_min}")
     final_args.append(f"-Xmx{ram_max}")
-    # Luon bypass auth Mojang vi launcher chi ho tro tai khoan offline
-    final_args.append("-Dminecraft.api.auth.enabled=false")
-    final_args.append("-Dminecraft.api.auth.host=https://nope.invalid")
-    final_args.append("-Dminecraft.api.account.host=https://nope.invalid")
-    final_args.append("-Dminecraft.api.session.host=https://nope.invalid")
-    final_args.append("-Dminecraft.api.services.host=https://nope.invalid")
+    # Chi bypass auth Mojang (che do offline) khi chay 1.16.5 / 1.16.4.
+    # Cac phien ban khac se KHONG bi chan ket noi den may chu xac thuc
+    # that cua Mojang/Microsoft nua.
+    if str(version_goc).strip() in ("1.16.5", "1.16.4"):
+        final_args.append("-Dminecraft.api.auth.enabled=false")
+        final_args.append("-Dminecraft.api.auth.host=https://nope.invalid")
+        final_args.append("-Dminecraft.api.account.host=https://nope.invalid")
+        final_args.append("-Dminecraft.api.session.host=https://nope.invalid")
+        final_args.append("-Dminecraft.api.services.host=https://nope.invalid")
 
     mode = current_config.get("jvm_mode", "default")
     if mode == "preset":
@@ -481,7 +484,10 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
     match = re.search(r"(\d+)\s*x\s*(\d+)", do_phan_giai)
     rong, cao = (match.group(1), match.group(2)) if match else ("854", "480")
 
-    danh_sach_jvm_args = build_jvm_arguments(config.current_config, ram_min, ram_max)
+    danh_sach_jvm_args = build_jvm_arguments(
+        config.current_config, ram_min, ram_max,
+        version_goc=thong_tin_instance.get("version_goc")
+    )
 
     # Tai khoan offline - sinh UUID gia lap on dinh tu ten tai khoan
     import uuid as _uuid

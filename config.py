@@ -96,6 +96,8 @@ config_mac_dinh = {
     "ram_max": "4GB",
     "do_phan_giai": "854x480",
     "theme": "light",
+    "kich_thuoc_cua_so": "1280x720",
+    "an_launcher_khi_choi": True,
     "current_instance": "Latest Version",
     "danh_sach_instances": {
         "Latest Version": {

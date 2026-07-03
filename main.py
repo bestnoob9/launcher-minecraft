@@ -180,14 +180,35 @@ class MinecraftLauncherApp:
     _TAB_INACTIVE_BG = "#37474F"
     _TAB_FG          = "white"
 
+    @staticmethod
+    def _doc_kich_thuoc_cua_so():
+        """Doc kich thuoc cua so launcher (width, height) tu config, kem
+        gia tri mac dinh an toan neu chua co / bi loi dinh dang."""
+        import re
+        raw = str(config.current_config.get("kich_thuoc_cua_so", "1280x720"))
+        match = re.search(r"(\d+)\s*x\s*(\d+)", raw)
+        if match:
+            w, h = int(match.group(1)), int(match.group(2))
+            if w >= 800 and h >= 600:
+                return w, h
+        return 1280, 720
+
+    def ap_dung_kich_thuoc_cua_so(self):
+        """Goi lai sau khi nguoi dung luu kich thuoc cua so moi trong Settings
+        de resize + can giua cua so ngay, khong can khoi dong lai app."""
+        rong_cs, cao_cs = self._doc_kich_thuoc_cua_so()
+        self.root.minsize(min(800, rong_cs), min(600, cao_cs))
+        _can_giua_man_hinh(self.root, rong_cs, cao_cs)
+
     def __init__(self, root):
         self.root = root
         self.root.title("Bacontete MCL")
-        self.root.geometry("480x560")
-        self.root.minsize(1280, 720)
+
+        rong_cs, cao_cs = self._doc_kich_thuoc_cua_so()
+        self.root.minsize(min(800, rong_cs), min(600, cao_cs))
         self.root.resizable(True, True)
         _gan_icon_app(self.root)
-        _can_giua_man_hinh(self.root, 1280, 720)
+        _can_giua_man_hinh(self.root, rong_cs, cao_cs)
 
         config.current_config = config.tai_toan_bo_cau_hinh()
         self._game_process = None
@@ -289,6 +310,13 @@ class MinecraftLauncherApp:
                         "Vui lòng đợi hoàn tất hoặc hủy trước khi chuyển tab!"
                     )
                     return
+
+        # Kiểm tra nếu đang ở Cài đặt mà có thay đổi chưa lưu
+        if self._current_view == "settings":
+            settings_frame = self._view_frames.get("settings")
+            if settings_frame and hasattr(settings_frame, "confirm_discard_changes"):
+                if not settings_frame.confirm_discard_changes():
+                    return  # người dùng chọn ở lại để lưu -> không chuyển tab
 
         for frame in self._view_frames.values():
             frame.pack_forget()
@@ -444,6 +472,7 @@ class MinecraftLauncherApp:
     def khi_thay_doi_instance(self):
         if hasattr(self, 'instance_frame'):
             self.instance_frame.cap_nhat_nhan_thong_tin()
+        self.ap_dung_kich_thuoc_cua_so()
 
     def mo_cua_so_setting(self):
         self._switch_view("settings")
@@ -489,6 +518,23 @@ class MinecraftLauncherApp:
         self.account_frame.khoa(False)
         self.instance_frame.khoa(False)
 
+    def _an_launcher_khi_choi(self):
+        """An cua so launcher neu nguoi dung bat tuy chon 'An launcher khi
+        vao game' trong Settings (mac dinh la An)."""
+        try:
+            if config.current_config.get("an_launcher_khi_choi", True):
+                self.root.withdraw()
+        except Exception:
+            pass
+
+    def _hien_lai_launcher(self):
+        """Hien lai cua so launcher (goi khi game tat / bi huy)."""
+        try:
+            self.root.deiconify()
+            self.root.lift()
+        except Exception:
+            pass
+
     def bat_dau_hoac_tat_game(self):
         if self._dang_tai:
             self._huy_tai = True
@@ -503,6 +549,7 @@ class MinecraftLauncherApp:
             self._game_process = None
             self.btn_launch.config(text="▶ VÀO GAME", bg="#1E88E5", state="normal")
             self.lbl_status.config(text="Đã tắt game.", fg="gray")
+            self._hien_lai_launcher()
             return
         self.bat_dau_chay_game()
 
@@ -544,6 +591,8 @@ class MinecraftLauncherApp:
                 self.root.after(0, self._mo_khoa_ui)
 
                 if proc:
+                    self.root.after(0, self._an_launcher_khi_choi)
+
                     def _stream_log(p):
                         try:
                             for line in p.stdout:
@@ -561,6 +610,7 @@ class MinecraftLauncherApp:
                         text="▶ VÀO GAME", bg="#1E88E5", state="normal"))
                     self.root.after(0, lambda: self.lbl_status.config(text="Sẵn sàng", fg="gray"))
                     self.root.after(0, self._mo_khoa_ui)
+                    self.root.after(0, self._hien_lai_launcher)
                 else:
                     self._game_process = None
                     self.root.after(0, lambda: self.btn_launch.config(
@@ -579,6 +629,7 @@ class MinecraftLauncherApp:
                 self.root.after(0, lambda: self.lbl_status.config(text="Sẵn sàng", fg="gray"))
                 self.root.after(0, lambda: self.hien_thi_progress(False))
                 self.root.after(0, self._mo_khoa_ui)
+                self.root.after(0, self._hien_lai_launcher)
 
         threading.Thread(target=luong_khoi_dong, daemon=True).start()
 

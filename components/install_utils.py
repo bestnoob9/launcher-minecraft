@@ -585,6 +585,13 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                     _cap(f"Đã tải xong {tong_cf} mod CurseForge!", "#2b8c54")
 
 
+            # Kiem tra huy LAN CUOI truoc khi ghi instance vao config - dong
+            # not khe ho "tai qua nhanh": neu nguoi dung bam Huy dung luc cac
+            # mod vua tai xong (sau _check_huy() cua tung loop o tren) nhung
+            # truoc khi ghi file, van phai don dep va bao huy thay vi tao
+            # instance "thanh cong" gia.
+            _check_huy()
+
             with open(os.path.join(thu_muc_instance, "instance_info.json"), "w", encoding="utf-8") as f:
                 json.dump(
                     {"loai_game": loai_game, "version_goc": version_goc, "version_mod": version_mod},

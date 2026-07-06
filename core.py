@@ -59,8 +59,18 @@ def tai_danh_sach_mod(loai_game, version_goc):
                 tat_ca_versions = data.get("versions", [])
 
                 parts = version_goc.split('.')
-                sub_ver = parts[1] if len(parts) > 1 else ""
-                ds_loader = [v for v in tat_ca_versions if v.startswith(f"{sub_ver}.")]
+                if parts and parts[0] == "1":
+                    # Kieu cu: "1.XX.Y" (vd 1.21.1) -> NeoForge dat ten theo
+                    # XX.Y.build (vd 21.1.234), bo qua phan "1." dau tien.
+                    sub_ver = parts[1] if len(parts) > 1 else ""
+                    patch_ver = parts[2] if len(parts) > 2 else "0"
+                else:
+                    # Kieu moi tu ban Minecraft sau nay, khong con tien to "1."
+                    # (vd "26.2") -> NeoForge dung thang 2 phan dau nay lam prefix.
+                    sub_ver = parts[0] if len(parts) > 0 else ""
+                    patch_ver = parts[1] if len(parts) > 1 else "0"
+                tien_to = f"{sub_ver}.{patch_ver}."
+                ds_loader = [v for v in tat_ca_versions if v.startswith(tien_to)]
                 def safe_sort_key(s):
                     try:
                         return list(map(int, s.split('.')))
@@ -84,8 +94,13 @@ def tai_danh_sach_mod(loai_game, version_goc):
 
     if loai_game == "NeoForge":
         parts = version_goc.split('.')
-        sub_ver = parts[1] if len(parts) > 1 else "21"
-        return [f"{sub_ver}.1.70", f"{sub_ver}.1.0"]
+        if parts and parts[0] == "1":
+            sub_ver = parts[1] if len(parts) > 1 else "21"
+            patch_ver = parts[2] if len(parts) > 2 else "0"
+        else:
+            sub_ver = parts[0] if len(parts) > 0 else "21"
+            patch_ver = parts[1] if len(parts) > 1 else "0"
+        return [f"{sub_ver}.{patch_ver}.70", f"{sub_ver}.{patch_ver}.0"]
 
     return []
 
@@ -295,6 +310,17 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
     id_phien_ban_chay = version_goc
     thu_muc_versions = os.path.join(thu_muc_game, "versions")
 
+    # Chuan hoa loai_game ve dung 1 trong cac gia tri chuan ben duoi, tranh
+    # truong hop gia tri luu trong instance_info.json bi sai hoa/thuong
+    # (vd "Neoforge" thay vi "NeoForge" - co the do noi khac ghi vao, nhu
+    # code cai modpack tu Modrinth/CurseForge dung .capitalize()) khien cac
+    # nhanh if/elif duoi day khong khop nhanh nao ca va am tham chay Vanilla.
+    _BAN_DO_LOAI_GAME = {
+        "fabric": "Fabric", "quilt": "Quilt",
+        "neoforge": "NeoForge", "forge": "Forge", "vanilla": "Vanilla",
+    }
+    loai_game = _BAN_DO_LOAI_GAME.get(str(loai_game).strip().lower(), loai_game)
+
     if loai_game == "Fabric" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
         da_cai = _tim_phien_ban_loader_da_cai(
             thu_muc_versions, "fabric",
@@ -400,8 +426,25 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
         with open(file_info, "w", encoding="utf-8") as f:
             json.dump(data_ghi, f, indent=4, ensure_ascii=False)
 
-    return minecraft_launcher_lib.command.get_minecraft_command(id_phien_ban_chay, thu_muc_game, options)
+    lenh_goc = minecraft_launcher_lib.command.get_minecraft_command(id_phien_ban_chay, thu_muc_game, options)
 
+    # === FIX QUAN TRONG: minecraft_launcher_lib LUON hardcode --userType la
+    # "msa" (Microsoft Account) trong command.py, khong co cach nao doi qua
+    # options duoc. Vi tai khoan cua ta la offline (token gia = "0"), neu de
+    # userType = msa thi game se tin rang day la acc Microsoft that va co gang
+    # xac thuc/lay chu ky chat (secure chat signing) qua server Mojang khi vao
+    # multiplayer/LAN -> that bai vi token gia -> loi "Invalid session, please
+    # try restarting your game!". Doi lai thanh "legacy" de game hieu day la
+    # tai khoan offline, khong co gang xac thuc online nua.
+    _da_patch = False
+    for _i, _arg in enumerate(lenh_goc):
+        if _arg == "--userType" and _i + 1 < len(lenh_goc):
+            lenh_goc[_i + 1] = "legacy"
+            _da_patch = True
+            break
+    if not _da_patch:
+        print("")
+    return lenh_goc
 
 def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callback_progress=None, should_cancel=None):
     import config

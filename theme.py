@@ -154,7 +154,39 @@ def _remap(value, mapping):
     return mapping.get(key) or mapping.get(value)
 
 
-def _apply_to_widget(w, mapping):
+def _style_combobox_popdown(cb, dark):
+    """Cau hinh mau TRUC TIEP cho Listbox ben trong popdown cua mot
+    ttk.Combobox, thay vi chi dua vao option_add.
+
+    Ly do: tren Windows, ttk dung theme native ('vista') de ve Combobox,
+    va popdown cua no co the KHONG doc option database cho mau
+    background/selectBackground -> option_add khong co tac dung, item
+    hover/chon trong dropdown van la mau xanh he thong mac dinh.
+
+    Goi lenh Tcl 'ttk::combobox::PopdownWindow' de lay (hoac ep tao)
+    popdown that su cua widget nay, roi configure truc tiep Listbox ben
+    trong -> luon dung mau, khong phu thuoc OS/ttk theme.
+    """
+    try:
+        field = "#2a2a2a" if dark else "#ffffff"
+        fg = "#e8e8e8" if dark else "#1a1a1a"
+        popdown = cb.tk.call("ttk::combobox::PopdownWindow", cb)
+        listbox = f"{popdown}.f.l"
+        cb.tk.call(
+            listbox, "configure",
+            "-background", field,
+            "-foreground", fg,
+            "-selectbackground", "#03A9F4",
+            "-selectforeground", "#ffffff",
+            "-borderwidth", 0,
+            "-highlightthickness", 0,
+            "-activestyle", "none",
+        )
+    except Exception:
+        pass
+
+
+def _apply_to_widget(w, mapping, dark):
     try:
         opts = w.keys()
     except Exception:
@@ -197,6 +229,11 @@ def _apply_to_widget(w, mapping):
             is_combobox_entry = True
     except Exception:
         pass
+
+    # Chinh mau highlight cho danh sach xo xuong cua Combobox (xem docstring
+    # cua _style_combobox_popdown).
+    if isinstance(w, ttk.Combobox):
+        _style_combobox_popdown(w, dark)
 
     if "selectbackground" in opts:
         try:
@@ -261,6 +298,13 @@ def _apply_to_ttk_style(root, mapping, dark):
         bg, fg, field, sel = "#f5f5f7", "#1a1a1a", "#ffffff", "#cfe3fb"
         trough, sep = "#e9e9e9", "#e0e0e0"
 
+    # Mau highlight rieng cho item trong dropdown (popdown Listbox) cua
+    # Combobox - dung mau accent xanh la (giong nut "Tao phien ban") thay
+    # vi mau xanh duong "sel" dung chung voi Treeview, de item duoc
+    # hover/chon trong danh sach noi bat ro rang tren ca 2 theme.
+    combo_hl_bg = "#03A9F4"
+    combo_hl_fg = "#ffffff"
+
     try:
         style.configure(".", background=bg, foreground=fg)
         style.configure("TFrame", background=bg)
@@ -321,8 +365,8 @@ def _apply_to_ttk_style(root, mapping, dark):
     try:
         root.option_add("*TCombobox*Listbox.background", field)
         root.option_add("*TCombobox*Listbox.foreground", fg)
-        root.option_add("*TCombobox*Listbox.selectBackground", sel)
-        root.option_add("*TCombobox*Listbox.selectForeground", fg)
+        root.option_add("*TCombobox*Listbox.selectBackground", combo_hl_bg)
+        root.option_add("*TCombobox*Listbox.selectForeground", combo_hl_fg)
 
         # Mau "highlight" text khi Combobox dang focus / select-all -
         # dat bang dung mau nen/chu binh thuong de "an" hieu ung bem xanh
@@ -381,7 +425,7 @@ def apply_theme(widget):
     _apply_to_ttk_style(root, mapping, dark)
 
     def _walk(w):
-        _apply_to_widget(w, mapping)
+        _apply_to_widget(w, mapping, dark)
         try:
             children = w.winfo_children()
         except Exception:

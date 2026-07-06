@@ -223,6 +223,13 @@ class ForgeModMixin:
                         def _done_va_xoa():
                             try: shutil.rmtree(tmp)
                             except: pass
+                            # QUAN TRONG: goi _giam_tac_vu() O DAY (khi modpack
+                            # da THUC SU cai xong), khong phai ngay sau khi goi
+                            # cai_modpack_tu_file() - vi ham do chay ngam trong
+                            # 1 thread rieng va tra ve ngay lap tuc. Neu giam
+                            # tac vu qua som, nut "Hủy" se bi tat ngay ca khi
+                            # con dang tai x/xxx mod.
+                            self._giam_tac_vu()
                             self._done()
                             _finish()
                         def _huy_va_xoa():
@@ -230,6 +237,7 @@ class ForgeModMixin:
                             # rieng voi _done_va_xoa (chi danh cho THANH CONG).
                             try: shutil.rmtree(tmp)
                             except: pass
+                            self._giam_tac_vu()
                             _finish()
                         def _modpack_progress(da_mod, tong_mod):
                             # Giai doan cai tung mod chiem 10-100% thanh tien trinh chung
@@ -247,12 +255,12 @@ class ForgeModMixin:
                         try: shutil.rmtree(tmp)
                         except: pass
                         self.after(0, lambda: self.lbl_status.config(text="Đã hủy cài đặt Modpack.", fg="#E53935"))
+                        self._giam_tac_vu()
                         _finish()
                     except Exception as e:
                         self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi: {e}", fg="red"))
-                        _finish()
-                    finally:
                         self._giam_tac_vu()
+                        _finish()
                 threading.Thread(target=_t, daemon=True).start()
 
             self._swap_to_detail(self.lv_cf, self.dv_cf, "curseforge", r,
@@ -334,15 +342,29 @@ class ForgeModMixin:
                 def _done_va_xoa():
                     try: shutil.rmtree(tmp)
                     except: pass
+                    # Goi _giam_tac_vu() O DAY, luc modpack da cai xong that
+                    # su - KHONG dat trong finally ben duoi, vi cai_modpack_tu_file()
+                    # chay ngam va tra ve ngay, finally se chay qua som lam nut
+                    # "Hủy" bi tat ngay ca khi con dang tai x/xxx mod.
+                    self._giam_tac_vu()
                     self._done()
-                cai_modpack_tu_file(pz, ten, self.lbl_status, _done_va_xoa, cancel_event=self._cancel_event)
+                def _huy_va_xoa():
+                    # Goi khi cai_modpack_tu_file ket thuc do BI HUY/LOI - rieng
+                    # voi _done_va_xoa (chi danh cho THANH CONG), tranh hien
+                    # nham thong bao "Da cai dat thanh cong" khi thuc ra da bi huy.
+                    try: shutil.rmtree(tmp)
+                    except: pass
+                    self._giam_tac_vu()
+                cai_modpack_tu_file(pz, ten, self.lbl_status, _done_va_xoa,
+                                    cancel_event=self._cancel_event,
+                                    callback_huy=_huy_va_xoa)
             except TacVuBiHuy:
                 try: shutil.rmtree(tmp)
                 except: pass
                 self.after(0, lambda: self.lbl_status.config(text="Đã hủy cài đặt Modpack.", fg="#E53935"))
+                self._giam_tac_vu()
             except Exception as e:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi: {e}", fg="red"))
-            finally:
                 self._giam_tac_vu()
         threading.Thread(target=_t, daemon=True).start()
 

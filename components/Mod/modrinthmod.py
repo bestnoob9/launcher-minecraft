@@ -290,7 +290,17 @@ class ModrinthModMixin:
                     except: pass
                     self._giam_tac_vu()
                     self._done()
-                cai_modpack_tu_file(pz, ten, self.lbl_status, _done_va_xoa, cancel_event=self._cancel_event)
+                def _huy_va_xoa():
+                    # Goi khi cai_modpack_tu_file ket thuc do BI HUY/LOI -
+                    # rieng voi _done_va_xoa (chi danh cho THANH CONG), tranh
+                    # hien nham thong bao "Da cai dat thanh cong" khi thuc ra
+                    # da bi huy (vd tai qua nhanh, huy dung luc mod cuoi vua xong).
+                    try: shutil.rmtree(_tmp)
+                    except: pass
+                    self._giam_tac_vu()
+                cai_modpack_tu_file(pz, ten, self.lbl_status, _done_va_xoa,
+                                    cancel_event=self._cancel_event,
+                                    callback_huy=_huy_va_xoa)
             except TacVuBiHuy:
                 try: shutil.rmtree(_tmp)
                 except: pass
@@ -1118,13 +1128,31 @@ class ModrinthModMixin:
             messagebox.showwarning("Chú ý", "Tên Instance đã tồn tại!", parent=self); return
 
         self._tang_tac_vu()
-        try:
-            if loai == "Modpack":
-                cai_modpack_tu_file(path, ten, self.lbl_status, self._done, cancel_event=self._cancel_event)
-            elif loai == "Mod":
-                cai_mod_tu_file(path, ten, self.lbl_status)
-            else:
-                map_loai = {"Resource Pack": "rsp", "Shader": "shader"}
-                cai_rsp_shader_tu_file(path, ten, map_loai[loai], self.lbl_status)
-        finally:
-            self._giam_tac_vu()
+        if loai == "Modpack":
+            # cai_modpack_tu_file() chay ngam trong 1 thread rieng va tra ve
+            # NGAY LAP TUC - KHONG duoc goi _giam_tac_vu() ngay sau day (finally
+            # cu se lam nut "Hủy" bi tat ngay khi modpack con dang tai x/xxx mod).
+            # Phai doi callback_xong/callback_huy bao ve that su ket thuc.
+            def _done_va_xoa():
+                self._giam_tac_vu()
+                self._done()
+            def _huy_va_xoa():
+                # Rieng cho truong hop BI HUY/LOI - tranh hien nham thong bao
+                # "Da cai dat thanh cong" khi thuc ra da bi huy.
+                self._giam_tac_vu()
+            try:
+                cai_modpack_tu_file(path, ten, self.lbl_status, _done_va_xoa,
+                                    cancel_event=self._cancel_event,
+                                    callback_huy=_huy_va_xoa)
+            except Exception:
+                self._giam_tac_vu()
+                raise
+        else:
+            try:
+                if loai == "Mod":
+                    cai_mod_tu_file(path, ten, self.lbl_status)
+                else:
+                    map_loai = {"Resource Pack": "rsp", "Shader": "shader"}
+                    cai_rsp_shader_tu_file(path, ten, map_loai[loai], self.lbl_status)
+            finally:
+                self._giam_tac_vu()

@@ -282,6 +282,8 @@ class ModrinthModMixin:
                     pct = int(da / tong * 100)
                     self.after(0, lambda: self.lbl_status.config(
                         text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#1E88E5"))
+                    # Giai doan tai file goi modpack chiem 0-10% thanh tien trinh chung
+                    self.ghi_tien_do(pct // 10, f"Đang tải gói: {pct}%")
                 tai_file(url, pz, prog)
                 if self._cancel_event.is_set():
                     raise TacVuBiHuy("Da huy cai modpack")
@@ -298,8 +300,14 @@ class ModrinthModMixin:
                     try: shutil.rmtree(_tmp)
                     except: pass
                     self._giam_tac_vu()
+                def _modpack_progress(da_mod, tong_mod):
+                    # Giai doan cai tung mod chiem 10-100% thanh tien trinh chung
+                    if tong_mod:
+                        self.ghi_tien_do(10 + int(da_mod / tong_mod * 90),
+                                          f"{da_mod}/{tong_mod} mod")
                 cai_modpack_tu_file(pz, ten, self.lbl_status, _done_va_xoa,
                                     cancel_event=self._cancel_event,
+                                    progress_cb=_modpack_progress,
                                     callback_huy=_huy_va_xoa)
             except TacVuBiHuy:
                 try: shutil.rmtree(_tmp)
@@ -593,6 +601,7 @@ class ModrinthModMixin:
                         raise TacVuBiHuy("Da huy tai mod")
                     pct = int(da / tong * 100)
                     self.after(0, lambda: self.lbl_status.config(text=f"Đang tải mod: {pct}%", fg="#00897B"))
+                    self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
                 tai_file(url, pz, prog)
                 if self._cancel_event.is_set():
                     raise TacVuBiHuy("Da huy cai mod")
@@ -818,6 +827,7 @@ class ModrinthModMixin:
                         raise TacVuBiHuy("Da huy tai RSP")
                     pct = int(da / tong * 100)
                     self.after(0, lambda: self.lbl_status.config(text=f"Đang tải: {pct}%", fg="#8E24AA"))
+                    self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
                 tai_file(url, pz, prog)
                 if self._cancel_event.is_set():
                     raise TacVuBiHuy("Da huy cai RSP")
@@ -1043,6 +1053,7 @@ class ModrinthModMixin:
                         raise TacVuBiHuy("Da huy tai Shader")
                     pct = int(da / tong * 100)
                     self.after(0, lambda: self.lbl_status.config(text=f"Đang tải: {pct}%", fg="#F57C00"))
+                    self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
                 tai_file(url, pz, prog)
                 if self._cancel_event.is_set():
                     raise TacVuBiHuy("Da huy cai Shader")

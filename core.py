@@ -5,7 +5,22 @@ import minecraft_launcher_lib
 import subprocess
 import re
 import sys
+import hashlib
+import uuid
 from components.install_utils import ten_folder_an_toan
+
+
+def offline_uuid(username: str) -> str:
+    """Sinh UUID dung cong thuc offline-mode chuan cua Minecraft
+    (tuong duong UUID.nameUUIDFromBytes tren chuoi
+    "OfflinePlayer:<username>".getBytes(UTF-8) ben Java), KHONG prepend
+    namespace NAMESPACE_DNS nhu uuid3. Dam bao UUID sinh ra khop chinh
+    xac voi UUID ma server offline-mode tu tinh cho tai khoan nay."""
+    data = f"OfflinePlayer:{username}".encode("utf-8")
+    digest = bytearray(hashlib.md5(data).digest())
+    digest[6] = (digest[6] & 0x0F) | 0x30  # version 3
+    digest[8] = (digest[8] & 0x3F) | 0x80  # variant IETF
+    return str(uuid.UUID(bytes=bytes(digest)))
 
 # =====================================================================
 # AN TOAN BO CUA SO CMD DEN CHO MOI TIEN TRINH CON TREN WINDOWS
@@ -532,10 +547,12 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
         version_goc=thong_tin_instance.get("version_goc")
     )
 
-    # Tai khoan offline - sinh UUID gia lap on dinh tu ten tai khoan
-    import uuid as _uuid
+    # Tai khoan offline - sinh UUID theo dung cong thuc offline-mode cua
+    # Minecraft (UUID.nameUUIDFromBytes tren chuoi "OfflinePlayer:<ten>",
+    # KHONG prepend namespace nhu uuid3 truoc day), de UUID khop chinh xac
+    # voi UUID ma server offline-mode tu tinh cho tai khoan nay.
     _username = tai_khoan
-    _uuid_str = str(_uuid.uuid3(_uuid.NAMESPACE_DNS, f"OfflinePlayer:{tai_khoan}"))
+    _uuid_str = offline_uuid(tai_khoan)
     _token = "0"
 
     options = {

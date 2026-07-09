@@ -7,6 +7,13 @@ class AccountFrame(tk.Frame):
     def __init__(self, parent, on_change_callback):
         super().__init__(parent)
         self.on_change_callback = on_change_callback
+        # Đồng bộ username.json ngay khi mở app: các tài khoản đã tạo TỪ
+        # TRƯỚC khi có tính năng này cũng được backfill UUID vào file,
+        # không cần đợi tới lúc bấm "Vào game".
+        config.dong_bo_username_json(
+            config.current_config.get("thu_muc_game", ""),
+            config.current_config.get("danh_sach_acc", []),
+        )
         self.create_widgets()
 
     def create_widgets(self):
@@ -85,6 +92,7 @@ class AccountFrame(tk.Frame):
             config.current_config["danh_sach_acc"].append(ten_moi)
             config.current_config["current_account"] = ten_moi
             config.luu_toan_bo_cau_hinh()
+            config.lay_hoac_luu_uuid(ten_moi, config.current_config.get("thu_muc_game", ""))
             
             self.cbo_username['values'] = config.current_config["danh_sach_acc"]
             self.cbo_username.set(ten_moi)
@@ -100,6 +108,7 @@ class AccountFrame(tk.Frame):
             
         if messagebox.askyesno("Xác nhận", f"Bạn có chắc muốn xóa tài khoản '{acc_dang_chon}' không?"):
             config.current_config["danh_sach_acc"].remove(acc_dang_chon)
+            config.xoa_username(acc_dang_chon, config.current_config.get("thu_muc_game", ""))
             if not config.current_config["danh_sach_acc"]:
                 config.current_config["current_account"] = ""
                 self.cbo_username['values'] = []
@@ -142,6 +151,7 @@ class AccountFrame(tk.Frame):
             config.current_config["danh_sach_acc"].append(ten_moi)
             config.current_config["current_account"] = ten_moi
             config.luu_toan_bo_cau_hinh()
+            config.lay_hoac_luu_uuid(ten_moi, config.current_config.get("thu_muc_game", ""))
             self.cbo_username['values'] = config.current_config["danh_sach_acc"]
             self.cbo_username.set(ten_moi)
             self.on_change_callback()

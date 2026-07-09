@@ -547,12 +547,13 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
         version_goc=thong_tin_instance.get("version_goc")
     )
 
-    # Tai khoan offline - sinh UUID theo dung cong thuc offline-mode cua
-    # Minecraft (UUID.nameUUIDFromBytes tren chuoi "OfflinePlayer:<ten>",
-    # KHONG prepend namespace nhu uuid3 truoc day), de UUID khop chinh xac
-    # voi UUID ma server offline-mode tu tinh cho tai khoan nay.
+    # Tai khoan offline - lay UUID da luu trong username.json (neu chua co
+    # thi ham nay se tu sinh theo dung cong thuc offline-mode cua Minecraft
+    # - UUID.nameUUIDFromBytes tren chuoi "OfflinePlayer:<ten>" - roi luu
+    # lai). Dam bao 1 username luon gan voi DUNG 1 UUID co dinh, khong tinh
+    # lai moi lan chon/chay tai khoan.
     _username = tai_khoan
-    _uuid_str = offline_uuid(tai_khoan)
+    _uuid_str = config.lay_hoac_luu_uuid(tai_khoan, thu_muc_game)
     _token = "0"
 
     options = {

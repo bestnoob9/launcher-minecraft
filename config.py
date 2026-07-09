@@ -1,5 +1,7 @@
 import os
 import json
+import hashlib
+import uuid as _uuid_mod
 import minecraft_launcher_lib
 
 def _lay_phien_ban_moi_nhat():
@@ -52,6 +54,103 @@ def _lay_duong_dan_config(thu_muc_game: str = "") -> str:
     return _FILE_CONFIG_TAM
 
 file_config_json = _FILE_CONFIG_TAM
+
+
+# =====================================================================
+# USERNAME.JSON — luu anh xa {ten_tai_khoan: uuid} de KHONG phai tinh
+# lai offline UUID moi lan chon/chay tai khoan. Dat canh launcher_config
+# trong <thu_muc_game>/launchercf/username.json.
+# =====================================================================
+_TEN_FILE_USERNAME = "username.json"
+
+
+def _lay_duong_dan_username(thu_muc_game: str = "") -> str:
+    """Trả về đường dẫn tuyệt đối tới file username.json."""
+    if thu_muc_game and thu_muc_game.strip():
+        return os.path.join(thu_muc_game, _THU_MUC_LAUNCHERCF, _TEN_FILE_USERNAME)
+    return os.path.join(_LAUNCHER_DIR, _TEN_FILE_USERNAME)
+
+
+def _offline_uuid(username: str) -> str:
+    """Sinh UUID theo cong thuc offline-mode chuan cua Minecraft
+    (tuong duong UUID.nameUUIDFromBytes tren "OfflinePlayer:<username>").
+    Ban sao doc lap cua core.offline_uuid, dat o day de tranh import
+    vong tron (core.py co luc "import config" ngay ben trong ham)."""
+    data = f"OfflinePlayer:{username}".encode("utf-8")
+    digest = bytearray(hashlib.md5(data).digest())
+    digest[6] = (digest[6] & 0x0F) | 0x30
+    digest[8] = (digest[8] & 0x3F) | 0x80
+    return str(_uuid_mod.UUID(bytes=bytes(digest)))
+
+
+def doc_username_json(thu_muc_game: str = "") -> dict:
+    """Đọc toàn bộ ánh xạ {username: uuid} đã lưu. Trả về {} nếu chưa có file."""
+    duong_dan = _lay_duong_dan_username(thu_muc_game)
+    try:
+        with open(duong_dan, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def ghi_username_json(du_lieu: dict, thu_muc_game: str = ""):
+    """Ghi đè toàn bộ ánh xạ {username: uuid} xuống file."""
+    duong_dan = _lay_duong_dan_username(thu_muc_game)
+    try:
+        os.makedirs(os.path.dirname(duong_dan) or ".", exist_ok=True)
+        with open(duong_dan, "w", encoding="utf-8") as f:
+            json.dump(du_lieu, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Không thể ghi username.json: {e}")
+
+
+def lay_hoac_luu_uuid(username: str, thu_muc_game: str = "") -> str:
+    """
+    Lấy UUID cho 1 username:
+    - Nếu username đã có trong username.json -> trả về UUID đã lưu (không tính lại).
+    - Nếu chưa có -> sinh UUID offline mới, lưu vào username.json rồi trả về.
+    Dùng hàm này ở nơi chọn/chạy tài khoản thay vì gọi offline_uuid() trực tiếp mỗi lần.
+    """
+    username = (username or "").strip()
+    du_lieu = doc_username_json(thu_muc_game)
+    if username in du_lieu and du_lieu[username]:
+        return du_lieu[username]
+
+    uuid_moi = _offline_uuid(username)
+    du_lieu[username] = uuid_moi
+    ghi_username_json(du_lieu, thu_muc_game)
+    return uuid_moi
+
+
+def xoa_username(username: str, thu_muc_game: str = ""):
+    """Xoá 1 username khỏi username.json (gọi khi người dùng xoá tài khoản khỏi launcher)."""
+    du_lieu = doc_username_json(thu_muc_game)
+    if username in du_lieu:
+        del du_lieu[username]
+        ghi_username_json(du_lieu, thu_muc_game)
+
+
+def dong_bo_username_json(thu_muc_game: str = "", danh_sach_acc: list = None) -> dict:
+    """
+    Đảm bảo MỌI tài khoản trong danh_sach_acc đều có UUID trong username.json —
+    kể cả những tài khoản đã được tạo TỪ TRƯỚC KHI username.json tồn tại.
+    Gọi 1 lần lúc khởi động UI (AccountFrame) thay vì đợi tới lúc chạy game
+    mới lưu. UUID sinh ra vẫn theo đúng công thức offline cũ nên tài khoản cũ
+    không bị đổi UUID. Trả về ánh xạ {username: uuid} sau khi đồng bộ.
+    """
+    if danh_sach_acc is None:
+        danh_sach_acc = current_config.get("danh_sach_acc", [])
+    du_lieu = doc_username_json(thu_muc_game)
+    thay_doi = False
+    for ten in danh_sach_acc:
+        ten = (ten or "").strip()
+        if ten and ten not in du_lieu:
+            du_lieu[ten] = _offline_uuid(ten)
+            thay_doi = True
+    if thay_doi:
+        ghi_username_json(du_lieu, thu_muc_game)
+    return du_lieu
 
 def cap_nhat_duong_dan_config(thu_muc_game: str):
     """

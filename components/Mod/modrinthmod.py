@@ -23,6 +23,7 @@ from components.api_helpers import (
     lay_modrinth_popular,
     tim_kiem_modrinth,
     lay_phien_ban_modrinth,
+    lay_category_modrinth,
 )
 from components.install_utils import (
     tai_file,
@@ -30,6 +31,9 @@ from components.install_utils import (
     cai_rsp_shader_tu_file,
     cai_modpack_tu_file,
     ten_folder_an_toan,
+    lay_trang_thai_da_cai,
+    luu_muc_da_cai,
+    luu_modpack_da_cai,
 )
 
 
@@ -51,6 +55,23 @@ class ModrinthModMixin:
 
     # TAB: MODPACK MODRINTH
 
+    def _load_categories_mr_async(self, fb, project_type):
+        """
+        Tai danh sach category THAT cua Modrinth (theo project_type) trong
+        thread phu, roi fill vao popup chon-nhieu cua FilterBar 'fb' khi
+        xong. Goi 1 lan ngay sau khi tao moi FilterBar cho 4 tab Modrinth
+        (modpack / mod / resourcepack / shader) - moi loai co danh sach
+        category rieng (giong sidebar "Loai" trong Modrinth App that).
+        """
+        def _t():
+            try:
+                cats = lay_category_modrinth(project_type)
+                if cats:
+                    fb.after(0, lambda: fb.set_categories(cats))
+            except Exception:
+                pass  # giu popup rong ("Dang tai...") neu loi - khong chan UI
+        threading.Thread(target=_t, daemon=True).start()
+
     def _build_modpack_modrinth(self):
         from components.widgets import FilterBar, ContentTableWidget
         from components.mod_mc import PaginationBar
@@ -63,25 +84,15 @@ class ModrinthModMixin:
         self.dv_mr = tk.Frame(f, bg=BG)
         lv = self.lv_mr
 
-        self.fb_mr = FilterBar(lv, self._search_mr, accent_color="#1E88E5", show_category=True, bg=BG)
+        self.fb_mr = FilterBar(lv, self._search_mr, accent_color="#1E88E5",
+                               show_category=True, multi_category=True, bg=BG)
         self.fb_mr.pack(fill="x", padx=10, pady=(8, 4))
+        self._load_categories_mr_async(self.fb_mr, "modpack")
         self.list_mr = ContentTableWidget(lv, "modrinth", self._select_mr)
         self.list_mr.pack(fill="both", expand=True, padx=10)
 
         self.pg_mr = PaginationBar(lv, self._goto_mr_page, accent_color="#1E88E5", bg=BG)
-        self.pg_mr.pack(fill="x", padx=10, pady=(2, 0))
-
-        bp = tk.Frame(lv, bg=BG)
-        bp.pack(fill="x", padx=10, pady=(4, 8))
-        tk.Label(bp, text="Phiên bản:", font=("Arial", 9), bg=BG).grid(row=0, column=0, sticky="w")
-        self.cbo_mr_ver = ttk.Combobox(bp, font=("Arial", 9), state="readonly", width=42)
-        self.cbo_mr_ver.grid(row=0, column=1, padx=6)
-        tk.Label(bp, text="Tên Instance:", font=("Arial", 9), bg=BG).grid(row=1, column=0, sticky="w", pady=4)
-        self.ent_mr_name = tk.Entry(bp, font=("Arial", 9), width=44)
-        self.ent_mr_name.grid(row=1, column=1, padx=6)
-        tk.Button(bp, text="Cài Modpack", font=("Arial", 9, "bold"),
-                  bg="#4CAF50", fg="white", activebackground="#4CAF50", activeforeground="white",
-                  width=14, pady=4, command=self._install_mr).grid(row=0, column=2, rowspan=2, padx=8)
+        self.pg_mr.pack(fill="x", padx=10, pady=(2, 8))
 
         self._mr_data        = []
         self._mr_vers_raw    = []
@@ -131,193 +142,137 @@ class ModrinthModMixin:
         else:
             self._search_mr(page)
 
-    def _select_mr(self, idx, install=False):
+    def _select_mr(self, idx, install=False, view=False):
         from components.mod_mc import TacVuBiHuy
         if idx >= len(self._mr_data): return
         r   = self._mr_data[idx]
         ten = r.get("title", "")
-        self.ent_mr_name.delete(0, "end")
-        self.ent_mr_name.insert(0, ten[:30])
+        pid = r.get("project_id", r.get("slug", ""))
 
-        if install:
-            def _install_from_detail(version_data, on_done=None, progress_cb=None):
-                def _finish():
-                    if on_done:
-                        self.after(0, on_done)
-                files = version_data.get("files", [])
-                prim  = next((f for f in files if f.get("primary")), files[0] if files else None)
-                if not prim:
-                    messagebox.showerror("Lỗi", "Không tìm thấy file tải!", parent=self)
-                    _finish()
-                    return
-                url      = prim["url"]
-                fname    = prim.get("filename", "modpack.mrpack")
-                ten_inst = ten[:30]
-                self.ent_mr_name.delete(0, "end")
-                self.ent_mr_name.insert(0, ten_inst)
-                self.lbl_status.config(text="Đang tải...", fg="#1E88E5")
-                self._tang_tac_vu()
-                def _t():
-                    _tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
-                    try:
-                        os.makedirs(_tmp, exist_ok=True)
-                        pz = os.path.join(_tmp, fname)
-                        def prog(da, tong):
-                            if self._cancel_event.is_set():
-                                raise TacVuBiHuy("Da huy tai modpack")
-                            pct = int(da / tong * 100)
-                            self.after(0, lambda: self.lbl_status.config(
-                                text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#1E88E5"))
-                            # Giai doan tai file goi modpack chiem 0-10% thanh tien trinh chung
-                            self.ghi_tien_do(pct // 10, f"Đang tải gói: {pct}%")
-                            if progress_cb:
-                                self.after(0, lambda: progress_cb(pct // 10, 100))
-                        tai_file(url, pz, prog)
+        def _install_from_detail(version_data, on_done=None, progress_cb=None):
+            def _finish():
+                if on_done:
+                    self.after(0, on_done)
+            files = version_data.get("files", [])
+            prim  = next((f for f in files if f.get("primary")), files[0] if files else None)
+            if not prim:
+                messagebox.showerror("Lỗi", "Không tìm thấy file tải!", parent=self)
+                _finish()
+                return
+            url      = prim["url"]
+            fname    = prim.get("filename", "modpack.mrpack")
+            # Neu modpack nay DA duoc cai o mot instance nao do roi -> cai
+            # DE LEN CHINH instance do (cap nhat/ha phien ban tai cho), thay
+            # vi luon tao instance moi theo ten[:30] nhu truoc day.
+            _da_cai  = lay_trang_thai_da_cai("modpack", "modrinth", pid)
+            ten_inst = _da_cai["ten_instance"] if _da_cai else ten[:30]
+            self.lbl_status.config(text="Đang tải...", fg="#1E88E5")
+            self._tang_tac_vu()
+            def _t():
+                _tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
+                try:
+                    os.makedirs(_tmp, exist_ok=True)
+                    pz = os.path.join(_tmp, fname)
+                    def prog(da, tong):
                         if self._cancel_event.is_set():
-                            raise TacVuBiHuy("Da huy cai modpack")
-                        def _done_va_xoa():
-                            try: shutil.rmtree(_tmp)
-                            except: pass
-                            self._giam_tac_vu()
-                            self._done()
-                            _finish()
-                        def _huy_va_xoa():
-                            # Goi khi cai_modpack_tu_file ket thuc do BI HUY/LOI
-                            # (rieng voi _done_va_xoa o tren, vi do chi danh cho
-                            # truong hop THANH CONG - tranh hien nham thong bao
-                            # "Da cai dat thanh cong!" khi thuc ra da bi huy).
-                            try: shutil.rmtree(_tmp)
-                            except: pass
-                            self._giam_tac_vu()
-                            _finish()
-                        def _modpack_progress(da_mod, tong_mod):
-                            # Giai doan cai tung mod chiem 10-100% thanh tien trinh chung
-                            if tong_mod:
-                                self.ghi_tien_do(10 + int(da_mod / tong_mod * 90),
-                                                  f"{da_mod}/{tong_mod} mod")
-                            if progress_cb and tong_mod:
-                                progress_cb(10 + int(da_mod / tong_mod * 90), 100,
-                                            label_text=f"{da_mod}/{tong_mod} mod")
-                        cai_modpack_tu_file(pz, ten_inst, self.lbl_status, _done_va_xoa,
-                                            cancel_event=self._cancel_event,
-                                            progress_cb=_modpack_progress if progress_cb else None,
-                                            callback_huy=_huy_va_xoa)
-                    except TacVuBiHuy:
+                            raise TacVuBiHuy("Da huy tai modpack")
+                        pct = int(da / tong * 100)
+                        self.after(0, lambda: self.lbl_status.config(
+                            text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#1E88E5"))
+                        # Giai doan tai file goi modpack chiem 0-10% thanh tien trinh chung
+                        self.ghi_tien_do(pct // 10, f"Đang tải gói: {pct}%")
+                        if progress_cb:
+                            self.after(0, lambda: progress_cb(pct // 10, 100))
+                    tai_file(url, pz, prog)
+                    if self._cancel_event.is_set():
+                        raise TacVuBiHuy("Da huy cai modpack")
+                    def _done_va_xoa():
+                        try: shutil.rmtree(_tmp)
+                        except: pass
+                        # Ghi lai project_id + phien ban CUA CHINH modpack nay
+                        # (khac voi "version_mod" - la phien ban mod loader -
+                        # da duoc cai_modpack_tu_file tu ghi rieng) de lan sau
+                        # biet modpack nay DA cai, doi nut thanh Cap nhat/Ha
+                        # phien ban thay vi Cai dat.
+                        luu_modpack_da_cai(ten_inst, "modrinth", pid,
+                                           version_data.get("id"),
+                                           version_data.get("version_number"),
+                                           ngay=version_data.get("date_published"))
+                        self._giam_tac_vu()
+                        self._done()
+                        _finish()
+                    def _huy_va_xoa():
+                        # Goi khi cai_modpack_tu_file ket thuc do BI HUY/LOI
+                        # (rieng voi _done_va_xoa o tren, vi do chi danh cho
+                        # truong hop THANH CONG - tranh hien nham thong bao
+                        # "Da cai dat thanh cong!" khi thuc ra da bi huy).
                         try: shutil.rmtree(_tmp)
                         except: pass
                         self._giam_tac_vu()
-                        self.after(0, lambda: self.lbl_status.config(text="Đã hủy cài đặt Modpack.", fg="#E53935"))
                         _finish()
-                    except Exception as e:
-                        self._giam_tac_vu()
-                        self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi: {e}", fg="red"))
-                        _finish()
-                threading.Thread(target=_t, daemon=True).start()
+                    def _modpack_progress(da_mod, tong_mod):
+                        # Giai doan cai tung mod chiem 10-100% thanh tien trinh chung
+                        if tong_mod:
+                            self.ghi_tien_do(10 + int(da_mod / tong_mod * 90),
+                                              f"{da_mod}/{tong_mod} mod")
+                        if progress_cb and tong_mod:
+                            progress_cb(10 + int(da_mod / tong_mod * 90), 100,
+                                        label_text=f"{da_mod}/{tong_mod} mod")
+                    cai_modpack_tu_file(pz, ten_inst, self.lbl_status, _done_va_xoa,
+                                        cancel_event=self._cancel_event,
+                                        progress_cb=_modpack_progress if progress_cb else None,
+                                        callback_huy=_huy_va_xoa)
+                except TacVuBiHuy:
+                    try: shutil.rmtree(_tmp)
+                    except: pass
+                    self._giam_tac_vu()
+                    self.after(0, lambda: self.lbl_status.config(text="Đã hủy cài đặt Modpack.", fg="#E53935"))
+                    _finish()
+                except Exception as e:
+                    self._giam_tac_vu()
+                    self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi: {e}", fg="red"))
+                    _finish()
+            threading.Thread(target=_t, daemon=True).start()
 
+        if view:
+            installed_info = lay_trang_thai_da_cai("modpack", "modrinth", pid)
             self._swap_to_detail(self.lv_mr, self.dv_mr, "modrinth", r,
                                   [], install_cb=_install_from_detail,
-                                  accent="#1E88E5")
+                                  accent="#1E88E5", installed_info=installed_info)
             return
 
-        self.cbo_mr_ver.set("Dang tai phien ban...")
-        pid = r.get("project_id", "")
-        def _t():
-            try:
-                vs = lay_phien_ban_modrinth(pid)
-                self._mr_vers_raw = vs
-                ds_all = [f"{v.get('name','?')}  -  MC {', '.join(v.get('game_versions',[]))}" for v in vs]
-                def _apply(ds_all=ds_all, vs=vs):
-                    # Loc theo MC Ver dang chon tren FilterBar (neu co)
-                    try:
-                        fb_mc, _, _ = self.fb_mr.get()
-                    except Exception:
-                        fb_mc = ""
-                    if fb_mc and fb_mc != "Tất cả":
-                        idxs = [i for i, v in enumerate(vs) if fb_mc in v.get("game_versions", [])]
-                    else:
-                        idxs = list(range(len(vs)))
-                    if idxs:
-                        ds = [ds_all[i] for i in idxs]
-                        self._mr_ver_idx_map = idxs
-                    else:
-                        ds = ds_all
-                        self._mr_ver_idx_map = list(range(len(vs)))
-                    self.cbo_mr_ver.config(values=ds)
-                    self.cbo_mr_ver.set(ds[0]) if ds else None
-                    self.lbl_status.config(text="Chọn phiên bản rồi nhấn Cài Modpack.", fg="gray")
-                self.after(0, _apply)
-            except Exception as e:
-                self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi: {e}", fg="red"))
-        threading.Thread(target=_t, daemon=True).start()
-
-    def _install_mr(self):
-        from components.mod_mc import TacVuBiHuy
-        ten = self.ent_mr_name.get().strip()
-        if not ten:
-            messagebox.showwarning("Chú ý", "Nhập tên Instance!", parent=self); return
-        if ten in config.current_config["danh_sach_instances"]:
-            messagebox.showwarning("Chú ý", "Tên đã tồn tại!", parent=self); return
-        iv = self.cbo_mr_ver.current()
-        if iv < 0 or not self._mr_vers_raw:
-            messagebox.showwarning("Chú ý", "Chọn phiên bản!", parent=self); return
-        raw_iv = self._mr_ver_idx_map[iv] if self._mr_ver_idx_map and iv < len(self._mr_ver_idx_map) else iv
-        vd    = self._mr_vers_raw[raw_iv]
-        files = vd.get("files", [])
-        prim  = next((f for f in files if f.get("primary")), files[0] if files else None)
-        if not prim:
-            messagebox.showerror("Lỗi", "Không tìm thấy file tải!", parent=self); return
-        url   = prim["url"]
-        fname = prim.get("filename", "modpack.mrpack")
-        self.lbl_status.config(text="Đang tải...", fg="#1E88E5")
-
-        self._tang_tac_vu()
-        def _t():
-            _tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
-            try:
-                os.makedirs(_tmp, exist_ok=True)
-                pz = os.path.join(_tmp, fname)
-                def prog(da, tong):
-                    if self._cancel_event.is_set():
-                        raise TacVuBiHuy("Da huy tai modpack")
-                    pct = int(da / tong * 100)
-                    self.after(0, lambda: self.lbl_status.config(
-                        text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#1E88E5"))
-                    # Giai doan tai file goi modpack chiem 0-10% thanh tien trinh chung
-                    self.ghi_tien_do(pct // 10, f"Đang tải gói: {pct}%")
-                tai_file(url, pz, prog)
-                if self._cancel_event.is_set():
-                    raise TacVuBiHuy("Da huy cai modpack")
-                def _done_va_xoa():
-                    try: shutil.rmtree(_tmp)
-                    except: pass
-                    self._giam_tac_vu()
-                    self._done()
-                def _huy_va_xoa():
-                    # Goi khi cai_modpack_tu_file ket thuc do BI HUY/LOI -
-                    # rieng voi _done_va_xoa (chi danh cho THANH CONG), tranh
-                    # hien nham thong bao "Da cai dat thanh cong" khi thuc ra
-                    # da bi huy (vd tai qua nhanh, huy dung luc mod cuoi vua xong).
-                    try: shutil.rmtree(_tmp)
-                    except: pass
-                    self._giam_tac_vu()
-                def _modpack_progress(da_mod, tong_mod):
-                    # Giai doan cai tung mod chiem 10-100% thanh tien trinh chung
-                    if tong_mod:
-                        self.ghi_tien_do(10 + int(da_mod / tong_mod * 90),
-                                          f"{da_mod}/{tong_mod} mod")
-                cai_modpack_tu_file(pz, ten, self.lbl_status, _done_va_xoa,
-                                    cancel_event=self._cancel_event,
-                                    progress_cb=_modpack_progress,
-                                    callback_huy=_huy_va_xoa)
-            except TacVuBiHuy:
-                try: shutil.rmtree(_tmp)
-                except: pass
-                self._giam_tac_vu()
-                self.after(0, lambda: self.lbl_status.config(text="Đã hủy cài đặt Modpack.", fg="#E53935"))
-            except Exception as e:
-                self._giam_tac_vu()
-                self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi: {e}", fg="red"))
-        threading.Thread(target=_t, daemon=True).start()
+        if install:
+            # Cai truc tiep: tu tai danh sach phien ban, uu tien phien ban
+            # khop voi MC Ver dang loc tren FilterBar (neu co), khong thi
+            # lay phien ban dau tien (moi nhat) - KHONG mo man chi tiet.
+            self._tang_tac_vu()
+            self.lbl_status.config(text=f"Đang tải phiên bản '{ten}'...", fg="#1E88E5")
+            def _t():
+                try:
+                    vs = lay_phien_ban_modrinth(pid)
+                    def _apply():
+                        self._giam_tac_vu()
+                        try:
+                            fb_mc, _, _ = self.fb_mr.get()
+                        except Exception:
+                            fb_mc = ""
+                        if fb_mc and fb_mc != "Tất cả":
+                            idxs = [i for i, v in enumerate(vs) if fb_mc in v.get("game_versions", [])]
+                        else:
+                            idxs = []
+                        best = vs[idxs[0]] if idxs else (vs[0] if vs else None)
+                        if not best:
+                            messagebox.showwarning("Chú ý", "Không tìm thấy phiên bản phù hợp!", parent=self)
+                            return
+                        _install_from_detail(best)
+                    self.after(0, _apply)
+                except Exception as e:
+                    def _err(e=e):
+                        self._giam_tac_vu()
+                        self.lbl_status.config(text=f"Lỗi: {e}", fg="red")
+                    self.after(0, _err)
+            threading.Thread(target=_t, daemon=True).start()
+            return
 
     # TAB: MOD MODRINTH
 
@@ -339,8 +294,10 @@ class ModrinthModMixin:
         self.dv_modmr = tk.Frame(f, bg=BG)
         lv = self.lv_modmr
 
-        self.fb_modmr = FilterBar(lv, self._search_modmr, accent_color="#00897B", show_category=True, bg=BG)
+        self.fb_modmr = FilterBar(lv, self._search_modmr, accent_color="#00897B",
+                                  show_category=True, multi_category=True, bg=BG)
         self.fb_modmr.pack(fill="x", padx=10, pady=(8, 4))
+        self._load_categories_mr_async(self.fb_modmr, "mod")
 
         bp = tk.Frame(lv, bg=BG)
         bp.pack(fill="x", padx=10, pady=(0, 4))
@@ -405,13 +362,13 @@ class ModrinthModMixin:
         else:
             self._search_modmr(page)
 
-    def _select_modmr(self, idx, install=False):
+    def _select_modmr(self, idx, install=False, view=False):
         from components.mod_mc import TacVuBiHuy
         if idx >= len(self._modmr_data): return
         r   = self._modmr_data[idx]
         pid = r.get("project_id", "")
 
-        if install:
+        if view:
             def _install_from_detail(version_data, on_done=None, progress_cb=None):
                 def _finish():
                     if on_done:
@@ -457,6 +414,10 @@ class ModrinthModMixin:
                         def _done():
                             try: shutil.rmtree(tmp)
                             except: pass
+                            luu_muc_da_cai(ten_inst, "mods", pid, "modrinth",
+                                           version_data.get("id"),
+                                           version_data.get("version_number"),
+                                           fname, ngay=version_data.get("date_published"))
                             self.lbl_status.after(0, lambda: self.lbl_status.config(
                                 text=f"Đã cài mod '{fname}' vào {ten_inst}!", fg="#2b8c54"))
                             _finish()
@@ -473,19 +434,38 @@ class ModrinthModMixin:
                         self._giam_tac_vu()
                 threading.Thread(target=_t, daemon=True).start()
 
+            ten_inst_hien_tai = self.cbo_modmr_inst.get().strip()
+            ten_inst_hien_tai = "" if ten_inst_hien_tai == _NO_INST else ten_inst_hien_tai
             self._swap_to_detail(self.lv_modmr, self.dv_modmr, "modrinth", r,
                                   [], install_cb=_install_from_detail,
-                                  accent="#00897B")
+                                  accent="#00897B", installed_info=lay_trang_thai_da_cai(
+                                      "mods", "modrinth", pid, ten_instance=ten_inst_hien_tai))
             return
 
+        # Click thuong (chi chon dong) HOAC bam nut "Cài đặt" (install=True,
+        # cai truc tiep khong mo man chi tiet): deu can tai + loc danh sach
+        # phien ban truoc. Khac nhau o buoc cuoi - install=True se tu dong
+        # goi luon _install_modmr() ngay sau khi loc xong (dung dung phien
+        # ban dau tien - phu hop nhat - va Instance dang duoc chon).
+        if install:
+            self._tang_tac_vu()
         self.cbo_modmr_ver.set("Dang tai phien ban...")
         def _t():
             try:
                 vs = lay_phien_ban_modrinth(pid)
                 self._modmr_vers_raw = vs
-                self.after(0, lambda: self._filter_modmr_ver())
+                def _apply():
+                    self._filter_modmr_ver()
+                    if install:
+                        self._giam_tac_vu()
+                        self._install_modmr()
+                self.after(0, _apply)
             except Exception as e:
-                self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi: {e}", fg="red"))
+                def _err(e=e):
+                    if install:
+                        self._giam_tac_vu()
+                    self.lbl_status.config(text=f"Lỗi: {e}", fg="red")
+                self.after(0, _err)
         threading.Thread(target=_t, daemon=True).start()
 
     def _sync_inst_cbo(self, cbo):
@@ -608,6 +588,9 @@ class ModrinthModMixin:
                 def _done():
                     try: shutil.rmtree(tmp)
                     except: pass
+                    luu_muc_da_cai(ten_inst, "mods", vd.get("project_id", ""), "modrinth",
+                                   vd.get("id"), vd.get("version_number"),
+                                   fname, ngay=vd.get("date_published"))
                     self.lbl_status.after(0, lambda: self.lbl_status.config(
                         text=f"Đã cài mod '{fname}' vào {ten_inst}!", fg="#2b8c54"))
                 cai_mod_tu_file(pz, ten_inst, self.lbl_status, _done)
@@ -641,8 +624,10 @@ class ModrinthModMixin:
         self.dv_rsp = tk.Frame(f, bg=BG)
         lv = self.lv_rsp
 
-        self.fb_rsp = FilterBar(lv, self._search_rsp, accent_color="#8E24AA", show_loader=False, show_category=True, bg=BG)
+        self.fb_rsp = FilterBar(lv, self._search_rsp, accent_color="#8E24AA",
+                                show_loader=False, show_category=True, multi_category=True, bg=BG)
         self.fb_rsp.pack(fill="x", padx=10, pady=(8, 4))
+        self._load_categories_mr_async(self.fb_rsp, "resourcepack")
 
         bp = tk.Frame(lv, bg=BG)
         bp.pack(fill="x", padx=10, pady=(0, 4))
@@ -708,13 +693,13 @@ class ModrinthModMixin:
         else:
             self._search_rsp(page)
 
-    def _select_rsp(self, idx, install=False):
+    def _select_rsp(self, idx, install=False, view=False):
         from components.mod_mc import TacVuBiHuy
         if idx >= len(self._rsp_data): return
         r   = self._rsp_data[idx]
         pid = r.get("project_id", "")
 
-        if install:
+        if view:
             def _install_from_detail(version_data, on_done=None, progress_cb=None):
                 def _finish():
                     if on_done:
@@ -753,6 +738,9 @@ class ModrinthModMixin:
                         def _done():
                             try: shutil.rmtree(tmp)
                             except: pass
+                            luu_muc_da_cai(ten_inst, "resourcepacks", pid, "modrinth",
+                                           version_data.get("id"), version_data.get("version_number"),
+                                           fname, ngay=version_data.get("date_published"))
                             self.lbl_status.after(0, lambda: self.lbl_status.config(
                                 text=f"Đã cài RSP vào {ten_inst}!", fg="#2b8c54"))
                             _finish()
@@ -769,19 +757,33 @@ class ModrinthModMixin:
                         self._giam_tac_vu()
                 threading.Thread(target=_t, daemon=True).start()
 
+            ten_inst_hien_tai = self.cbo_rsp_inst.get().strip()
+            ten_inst_hien_tai = "" if ten_inst_hien_tai == _NO_INST else ten_inst_hien_tai
             self._swap_to_detail(self.lv_rsp, self.dv_rsp, "modrinth", r,
                                   [], install_cb=_install_from_detail,
-                                  accent="#8E24AA")
+                                  accent="#8E24AA", installed_info=lay_trang_thai_da_cai(
+                                      "resourcepacks", "modrinth", pid, ten_instance=ten_inst_hien_tai))
             return
 
+        if install:
+            self._tang_tac_vu()
         self.cbo_rsp_ver.set("Dang tai phien ban...")
         def _t():
             try:
                 vs = lay_phien_ban_modrinth(pid)
                 self._rsp_vers_raw = vs
-                self.after(0, lambda: self._filter_rsp_ver())
+                def _apply():
+                    self._filter_rsp_ver()
+                    if install:
+                        self._giam_tac_vu()
+                        self._install_rsp()
+                self.after(0, _apply)
             except Exception as e:
-                self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi: {e}", fg="red"))
+                def _err(e=e):
+                    if install:
+                        self._giam_tac_vu()
+                    self.lbl_status.config(text=f"Lỗi: {e}", fg="red")
+                self.after(0, _err)
         threading.Thread(target=_t, daemon=True).start()
 
     def _filter_rsp_ver(self):
@@ -834,6 +836,9 @@ class ModrinthModMixin:
                 def _done():
                     try: shutil.rmtree(tmp)
                     except: pass
+                    luu_muc_da_cai(ten_inst, "resourcepacks", vd.get("project_id", ""),
+                                   "modrinth", vd.get("id"), vd.get("version_number"),
+                                   fname, ngay=vd.get("date_published"))
                     self.lbl_status.after(0, lambda: self.lbl_status.config(
                         text=f"Đã cài RSP vào {ten_inst}!", fg="#2b8c54"))
                 cai_rsp_shader_tu_file(pz, ten_inst, "rsp", self.lbl_status, _done)
@@ -867,8 +872,10 @@ class ModrinthModMixin:
         self.dv_sh = tk.Frame(f, bg=BG)
         lv = self.lv_sh
 
-        self.fb_sh = FilterBar(lv, self._search_sh, accent_color="#F57C00", show_loader=False, show_category=True, bg=BG)
+        self.fb_sh = FilterBar(lv, self._search_sh, accent_color="#F57C00",
+                               show_loader=False, show_category=True, multi_category=True, bg=BG)
         self.fb_sh.pack(fill="x", padx=10, pady=(8, 4))
+        self._load_categories_mr_async(self.fb_sh, "shader")
 
         bp = tk.Frame(lv, bg=BG)
         bp.pack(fill="x", padx=10, pady=(0, 4))
@@ -934,13 +941,13 @@ class ModrinthModMixin:
         else:
             self._search_sh(page)
 
-    def _select_sh(self, idx, install=False):
+    def _select_sh(self, idx, install=False, view=False):
         from components.mod_mc import TacVuBiHuy
         if idx >= len(self._sh_data): return
         r   = self._sh_data[idx]
         pid = r.get("project_id", "")
 
-        if install:
+        if view:
             def _install_from_detail(version_data, on_done=None, progress_cb=None):
                 def _finish():
                     if on_done:
@@ -979,6 +986,9 @@ class ModrinthModMixin:
                         def _done():
                             try: shutil.rmtree(tmp)
                             except: pass
+                            luu_muc_da_cai(ten_inst, "shaderpacks", pid, "modrinth",
+                                           version_data.get("id"), version_data.get("version_number"),
+                                           fname, ngay=version_data.get("date_published"))
                             self.lbl_status.after(0, lambda: self.lbl_status.config(
                                 text=f"Đã cài Shader vào {ten_inst}!", fg="#2b8c54"))
                             _finish()
@@ -995,19 +1005,33 @@ class ModrinthModMixin:
                         self._giam_tac_vu()
                 threading.Thread(target=_t, daemon=True).start()
 
+            ten_inst_hien_tai = self.cbo_sh_inst.get().strip()
+            ten_inst_hien_tai = "" if ten_inst_hien_tai == _NO_INST else ten_inst_hien_tai
             self._swap_to_detail(self.lv_sh, self.dv_sh, "modrinth", r,
                                   [], install_cb=_install_from_detail,
-                                  accent="#F57C00")
+                                  accent="#F57C00", installed_info=lay_trang_thai_da_cai(
+                                      "shaderpacks", "modrinth", pid, ten_instance=ten_inst_hien_tai))
             return
 
+        if install:
+            self._tang_tac_vu()
         self.cbo_sh_ver.set("Dang tai phien ban...")
         def _t():
             try:
                 vs = lay_phien_ban_modrinth(pid)
                 self._sh_vers_raw = vs
-                self.after(0, lambda: self._filter_sh_ver())
+                def _apply():
+                    self._filter_sh_ver()
+                    if install:
+                        self._giam_tac_vu()
+                        self._install_sh()
+                self.after(0, _apply)
             except Exception as e:
-                self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi: {e}", fg="red"))
+                def _err(e=e):
+                    if install:
+                        self._giam_tac_vu()
+                    self.lbl_status.config(text=f"Lỗi: {e}", fg="red")
+                self.after(0, _err)
         threading.Thread(target=_t, daemon=True).start()
 
     def _filter_sh_ver(self):
@@ -1060,6 +1084,9 @@ class ModrinthModMixin:
                 def _done():
                     try: shutil.rmtree(tmp)
                     except: pass
+                    luu_muc_da_cai(ten_inst, "shaderpacks", vd.get("project_id", ""),
+                                   "modrinth", vd.get("id"), vd.get("version_number"),
+                                   fname, ngay=vd.get("date_published"))
                     self.lbl_status.after(0, lambda: self.lbl_status.config(
                         text=f"Đã cài Shader vào {ten_inst}!", fg="#2b8c54"))
                 cai_rsp_shader_tu_file(pz, ten_inst, "shader", self.lbl_status, _done)

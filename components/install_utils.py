@@ -629,3 +629,144 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
             _dang_cai_modpack = False
 
     threading.Thread(target=_chay, daemon=True).start()
+
+
+# ---------------------------------------------------------------------------
+# Theo doi mod/modpack/resource pack/shader DA CAI vao tung instance
+# ---------------------------------------------------------------------------
+# Truoc day khong co co che nao luu lai "project_id nay da cai phien ban nao
+# vao instance nao" - moi lan cai chi copy file theo TEN FILE, khong biet gi
+# ve nguon goc (Modrinth/CurseForge project_id). Cac ham duoi day them 1 file
+# index nho (.mcmgr_index.json) trong CHINH thu muc instance, dung de:
+#   - Biet 1 mod/rsp/shader/modpack (theo project_id) DA duoc cai vao instance
+#     nao/phien ban nao chua -> doi nut "Cai dat" thanh "Cap nhat"/"Ha phien
+#     ban" o mod_mc.py / mod_detail_window.py.
+#   - Khi cai phien ban MOI cua CUNG project_id nhung file duoc doi TEN (rat
+#     hay gap giua cac phien ban mod) -> tu dong XOA file CU (theo ten da luu
+#     trong index) de tranh ton tai ca 2 phien ban cung luc trong 1 thu muc.
+_TEN_FILE_INDEX = ".mcmgr_index.json"
+
+
+def _duong_dan_thu_muc_instance(ten_instance):
+    thu_muc_game = config.current_config.get("thu_muc_game", "")
+    return os.path.join(thu_muc_game, "Instances", ten_folder_an_toan(ten_instance))
+
+
+def doc_index_instance(ten_instance):
+    """Doc file index rieng cua 1 instance. Tra ve dict rong (dung cau truc
+    mac dinh) neu chua co file / doc loi - AN TOAN de goi bat cu luc nao."""
+    path = os.path.join(_duong_dan_thu_muc_instance(ten_instance), _TEN_FILE_INDEX)
+    mac_dinh = {"modpack": None, "mods": {}, "resourcepacks": {}, "shaderpacks": {}}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        for k, v in mac_dinh.items():
+            data.setdefault(k, v)
+        return data
+    except Exception:
+        return mac_dinh
+
+
+def ghi_index_instance(ten_instance, data):
+    path = os.path.join(_duong_dan_thu_muc_instance(ten_instance), _TEN_FILE_INDEX)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def lay_muc_da_cai(ten_instance, loai, project_id):
+    """loai: 'mods' | 'resourcepacks' | 'shaderpacks'.
+    Tra ve dict {'source','version_id','version_number','filename'} neu
+    project_id nay da duoc cai vao instance, None neu chua."""
+    if not project_id:
+        return None
+    idx = doc_index_instance(ten_instance)
+    return idx.get(loai, {}).get(str(project_id))
+
+
+def luu_muc_da_cai(ten_instance, loai, project_id, source, version_id,
+                    version_number, filename, ngay=None):
+    """Goi SAU KHI cai/cap nhat 1 mod/rsp/shader THANH CONG, de ghi lai
+    project_id + phien ban + ten file (+ ngay phat hanh, dung de so sanh
+    moi hon/cu hon sau nay) vao index cua instance.
+
+    Neu truoc do CUNG project_id nay da co ban ghi voi TEN FILE KHAC (mod
+    doi ten file giua cac phien ban) -> tu dong xoa file cu di, tranh
+    con lai ca ban cu lan ban moi trong cung 1 thu muc."""
+    if not project_id:
+        return
+    idx  = doc_index_instance(ten_instance)
+    nhom = idx.setdefault(loai, {})
+    cu   = nhom.get(str(project_id))
+    if cu and cu.get("filename") and cu["filename"] != filename:
+        try:
+            duong_dan_cu = os.path.join(
+                _duong_dan_thu_muc_instance(ten_instance), loai, cu["filename"])
+            if os.path.exists(duong_dan_cu):
+                os.remove(duong_dan_cu)
+        except Exception:
+            pass
+    nhom[str(project_id)] = {
+        "source": source, "version_id": version_id,
+        "version_number": version_number, "filename": filename,
+        "ngay": ngay,
+    }
+    ghi_index_instance(ten_instance, idx)
+
+
+def lay_modpack_da_cai(source, project_id):
+    """Quet TAT CA instance hien co (vi 1 modpack = 1 instance rieng, khong
+    can biet truoc ten instance) tim modpack co cung (source, project_id).
+    Tra ve (ten_instance, version_number, version_id, ngay) hoac
+    (None, None, None, None) neu modpack nay chua duoc cai o dau ca."""
+    ds = config.current_config.get("danh_sach_instances", {})
+    for ten_inst in ds:
+        mp = doc_index_instance(ten_inst).get("modpack")
+        if mp and mp.get("source") == source and str(mp.get("project_id")) == str(project_id):
+            return ten_inst, mp.get("version_number"), mp.get("version_id"), mp.get("ngay")
+    return None, None, None, None
+
+
+def luu_modpack_da_cai(ten_instance, source, project_id, version_id, version_number, ngay=None):
+    """Goi SAU KHI cai/cap nhat modpack THANH CONG (ghi rieng, KHAC voi
+    'version_mod' trong instance_info.json - truong do la phien ban mod
+    loader, khong phai phien ban CUA CHINH modpack)."""
+    idx = doc_index_instance(ten_instance)
+    idx["modpack"] = {
+        "source": source, "project_id": project_id,
+        "version_id": version_id, "version_number": version_number,
+        "ngay": ngay,
+    }
+    ghi_index_instance(ten_instance, idx)
+
+
+def lay_trang_thai_da_cai(loai, source, project_id, ten_instance=None):
+    """Ham tien loi DUNG CHUNG cho modrinthmod.py / forgemod.py / mod_mc.py:
+    kiem tra 1 mod/modpack/rsp/shader (theo source + project_id) da duoc cai
+    dat chua, de doi nut "Cai dat" thanh "Cap nhat"/"Ha phien ban".
+
+    loai: 'modpack' | 'mods' | 'resourcepacks' | 'shaderpacks'
+      - 'modpack'      -> tu dong quet toan bo instance, KHONG can ten_instance.
+      - cac loai khac  -> BAT BUOC truyen ten_instance (thuong la gia tri
+        dang chon trong to hop "Cai vao Instance" cua tab tuong ung) - vi
+        cung 1 mod co the co o instance nay nhung khong o instance khac.
+
+    Tra ve dict {'ten_instance','source','version_id','version_number'} neu
+    tim thay, None neu chua cai (hoac thieu ten_instance can thiet)."""
+    if not project_id:
+        return None
+    if loai == "modpack":
+        ten_inst, ver_num, ver_id, ngay = lay_modpack_da_cai(source, project_id)
+        if not ten_inst:
+            return None
+        return {"ten_instance": ten_inst, "source": source,
+                "version_id": ver_id, "version_number": ver_num, "ngay": ngay}
+    if not ten_instance:
+        return None
+    info = lay_muc_da_cai(ten_instance, loai, project_id)
+    if not info:
+        return None
+    return {"ten_instance": ten_instance, **info}

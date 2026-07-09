@@ -19,7 +19,22 @@ import config
 import theme
 from icon_utils import gan_icon_app
 
-from components.widgets import BG_DARK, BG_SEL, FG_TITLE
+from components.widgets import BG_DARK, BG_SEL, FG_TITLE, ContentTableWidget
+
+
+def _tim_content_table(widget):
+    """Tim de quy widget ContentTableWidget dau tien ben trong 'widget' (vd
+    lv_frame cua mot tab) - dung de dong bo trang thai nut Cai dat/Hủy tren
+    dong danh sach voi trang thai da bam trong ModDetailWindow (xem
+    _swap_to_list() ben duoi), ma KHONG can modrinthmod.py / forgemod.py tu
+    luu lai tham chieu rieng den widget nay."""
+    if isinstance(widget, ContentTableWidget):
+        return widget
+    for child in widget.winfo_children():
+        found = _tim_content_table(child)
+        if found is not None:
+            return found
+    return None
 from components.mod_detail_window import ModDetailWindow
 from components.Mod.modrinthmod import ModrinthModMixin
 from components.Mod.forgemod import ForgeModMixin
@@ -117,7 +132,6 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
     def _tang_tac_vu(self):
         self._so_tac_vu_dang_chay += 1
         self._cancel_event.clear()
-        self.after(0, lambda: self.btn_huy.config(state="normal"))
 
     def _giam_tac_vu(self):
         self._so_tac_vu_dang_chay = max(0, self._so_tac_vu_dang_chay - 1)
@@ -125,7 +139,6 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
             self._cancel_event.clear()
             self._last_progress_pct = None
             self._last_progress_label = ""
-            self.after(0, lambda: self.btn_huy.config(state="disabled"))
 
     def ghi_tien_do(self, pct, label=""):
         """Ghi lai % tien do moi nhat - goi tu cac closure cai dat trong
@@ -168,14 +181,15 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         self.destroy()
 
     def _swap_to_detail(self, lv_frame, dv_frame, source, data, versions,
-                        install_cb, accent):
+                        install_cb, accent, installed_info=None):
         def _back():
             self._swap_to_list(lv_frame, dv_frame)
         for w in dv_frame.winfo_children():
             w.destroy()
         panel = ModDetailWindow(dv_frame, source, data, versions,
                                 install_cb=install_cb, on_back=_back,
-                                cancel_cb=self._huy_tac_vu, accent=accent)
+                                cancel_cb=self._huy_tac_vu, accent=accent,
+                                installed_info=installed_info)
         panel.pack(fill="both", expand=True)
         lv_frame.pack_forget()
         dv_frame.pack(fill="both", expand=True)
@@ -185,6 +199,12 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         for w in dv_frame.winfo_children():
             w.destroy()
         lv_frame.pack(fill="both", expand=True)
+        # Dong bo lai nut Cai dat/Hủy tren dong danh sach voi trang thai
+        # thuc te - vi viec cai dat/huy co the vua duoc bat dau/ket thuc
+        # NGAY TRONG ModDetailWindow (dv_frame) thay vi tu nut tren dong.
+        table = _tim_content_table(lv_frame)
+        if table is not None:
+            table.sync_installing_state()
 
     def _build_ui(self):
         tk.Label(self, text="Content Manager  —  Modpack / Mod / Resource Pack / Shader",
@@ -229,11 +249,8 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         self.lbl_status = tk.Label(status_bar, text="Đang tải...",
                                    font=("Arial", 9, "italic"), fg="#1E88E5", anchor="w")
         self.lbl_status.pack(side="left", fill="x", expand=True)
-        self.btn_huy = tk.Button(status_bar, text="Hủy", font=("Arial", 9, "bold"),
-                                 bg="#E53935", fg="white",
-                                 activebackground="#E53935", activeforeground="white",
-                                 width=8, state="disabled", command=self._huy_tac_vu)
-        self.btn_huy.pack(side="right", padx=(8, 0))
+        # (Da bo nut "Hủy" chung o goc duoi-phai - viec huy tac vu gio dam
+        # nhiem boi nut "Hủy" ngay tren tung dong danh sach, xem widgets.py)
 
         self.nb = ttk.Notebook(self)
         self.nb.pack(fill="both", expand=True, padx=12, pady=4)
@@ -414,7 +431,6 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
     def _tang_tac_vu(self):
         self._so_tac_vu_dang_chay += 1
         self._cancel_event.clear()
-        self.after(0, lambda: self.btn_huy.config(state="normal"))
 
     def _giam_tac_vu(self):
         self._so_tac_vu_dang_chay = max(0, self._so_tac_vu_dang_chay - 1)
@@ -422,7 +438,6 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
             self._cancel_event.clear()
             self._last_progress_pct = None
             self._last_progress_label = ""
-            self.after(0, lambda: self.btn_huy.config(state="disabled"))
 
     def ghi_tien_do(self, pct, label=""):
         """Ghi lai % tien do moi nhat - goi tu cac closure cai dat trong
@@ -455,14 +470,15 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
         return dang_chay_local or dang_chay_global
 
     def _swap_to_detail(self, lv_frame, dv_frame, source, data, versions,
-                        install_cb, accent):
+                        install_cb, accent, installed_info=None):
         def _back():
             self._swap_to_list(lv_frame, dv_frame)
         for w in dv_frame.winfo_children():
             w.destroy()
         panel = ModDetailWindow(dv_frame, source, data, versions,
                                 install_cb=install_cb, on_back=_back,
-                                cancel_cb=self._huy_tac_vu, accent=accent)
+                                cancel_cb=self._huy_tac_vu, accent=accent,
+                                installed_info=installed_info)
         panel.pack(fill="both", expand=True)
         lv_frame.pack_forget()
         dv_frame.pack(fill="both", expand=True)
@@ -472,6 +488,12 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
         for w in dv_frame.winfo_children():
             w.destroy()
         lv_frame.pack(fill="both", expand=True)
+        # Dong bo lai nut Cai dat/Hủy tren dong danh sach voi trang thai
+        # thuc te - vi viec cai dat/huy co the vua duoc bat dau/ket thuc
+        # NGAY TRONG ModDetailWindow (dv_frame) thay vi tu nut tren dong.
+        table = _tim_content_table(lv_frame)
+        if table is not None:
+            table.sync_installing_state()
 
     def _debounce(self, attr, ms, fn):
         old = getattr(self, attr, None)
@@ -533,11 +555,8 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
         self.lbl_status = tk.Label(status_bar, text="Đang tải...",
                                    font=("Arial", 9, "italic"), fg="#1E88E5", anchor="w")
         self.lbl_status.pack(side="left", fill="x", expand=True)
-        self.btn_huy = tk.Button(status_bar, text="Hủy", font=("Arial", 9, "bold"),
-                                 bg="#E53935", fg="white",
-                                 activebackground="#E53935", activeforeground="white",
-                                 width=8, state="disabled", command=self._huy_tac_vu)
-        self.btn_huy.pack(side="right", padx=(8, 0))
+        # (Da bo nut "Hủy" chung o goc duoi-phai - viec huy tac vu gio dam
+        # nhiem boi nut "Hủy" ngay tren tung dong danh sach, xem widgets.py)
 
         self.nb = ttk.Notebook(self)
         self.nb.pack(fill="both", expand=True, padx=12, pady=4)

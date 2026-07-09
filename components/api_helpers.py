@@ -58,8 +58,17 @@ def _modrinth_search(project_type, tu_khoa="", mc_version="", loader="", categor
         facets.append([f"versions:{mc_version}"])
     if loader and loader not in ("Tất cả", ""):
         facets.append([f"categories:{loader.lower()}"])
-    if category and category not in ("Tất cả", ""):
-        facets.append([f"categories:{category.lower()}"])
+    if category:
+        # category co the la 1 chuoi (tuong thich nguoc) HOAC 1 list/tuple/set
+        # cac slug da duoc tick (multi-select giong Modrinth that - xem sidebar
+        # "Loai" trong Modrinth App, co the tick nhieu the loai cung luc).
+        cats = category if isinstance(category, (list, tuple, set)) else [category]
+        cats = [c for c in cats if c and c not in ("Tất cả", "")]
+        if cats:
+            # Cac category duoc chon se OR voi nhau (cung 1 nhom facet con),
+            # va AND voi cac dieu kien khac (phien ban, trinh nap...) - dung
+            # dung ngu nghia facet cua Modrinth API.
+            facets.append([f"categories:{c.lower()}" for c in cats])
     params = urllib.parse.urlencode({
         "query": tu_khoa,
         "facets": json.dumps(facets),
@@ -73,6 +82,30 @@ def _modrinth_search(project_type, tu_khoa="", mc_version="", loader="", categor
 
 def lay_modrinth_popular(project_type="modpack", limit=50, offset=0):
     return _modrinth_search(project_type, limit=limit, offset=offset)
+
+
+def lay_category_modrinth(project_type="modpack"):
+    """
+    Lay danh sach category THAT cua Modrinth cho 1 loai noi dung (project_type:
+    'modpack' / 'mod' / 'resourcepack' / 'shader'), tu endpoint /v2/tag/category
+    - giong nhu sidebar "Loai" trong Modrinth App that (xem anh: Chien dau,
+    Cong nghe, Nhe, Nhiem vu, Nhieu nguoi choi, Phep thuat, Phieu luu,
+    Thu thach, Toi uu hoa, ...).
+
+    Tra ve list dict [{"name": "adventure", "header": "categories"}, ...]
+    - dung de fill vao popup chon nhieu the loai (multi-select) cua FilterBar.
+    Cac the loai duoc Modrinth nhom theo "header" (vd "categories",
+    "resolutions", "performance impact" - rieng cho resource pack/shader);
+    giu nguyen header de UI co the hien thi thanh tung nhom.
+    """
+    data = _request_json("https://api.modrinth.com/v2/tag/category")
+    out = []
+    for c in data:
+        pt = c.get("project_type")
+        pts = pt if isinstance(pt, list) else [pt]
+        if project_type in pts:
+            out.append({"name": c.get("name", ""), "header": c.get("header", "") or "categories"})
+    return out
 
 
 def tim_kiem_modrinth(project_type, tu_khoa, mc_version="", loader="", category="", limit=50, offset=0):

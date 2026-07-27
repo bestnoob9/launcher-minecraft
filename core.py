@@ -443,22 +443,20 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
 
     lenh_goc = minecraft_launcher_lib.command.get_minecraft_command(id_phien_ban_chay, thu_muc_game, options)
 
-    # === FIX QUAN TRONG: minecraft_launcher_lib LUON hardcode --userType la
-    # "msa" (Microsoft Account) trong command.py, khong co cach nao doi qua
-    # options duoc. Vi tai khoan cua ta la offline (token gia = "0"), neu de
-    # userType = msa thi game se tin rang day la acc Microsoft that va co gang
-    # xac thuc/lay chu ky chat (secure chat signing) qua server Mojang khi vao
-    # multiplayer/LAN -> that bai vi token gia -> loi "Invalid session, please
-    # try restarting your game!". Doi lai thanh "legacy" de game hieu day la
-    # tai khoan offline, khong co gang xac thuc online nua.
     _da_patch = False
     for _i, _arg in enumerate(lenh_goc):
         if _arg == "--userType" and _i + 1 < len(lenh_goc):
             lenh_goc[_i + 1] = "legacy"
             _da_patch = True
             break
+
     if not _da_patch:
-        print("")
+        # Lop du phong: quet toan bo lenh tim gia tri "msa" dung 1 minh
+        # (khong ghep chung voi tu khac) va thay bang "legacy".
+        for _i, _arg in enumerate(lenh_goc):
+            if _arg == "msa":
+                lenh_goc[_i] = "legacy"
+                _da_patch = True
     return lenh_goc
 
 def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callback_progress=None, should_cancel=None):
@@ -554,12 +552,12 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
     # lai moi lan chon/chay tai khoan.
     _username = tai_khoan
     _uuid_str = config.lay_hoac_luu_uuid(tai_khoan, thu_muc_game)
-    _token = "0"
+    #_token = "0"
 
     options = {
         "username": _username,
         "uuid": _uuid_str,
-        "token": _token,
+        "token": "",
         "jvmArguments": danh_sach_jvm_args,
         "customResolution": True,
         "resolutionWidth": rong,
@@ -593,9 +591,24 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
         _startupinfo = None
         _creationflags = 0
         if _sys.platform == "win32":
+            # QUAN TRONG: KHONG duoc set STARTF_USESHOWWINDOW / SW_HIDE o day.
+            # Cac ban Minecraft cu (<=1.12.x, dung LWJGL2/org.lwjgl.opengl.Display)
+            # tao cua so game bang native Win32 va KE THUA trang thai hien thi
+            # ban dau tu STARTUPINFO cua tien trinh cha (qua GetStartupInfo).
+            # Neu SW_HIDE duoc set, cua so game se bi tao ra o trang thai AN
+            # ngay tu dau -> Java van chay binh thuong (ngam) nhung khong bao
+            # gio hien cua so len. Cac ban moi (LWJGL3/GLFW, >=1.13) khong bi
+            # anh huong vi GLFW tu goi ShowWindow(SW_SHOW) tuong minh, bo qua
+            # nCmdShow ke thua.
+            #
+            # Luu y: ham _popen_init_an_cmd (patch toan cuc o dau file) se TU
+            # DONG chen SW_HIDE vao neu startupinfo=None duoc truyen vao Popen.
+            # Vi vay o day PHAI truyen mot STARTUPINFO() RONG (khong bat co
+            # STARTF_USESHOWWINDOW) de "ne" dieu kien do, dam bao cua so game
+            # khong bi ep an. CREATE_NO_WINDOW van an toan de giu (chi chan
+            # console cmd loe len neu java_path tro toi java.exe thay vi
+            # javaw.exe, khong anh huong toi cua so game).
             _startupinfo = subprocess.STARTUPINFO()
-            _startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            _startupinfo.wShowWindow = subprocess.SW_HIDE
             _creationflags = subprocess.CREATE_NO_WINDOW
         proc = subprocess.Popen(
             lenh,

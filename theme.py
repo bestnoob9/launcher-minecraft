@@ -1,33 +1,9 @@
-"""
-theme.py
---------
-He thong chuyen doi giao dien Sang / Toi cho toan bo ung dung.
-
-Cach hoat dong:
-  - Cac mau "trung tinh" (nen trang, nen xam nhat, chu den, vien xam...)
-  - duoc anh xa (map) sang mau toi tuong ung khi che do Toi duoc chon.
-  - Cac mau "accent" (nut xanh, do, vang, tim...) GIU NGUYEN vi da du
-    tuong phan tren ca 2 nen.
-
-Su dung:
-    import theme
-    theme.apply_theme(window)   # goi sau khi build xong widget cua window
-
-Luu trang thai:
-    config.current_config["theme"] = "light" | "dark"
-"""
-
 import tkinter as tk
 from tkinter import ttk
 import config
 
-# Luu lai ten ttk theme goc cua he dieu hanh (vd 'vista') de khoi phuc
-# khi nguoi dung chuyen ve giao dien Sang.
 _NATIVE_TTK_THEME = None
 
-
-# Mau nen / chu trung tinh dung trong toan bo code (light mode "goc")
-# -> mau tuong ung khi o Dark mode.
 _LIGHT_TO_DARK = {
     "#ffffff": "#1e1e1e",
     "white":   "#1e1e1e",
@@ -44,9 +20,6 @@ _LIGHT_TO_DARK = {
     "SystemWindowText": "#e8e8e8",
     "SystemButtonText": "#e8e8e8",
 
-    # Thanh tab tren cung (main.py: self._tab_bar, lbl_floating_progress)
-    # - mau "goc" khi o Sang la #dde2e8 (giong tab_inactive_bg trong
-    # _apply_to_ttk_style), khi sang Toi doi thanh #263238.
     "#dde2e8": "#263238",
 
     "#1a1a1a": "#e8e8e8",
@@ -62,13 +35,12 @@ _LIGHT_TO_DARK = {
     "#888888": "#9a9a9a",
     "gray":    "#a0a0a0",
     "grey":    "#a0a0a0",
-    "#2e7d32": "#66bb6a",   # xanh la "luot tai" (ModDetailWindow)
-    "#b35900": "#ffb74d",   # cam "tag" (ContentTableWidget)
+    "#2e7d32": "#66bb6a",   
+    "#b35900": "#ffb74d",   
 }
 
-# Mau dark-mode -> light-mode (chieu nguoc, de doi lai khi ve Sang)
 _DARK_TO_LIGHT = {v: k for k, v in _LIGHT_TO_DARK.items()}
-# Uu tien khoi phuc mau "chuan" thay vi cac alias (white/black/gray)
+
 _DARK_TO_LIGHT.update({
     "#1e1e1e": "#ffffff",
     "#e8e8e8": "#1a1a1a",
@@ -80,31 +52,23 @@ _DARK_TO_LIGHT.update({
     "#263238": "#dde2e8",
 })
 
-
 def _norm(c):
     if c is None:
         return None
     return c.strip()
 
-
 def get_theme_name():
     return config.current_config.get("theme", "light")
-
 
 def is_dark():
     return get_theme_name() == "dark"
 
-
 def set_theme(name):
-    """name: 'light' | 'dark'. Luu vao config (khong tu ghi file)."""
     if name not in ("light", "dark"):
         name = "light"
     config.current_config["theme"] = name
 
-
 def colors():
-    """Tra ve dict mau chinh theo theme hien tai — dung khi tao widget moi
-    (vd ContentTableWidget trong widgets.py)."""
     if is_dark():
         return {
             "bg":        "#1e1e1e",
@@ -139,13 +103,10 @@ def colors():
         "entry_fg":  "#1a1a1a",
     }
 
-
-# Cac option mau theo loai widget tk
 _BG_OPTS = ("bg", "background", "highlightbackground",
             "selectbackground", "activebackground", "readonlybackground",
             "insertbackground", "selectcolor")
 _FG_OPTS = ("fg", "foreground", "activeforeground", "selectforeground")
-
 
 def _remap(value, mapping):
     if value is None:
@@ -153,20 +114,7 @@ def _remap(value, mapping):
     key = value if value.startswith("#") else value.lower()
     return mapping.get(key) or mapping.get(value)
 
-
 def _style_combobox_popdown(cb, dark):
-    """Cau hinh mau TRUC TIEP cho Listbox ben trong popdown cua mot
-    ttk.Combobox, thay vi chi dua vao option_add.
-
-    Ly do: tren Windows, ttk dung theme native ('vista') de ve Combobox,
-    va popdown cua no co the KHONG doc option database cho mau
-    background/selectBackground -> option_add khong co tac dung, item
-    hover/chon trong dropdown van la mau xanh he thong mac dinh.
-
-    Goi lenh Tcl 'ttk::combobox::PopdownWindow' de lay (hoac ep tao)
-    popdown that su cua widget nay, roi configure truc tiep Listbox ben
-    trong -> luon dung mau, khong phu thuoc OS/ttk theme.
-    """
     try:
         field = "#2a2a2a" if dark else "#ffffff"
         fg = "#e8e8e8" if dark else "#1a1a1a"
@@ -184,7 +132,6 @@ def _style_combobox_popdown(cb, dark):
         )
     except Exception:
         pass
-
 
 def _apply_to_widget(w, mapping, dark):
     try:
@@ -218,10 +165,6 @@ def _apply_to_widget(w, mapping, dark):
                 except Exception:
                     pass
 
-    # Mau "select" (bom xanh) khi bo den / Ctrl+A trong tk.Entry, tk.Text,
-    # tk.Spinbox, tk.Listbox: PHAI ro rang de nguoi dung thay vung dang
-    # chon. Rieng Combobox (entry con ben trong ttk.Combobox) thi tat di
-    # vi no dung mau xanh he thong gay loi mau khi readonly.
     is_combobox_entry = False
     try:
         parent = w.nametowidget(w.winfo_parent())
@@ -230,8 +173,6 @@ def _apply_to_widget(w, mapping, dark):
     except Exception:
         pass
 
-    # Chinh mau highlight cho danh sach xo xuong cua Combobox (xem docstring
-    # cua _style_combobox_popdown).
     if isinstance(w, ttk.Combobox):
         _style_combobox_popdown(w, dark)
 
@@ -252,8 +193,6 @@ def _apply_to_widget(w, mapping, dark):
         except Exception:
             pass
 
-    # Cho phep Ctrl+A select-all trong tk.Entry / tk.Text (mac dinh tk
-    # khong co san binding nay tren Windows/Linux).
     if isinstance(w, (tk.Entry, tk.Spinbox)):
         def _select_all_entry(event, widget=w):
             widget.selection_range(0, "end")
@@ -268,16 +207,9 @@ def _apply_to_widget(w, mapping, dark):
         w.bind("<Control-a>", _select_all_text)
         w.bind("<Control-A>", _select_all_text)
 
-
 def _apply_to_ttk_style(root, mapping, dark):
-    """Cau hinh ttk.Style cho Notebook / Treeview / Combobox / Scrollbar /
-    Progressbar de hop voi theme hien tai."""
     style = ttk.Style(root)
 
-    # Theme ttk mac dinh cua he dieu hanh (vd 'vista'/'winnative' tren Windows)
-    # KHONG ho tro doi mau Combobox/select-highlight qua ttk.Style. 'clam'
-    # ho tro day du nen duoc dung cho CA 2 theme (Sang va Toi) de dam bao
-    # khong con vung "highlight" mau xanh he thong khi click Combobox.
     global _NATIVE_TTK_THEME
     try:
         if _NATIVE_TTK_THEME is None:
@@ -298,10 +230,6 @@ def _apply_to_ttk_style(root, mapping, dark):
         bg, fg, field, sel = "#f5f5f7", "#1a1a1a", "#ffffff", "#cfe3fb"
         trough, sep = "#e9e9e9", "#e0e0e0"
 
-    # Mau highlight rieng cho item trong dropdown (popdown Listbox) cua
-    # Combobox - dung mau accent xanh la (giong nut "Tao phien ban") thay
-    # vi mau xanh duong "sel" dung chung voi Treeview, de item duoc
-    # hover/chon trong danh sach noi bat ro rang tren ca 2 theme.
     combo_hl_bg = "#03A9F4"
     combo_hl_fg = "#ffffff"
 
@@ -344,7 +272,6 @@ def _apply_to_ttk_style(root, mapping, dark):
 
         style.configure("TProgressbar", background="#1E88E5", troughcolor=trough)
 
-        # Treeview (ContentTableWidget cu / cac bang khac neu co)
         style.configure("Treeview", background=field, fieldbackground=field,
                         foreground=fg, rowheight=24)
         style.configure("Treeview.Heading", background=trough, foreground=fg)
@@ -360,17 +287,12 @@ def _apply_to_ttk_style(root, mapping, dark):
     except Exception:
         pass
 
-    # Danh sach xo xuong (popdown) cua Combobox la mot Listbox rieng,
-    # khong nam trong ttk.Style - phai chinh qua option_add.
     try:
         root.option_add("*TCombobox*Listbox.background", field)
         root.option_add("*TCombobox*Listbox.foreground", fg)
         root.option_add("*TCombobox*Listbox.selectBackground", combo_hl_bg)
         root.option_add("*TCombobox*Listbox.selectForeground", combo_hl_fg)
 
-        # Mau "highlight" text khi Combobox dang focus / select-all -
-        # dat bang dung mau nen/chu binh thuong de "an" hieu ung bem xanh
-        # khi click vao combobox (ca 2 theme).
         root.option_add("*TCombobox*selectBackground", field)
         root.option_add("*TCombobox*selectForeground", fg)
         root.option_add("*TEntry*selectBackground", field)
@@ -378,14 +300,7 @@ def _apply_to_ttk_style(root, mapping, dark):
     except Exception:
         pass
 
-
 def preload_combobox_options(root):
-    """
-    Goi SOM nhat co the (ngay sau khi tao root, TRUOC khi tao bat ky
-    widget nao). Thiet lap option_add cho mau "select highlight" cua
-    Combobox/Entry de khong bi mau xanh he thong khi click/focus —
-    option_add chi anh huong widget tao SAU thoi diem goi nay.
-    """
     dark = is_dark()
     field = "#2a2a2a" if dark else "#ffffff"
     fg    = "#e8e8e8" if dark else "#1a1a1a"
@@ -407,13 +322,7 @@ def preload_combobox_options(root):
     except Exception:
         pass
 
-
 def apply_theme(widget):
-    """
-    Ap dung theme hien tai (config.current_config['theme']) cho `widget`
-    va toan bo widget con (hoi quy). Goi sau khi build xong UI cua mot
-    window/frame, hoac sau khi nguoi dung doi theme trong Settings.
-    """
     dark = is_dark()
     mapping = _LIGHT_TO_DARK if dark else _DARK_TO_LIGHT
 
@@ -435,11 +344,7 @@ def apply_theme(widget):
 
     _walk(widget)
 
-
 def apply_theme_to_all_toplevels(root):
-    """Ap dung theme cho root va toan bo cua so con (Toplevel) dang mo,
-    bat ke Toplevel do duoc tao voi parent la root hay mot Frame con."""
-    apply_theme(root)
 
     def _find_toplevels(w):
         found = []

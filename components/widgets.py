@@ -1,12 +1,3 @@
-"""
-widgets.py
-----------
-Cac widget UI tai su dung duoc:
-  - FilterBar           : thanh loc MC version / loader / category
-  - ContentTableWidget  : bang danh sach Treeview (nhanh, khong lag)
-
-Khong co phu thuoc vong: chi dung tkinter + config.
-"""
 
 import io
 import threading
@@ -36,24 +27,17 @@ FG_TAG    = "#b35900"
 ICON_BG   = "#e1e4ea"
 ICON_SIZE = 72
 
-# Mau accent theo nguon - dung cho nut "Cai dat", cham bullet truoc ten,
-# vien chip loader... giong phong cach the CurseForge / Modrinth.
 ACCENT_MODRINTH   = "#1E88E5"
 ACCENT_CURSEFORGE = "#F16436"
 
-# Cac slug loader thuong tron trong "categories"/"display_categories" cua
-# Modrinth, hoac gia tri modLoader (int) cua CurseForge - dung de tach
-# rieng "loader" ra khoi danh sach tag hien thi va ve thanh mot chip rieng.
 _LOADER_SLUGS = {"forge", "fabric", "quilt", "neoforge", "liteloader", "rift"}
 _CF_LOADER_MAP = {
     1: "Forge", 2: "Cauldron", 3: "LiteLoader", 4: "Fabric",
     5: "Quilt", 6: "NeoForge",
 }
-_MAX_TAGS_HIEN = 4   # so tag toi da hien truoc khi rut gon thanh "+N"
-
+_MAX_TAGS_HIEN = 4
 
 def _dinh_dang_so_luot(n):
-    """1234 -> '1.2K', 1234567 -> '1.2M' (giong bo dem tren CurseForge)."""
     try:
         n = int(n)
     except (TypeError, ValueError):
@@ -64,9 +48,7 @@ def _dinh_dang_so_luot(n):
         return f"{n / 1_000:.1f}K".replace(".0K", "K")
     return str(n)
 
-
 def _dinh_dang_dung_luong(so_byte):
-    """so byte -> '93.93 MB' / '512 KB' ..., None neu khong co du lieu."""
     try:
         b = float(so_byte)
     except (TypeError, ValueError):
@@ -79,9 +61,7 @@ def _dinh_dang_dung_luong(so_byte):
         return f"{b / 1024:.1f} KB"
     return f"{int(b)} B"
 
-
 def _dinh_dang_ngay_tuong_doi(chuoi_iso):
-    """'2026-07-05T10:00:00Z' -> 'Hôm nay' / '3 ngày trước' / '2 tháng trước'."""
     if not chuoi_iso:
         return ""
     try:
@@ -102,22 +82,13 @@ def _dinh_dang_ngay_tuong_doi(chuoi_iso):
     except Exception:
         return ""
 
-
 class _CategoryMultiSelect(tk.Frame):
-    """
-    Nut mo popup danh sach the loai (category) co the tick NHIEU cai cung
-    luc - giong dung hanh vi cua Modrinth that (xem sidebar "Loai" trong
-    Modrinth App: co the tick ca "Nhe" + "Nhieu nguoi choi" + "Toi uu hoa"
-    cung mot luc). Day la diem khac biet co ban voi CurseForge trong app
-    nay, ta chi cho chon 1 category qua combobox don (giong cach loc don
-    gian, dung voi kieu "Filters" 1-gia-tri cua CurseForge o day).
-    """
 
     def __init__(self, parent, bg, on_change):
         super().__init__(parent, bg=bg)
         self._on_change = on_change
-        self._items = []        # list[dict]: {"name": slug, "header": nhom}
-        self._checked = set()   # cac slug dang duoc tick
+        self._items = []
+        self._checked = set()
         self._popup = None
         self._vars = {}
 
@@ -153,11 +124,7 @@ class _CategoryMultiSelect(tk.Frame):
         self._open_popup()
 
     def _open_popup(self):
-        # Lay mau theo THEME HIEN TAI (Sang/Toi) - popup nay la 1 Toplevel
-        # duoc tao MOI LAN bam nut, KHONG nam san trong cay widget luc
-        # theme.apply_theme() chay o dau chuong trinh, nen phai tu chon
-        # mau ngay tai day thay vi de mac dinh trang/den nhu truoc (gay
-        # loi popup luon trang du dang o Dark mode).
+
         c = theme.colors()
         dark = theme.is_dark()
         pop_bg     = c["bg_alt"]
@@ -248,7 +215,6 @@ class _CategoryMultiSelect(tk.Frame):
                 pass
             self._popup = None
 
-
 class FilterBar(tk.Frame):
     LOADERS = ["Tất cả", "Fabric", "Forge", "Quilt", "NeoForge"]
     CATEGORIES = [
@@ -259,7 +225,6 @@ class FilterBar(tk.Frame):
         "Storage", "Technology", "Transportation", "Utility", "Worldgen",
     ]
 
-    # Fallback khi chua/khong goi duoc API Mojang
     _MC_FALLBACK = [
         "26.3","26.2", "26.1",
         "1.21.5", "1.21.4", "1.21.3", "1.21.2", "1.21.1", "1.21",
@@ -272,14 +237,12 @@ class FilterBar(tk.Frame):
         "1.11.2", "1.10.2", "1.9.4", "1.8.9", "1.7.10",
     ]
 
-    # Cache dung chung cho ca chuong trinh
-    _ver_cache   = []    # list[dict]: {"id": "...", "type": "release"/"snapshot"/...}
+    _ver_cache   = []
     _cache_ready = False
     _cache_busy  = False
 
     @classmethod
     def _load_versions_async(cls, on_done=None):
-        """Goi API Mojang 1 lan, luu vao _ver_cache, goi on_done() khi xong."""
         if cls._cache_ready:
             if on_done: on_done()
             return
@@ -317,7 +280,7 @@ class FilterBar(tk.Frame):
         self.cbo_mc.set("Tất cả")
         self.cbo_mc.pack(side="left", padx=(0, 4))
         self.cbo_mc.bind("<<ComboboxSelected>>", lambda e: self._cb())
-        # Alias tuong thich nguoc
+
         self.ent_ver = self.cbo_mc
 
         tk.Checkbutton(
@@ -339,8 +302,7 @@ class FilterBar(tk.Frame):
         if show_category:
             tk.Label(self, text="Loại:", font=("Arial", 9), bg=self["bg"]).pack(side="left", padx=(0, 2))
             if multi_category:
-                # Modrinth: cho tick NHIEU category cung luc (giong Modrinth
-                # that), khac voi CurseForge chi chon 1 qua combobox don.
+
                 self.cbo_category = _CategoryMultiSelect(self, bg=self["bg"], on_change=self._cb)
                 self.cbo_category.pack(side="left", padx=(0, 8))
             else:
@@ -361,12 +323,10 @@ class FilterBar(tk.Frame):
                   bg="#78909C", fg="white", activebackground="#78909C",
                   activeforeground="white", pady=1, command=self._reset).pack(side="left")
 
-        # Hien danh sach fallback ngay, sau do cap nhat khi API xong
         self._rebuild_ver_list()
         FilterBar._load_versions_async(on_done=lambda: self.after(0, self._rebuild_ver_list))
 
     def _rebuild_ver_list(self):
-        """Cap nhat dropdown phien ban tuy theo checkbox Snapshot."""
         cur = self.cbo_mc.get()
         incl = self._incl_snap.get()
         if FilterBar._cache_ready:
@@ -378,18 +338,6 @@ class FilterBar(tk.Frame):
         self.cbo_mc.set(cur if cur in vers else "Tất cả")
 
     def set_categories(self, categories):
-        """
-        Cap nhat lai danh sach category hien trong bo loc sau khi widget da
-        duoc tao, vi category that phai tai bat dong bo tu API.
-
-        - CurseForge (multi_category=False): categories la
-          [{"id": 421, "name": "Adventure and RPG"}, ...] - fill vao combobox
-          chon 1 (giong het cach cu, khong doi hanh vi CurseForge).
-        - Modrinth (multi_category=True): categories la
-          [{"name": "adventure", "header": "categories"}, ...] - fill vao
-          popup chon-nhieu (_CategoryMultiSelect), giu nguyen cac muc dang
-          duoc tick neu van con trong danh sach moi.
-        """
         if not self.cbo_category:
             return
         if self._multi_category:
@@ -399,26 +347,17 @@ class FilterBar(tk.Frame):
         self._category_id_map = {c["name"]: c["id"] for c in categories}
         cur = self.cbo_category.get()
         self.cbo_category.configure(values=names)
-        # Giu lai lua chon cu neu ten do van con trong danh sach moi
+
         self.cbo_category.set(cur if cur in names else "Tất cả")
 
     def get(self):
-        """
-        Tra ve (mc_version, loader, category).
-        'category' co the la:
-          - "" khi khong loc theo category
-          - chuoi ten hoac id so, neu multi_category=False (CurseForge/
-            Modrinth cu, chi chon 1 gia tri)
-          - list[str] cac slug da tick, neu multi_category=True (Modrinth,
-            cho phep chon nhieu the loai cung luc)
-        """
         ver_raw = self.cbo_mc.get().strip()
         ver     = "" if ver_raw in ("Tất cả", "") else ver_raw
         loader = self.cbo_loader.get() if self.cbo_loader else "Tất cả"
         if not self.cbo_category:
             category = ""
         elif self._multi_category:
-            category = self.cbo_category.get_selected()  # list[str], co the rong
+            category = self.cbo_category.get_selected()
         else:
             cat_ten = self.cbo_category.get()
             if cat_ten in ("Tất cả", ""):
@@ -442,23 +381,12 @@ class FilterBar(tk.Frame):
                 self.cbo_category.set("Tất cả")
         self._cb()
 
-
 class _IconCache:
-    """
-    Tai anh icon tu URL trong thread phu, resize vuong ve ICON_SIZE,
-    cache theo URL de khong tai lai. Khi xong se goi callback(photo)
-    tren main thread qua widget.after().
-    """
-    _cache = {}      # url -> ImageTk.PhotoImage
-    _pending = {}    # url -> list of (widget, on_ready) dang doi
+    _cache = {}
+    _pending = {}
 
     @classmethod
     def get(cls, widget, url, on_ready):
-        """
-        Tra ve ngay PhotoImage neu da co trong cache (va goi on_ready).
-        Neu chua co va url hop le -> tai nen, goi on_ready khi xong.
-        Neu khong co url -> goi on_ready(None).
-        """
         if not url or not _PIL_OK:
             on_ready(None)
             return
@@ -497,7 +425,6 @@ class _IconCache:
 
     @classmethod
     def placeholder(cls, widget):
-        """Anh placeholder mau xam (khong co icon / dang tai)."""
         key = "__placeholder_" + theme.get_theme_name() + "__"
         if key in cls._cache:
             return cls._cache[key]
@@ -511,23 +438,9 @@ class _IconCache:
         cls._cache[key] = photo
         return photo
 
-
 class ContentTableWidget(tk.Frame):
-    """
-    Bang danh sach dang cac dong (row) co anh icon ben trai + thong tin
-    ten / tac gia / mo ta ben canh, luot tai + MC ver ben phai.
 
-    Render bang Canvas + scrollbar (khong dung Treeview) de co the
-    chen anh thumbnail cho moi dong, anh duoc tai bat dong bo + cache.
-
-    Icon chi duoc tai khi dong nam trong (hoac gan) khung nhin, tranh
-    tai hang chuc anh cung luc khi mo tab / load danh sach moi.
-
-    source: 'modrinth' | 'curseforge'
-    on_select_cb(idx, install=False) — goi khi chon / double-click dong.
-    """
-
-    ROW_H = 118  # chieu cao moi dong (icon + ten/tac gia + mo ta + dong tag/so lieu)
+    ROW_H = 118
 
     def __init__(self, parent, source, on_select_cb, style_name="Modpack.Treeview",
                  accent_color=None, **kwargs):
@@ -537,17 +450,13 @@ class ContentTableWidget(tk.Frame):
         self._source   = source
         self._cb       = on_select_cb
         self._data     = []
-        self._rows     = []   # list of dict: frame, icon_label, ...
+        self._rows     = []
         self._selected = -1
         self._accent   = accent_color or (
             ACCENT_MODRINTH if source == "modrinth" else ACCENT_CURSEFORGE)
 
-        # Instance ModMcWindow/ModMcFrame dung ham select cb ("_select_mr"...)
-        # nay - lay ra qua __self__ de co the tu kiem tra "dang co tac vu
-        # chay khong" (_dang_co_tac_vu) va tu goi huy (_huy_tac_vu) ngay tu
-        # widget nay, KHONG can sua modrinthmod.py / forgemod.py.
         self._owner          = getattr(on_select_cb, "__self__", None)
-        self._installing_row = None   # idx dong dang hien nut "Hủy", None = khong co
+        self._installing_row = None
         self._poll_after_id  = None
 
         self.canvas = tk.Canvas(self, bg=bg, highlightthickness=0, bd=0)
@@ -572,14 +481,7 @@ class ContentTableWidget(tk.Frame):
         self._schedule_visible_check()
 
     def _on_canvas_configure(self, e):
-        # QUAN TRONG: KHONG goi itemconfig(width=...) ngay tai day. Lam vay
-        # ep Tk sap xep lai (re-pack) TOAN BO cac dong (row) ben trong inner
-        # NGAY LAP TUC tren MOI tick resize - trong luc keo chuot thay doi
-        # kich thuoc cua so, co the co hang chuc tick/giay, nhan voi hang
-        # chuc dong trong danh sach -> day chinh la nguyen nhan gay giat/lag
-        # ro ret (nang hon nhieu so voi viec tinh lai wraplength). Thay vao
-        # do chi luu lai chieu rong moi nhat va debounce - sap xep lai CHI
-        # MOT LAN sau khi nguoi dung ngung keo ~70ms.
+
         self._pending_canvas_width = e.width
         self._schedule_wrap_refresh()
 
@@ -601,7 +503,6 @@ class ContentTableWidget(tk.Frame):
         self._schedule_visible_check()
 
     def _schedule_visible_check(self):
-        """Debounce nho: cho UI on dinh roi moi quet icon hien thi."""
         if self._visible_check_id is not None:
             try:
                 self.after_cancel(self._visible_check_id)
@@ -610,13 +511,12 @@ class ContentTableWidget(tk.Frame):
         self._visible_check_id = self.after(50, self._load_visible_icons)
 
     def _load_visible_icons(self):
-        """Tai icon cho cac dong dang hien trong khung nhin (+ vung dem)."""
         self._visible_check_id = None
         if not self._rows:
             return
         top    = self.canvas.canvasy(0)
         bottom = top + self.canvas.winfo_height()
-        buffer = self.ROW_H * 3  # tai truoc/sau 3 dong de cuon muot hon
+        buffer = self.ROW_H * 3
 
         for row in self._rows:
             if row.get("icon_loaded"):
@@ -680,7 +580,7 @@ class ContentTableWidget(tk.Frame):
             tags   = [c.title() for c in cats if c.lower() not in _LOADER_SLUGS]
             updated_str = _dinh_dang_ngay_tuong_doi(d.get("date_modified", ""))
 
-        else:  # curseforge
+        else:
             name      = d.get("name", "")
             authors   = d.get("authors", [])
             author    = authors[0].get("name", "") if authors else ""
@@ -716,11 +616,6 @@ class ContentTableWidget(tk.Frame):
                          bg=bg, fg=fg, padx=6, pady=1)
 
     def _show_hidden_tags_popup(self, event, hidden_tags):
-        """
-        Hien popup nho liet ke DAY DU cac the loai bi an sau chip "+N" -
-        giong dung hanh vi cua CurseForge that (hover vao "Hardcore +6" tren
-        mot card se xo ra dropdown liet ke ca 6 the loai con lai).
-        """
         c = theme.colors()
         pop_bg  = c["bg_alt"]
         border  = c["icon_border"]
@@ -746,7 +641,7 @@ class ContentTableWidget(tk.Frame):
         top.bind("<FocusOut>", _close)
         top.bind("<Leave>", lambda e: top.after(150, _close))
         top.focus_force()
-        top.after(4000, _close)  # tu dong dong sau 4s de tranh treo popup mai
+        top.after(4000, _close)
 
     def _build_row(self, i, d):
         info = self._extract(d)
@@ -762,7 +657,6 @@ class ContentTableWidget(tk.Frame):
         row.pack(fill="x")
         row.pack_propagate(False)
 
-        # --- Icon lon ben trai, choan het chieu cao dong (giong the CF) ---
         icon_holder = tk.Frame(row, bg=c["row_bg"])
         icon_holder.pack(side="left", fill="y", padx=(10, 10), pady=10)
         ph = _IconCache.placeholder(self)
@@ -779,15 +673,11 @@ class ContentTableWidget(tk.Frame):
                 lbl.configure(image=photo)
                 lbl.image = photo
             except tk.TclError:
-                pass  # widget da bi destroy
-
-        # Khong tai icon ngay - se duoc tai khi dong nay vao khung nhin
-        # (xem _load_visible_icons), tranh tai hang chuc anh cung luc.
+                pass
 
         text_col = tk.Frame(row, bg=c["row_bg"])
         text_col.pack(side="left", fill="both", expand=True, pady=(10, 8))
 
-        # --- Dong 1: ten + tac gia (trai)  ...  nut Cai dat (phai) ---
         header_row = tk.Frame(text_col, bg=c["row_bg"])
         header_row.pack(fill="x", anchor="w")
 
@@ -804,13 +694,6 @@ class ContentTableWidget(tk.Frame):
         lbl_author = tk.Label(head_left, text=sub, font=("Arial", 9),
                                fg=c["fg_author"], bg=c["row_bg"], anchor="w", justify="left")
         lbl_author.pack(side="left")
-        # Luon giu ten/tac gia tren MOT dong duy nhat (giong the CurseForge/
-        # Modrinth that) - KHONG dung wraplength o day, vi head_left chua
-        # ca 3 label (icon + ten + tac gia) tren cung mot hang ngang nen
-        # wraplength tinh theo be rong ca cum se lam tk tu xuong dong tung
-        # chu mot cach roi rac (vd "Fabulo/usly/Optimiz/ed"). Thay vao do,
-        # ten/tac gia se duoc CAT BOT bang "..." khi khong du cho, tinh lai
-        # moi khi dong duoc resize (xem _refresh_wraps).
 
         btn_install = tk.Button(
             header_row, text="Cài đặt", font=("Arial", 9, "bold"),
@@ -819,12 +702,10 @@ class ContentTableWidget(tk.Frame):
             command=lambda idx=i: self._on_btn_install_click(idx))
         btn_install.pack(side="right", padx=(8, 4))
 
-        # --- Dong 2: mo ta ngan ---
         lbl_desc = tk.Label(text_col, text=desc, font=("Arial", 9),
                              fg=c["fg_desc"], bg=c["row_bg"], anchor="w", justify="left")
         lbl_desc.pack(fill="x", anchor="w", pady=(3, 4))
 
-        # --- Dong 3: tag/category (trai)  ...  so lieu tai/cap nhat/loader (phai) ---
         footer_row = tk.Frame(text_col, bg=c["row_bg"])
         footer_row.pack(fill="x", anchor="w")
 
@@ -840,9 +721,7 @@ class ContentTableWidget(tk.Frame):
                 tags_box, f"+{len(hidden)}", c.get("chip_bg", "#e1e4ea"), c["fg_tag"])
             more_chip.configure(cursor="hand2")
             more_chip.pack(side="left")
-            # Bam vao "+N" se hien popup liet ke DAY DU cac the loai con lai
-            # (giong hanh vi hover-dropdown cua CurseForge that khi ban tro
-            # chuot vao "Hardcore +6" tren mot the mod).
+
             more_chip.bind("<Button-1>", lambda e, hd=hidden: self._show_hidden_tags_popup(e, hd))
 
         stats_box = tk.Frame(footer_row, bg=c["row_bg"])
@@ -866,14 +745,6 @@ class ContentTableWidget(tk.Frame):
         sep = tk.Frame(self.inner, bg=c["row_sep"], height=1)
         sep.pack(fill="x")
 
-        # Tinh lai wraplength khi text_col doi kich thuoc (vd cua so duoc
-        # keo rong/hep). KHONG tinh ngay lap tuc trong lambda nay - trong
-        # luc keo chuot, Tk phat ra rat nhieu su kien <Configure> lien tiep
-        # cho MOI dong dang co trong bang, neu xu ly ngay se gay giat/lag
-        # ro ret voi danh sach nhieu dong. Thay vao do chi "danh dau can
-        # cap nhat" va goi _schedule_wrap_refresh() - gom (debounce) tat ca
-        # cac lan trigger lien tiep thanh DUY NHAT mot lan tinh lai sau khi
-        # nguoi dung ngung keo ~70ms (xem _schedule_wrap_refresh / _refresh_wraps).
         text_col.bind("<Configure>", lambda e: self._schedule_wrap_refresh())
 
         widgets = [row, icon_holder, icon_lbl, text_col, header_row, head_left,
@@ -895,11 +766,6 @@ class ContentTableWidget(tk.Frame):
         })
 
     def _schedule_wrap_refresh(self):
-        """Gom nhieu su kien <Configure> lien tiep (vd trong luc keo chuot
-        thay doi kich thuoc cua so) thanh MOT lan tinh lai wraplength duy
-        nhat cho tat ca cac dong, thay vi tinh lai ngay lap tuc cho tung
-        dong tren tung su kien - day la nguyen nhan chinh gay giat/lag khi
-        keo rong cua so o danh sach Mod/Modpack/Resource Pack/Shader."""
         if getattr(self, "_wrap_after_id", None) is not None:
             try:
                 self.after_cancel(self._wrap_after_id)
@@ -910,10 +776,6 @@ class ContentTableWidget(tk.Frame):
     def _refresh_wraps(self):
         self._wrap_after_id = None
 
-        # Ap dung chieu rong canvas moi nhat (bi hoan lai o _on_canvas_configure)
-        # NGAY TAI DAY - chi MOT LAN duy nhat cho ca danh sach, thay vi tren
-        # moi tick resize. Day la buoc gay "re-pack" toan bo cac dong nen can
-        # gom lai nhu the nay de tranh giat/lag.
         if self._pending_canvas_width is not None:
             try:
                 self.canvas.itemconfig(self._inner_id, width=self._pending_canvas_width)
@@ -930,19 +792,9 @@ class ContentTableWidget(tk.Frame):
                 row["lbl_desc"].configure(wraplength=w_full)
                 self._elide_name_author(row, w_full)
             except tk.TclError:
-                pass  # dong da bi destroy (vd danh sach da duoc load() lai)
+                pass
 
     def _elide_name_author(self, row, w_full):
-        """Cat bot ten mod / tac gia bang '...' de LUON nam tren MOT dong
-        (giong the CurseForge/Modrinth that), thay vi dung wraplength.
-
-        Ly do KHONG dung wraplength o day: head_left chua CA BA label
-        (icon ◆ + ten + tac gia) tren cung mot hang ngang (pack side="left"),
-        nen wraplength tinh theo be rong ca cum head_left neu ap cho rieng
-        lbl_name/lbl_author se qua hep va khien Tk tu ngat dong NGAY GIUA
-        TU, chu khong ngat theo tu - gay loi hien thi vd "Fabulo/usly/
-        Optimiz/ed" thay vi "Fabulously Optimized" tren mot dong.
-        """
         lbl_name   = row.get("lbl_name")
         lbl_author = row.get("lbl_author")
         if lbl_name is None or lbl_author is None:
@@ -951,15 +803,9 @@ class ContentTableWidget(tk.Frame):
         name_full   = row.get("name_full", "")
         author_full = row.get("author_full", "")
 
-        # Bo lai wraplength=0 (khong wrap) phong khi code cu da tung set.
         lbl_name.configure(wraplength=0)
         lbl_author.configure(wraplength=0)
 
-        # Uoc luong khong gian danh cho ca cum "◆ ten  ·  cua tac gia":
-        # tru di phan icon ◆ + nut "Cai dat" da chiem o header_row.
-        # Dung mot ty le "hao phong" cua w_full lam gioi han, vi header_row
-        # con phai chia cho nut Cai dat ben phai (khong the do chinh xac
-        # tuyet doi bang winfo_width() cua head_left ngay luc resize).
         max_w = max(int(w_full * 0.62), 80)
 
         font_name   = tkfont.Font(font=lbl_name["font"])
@@ -990,8 +836,6 @@ class ContentTableWidget(tk.Frame):
             lbl_author.configure(text=author_full)
             return
 
-        # Uu tien giu ten mod day du hon, cat tac gia truoc; neu van khong
-        # vua thi cat ca ten.
         name_budget = min(name_w, int(max_w * 0.7))
         author_budget = max(max_w - name_budget, 0)
 
@@ -1003,20 +847,9 @@ class ContentTableWidget(tk.Frame):
         lbl_author.configure(text=new_author)
 
     def _on_row_double_click(self, idx):
-        """Double-click vao mot dong -> mo man chi tiet (ModDetailWindow) de
-        xem mo ta/doi phien ban, KHONG cai dat ngay va KHONG dong bo voi
-        trang thai nut 'Cai dat' ben phai (viec cai dat that su van chi xay
-        ra khi nguoi dung bam nut 'Cai dat' trong man chi tiet do)."""
         self._select(idx, install=False, view=True)
 
     def _on_btn_install_click(self, idx):
-        """Bam nut 'Cai dat' ben phai moi dong -> cai dat TRUC TIEP (tu
-        dong tai va chon phien ban moi nhat phu hop, KHONG mo man chi tiet):
-        - Neu dong nay CHUA cai -> bat dau cai (goi _select(install=True))
-          va doi text nut thanh "Hủy".
-        - Neu dong nay DANG cai (nut dang la "Hủy") -> goi huy tac vu
-          (co hoi xac nhan, dung ham _huy_tac_vu() da co san o ModMcWindow/
-          ModMcFrame, lay qua __self__ cua on_select_cb - xem __init__)."""
         if self._installing_row == idx:
             if self._owner is not None and hasattr(self._owner, "_huy_tac_vu"):
                 try:
@@ -1044,7 +877,7 @@ class ContentTableWidget(tk.Frame):
                 acc = row.get("accent", self._accent)
                 btn.configure(text="Cài đặt", bg=acc, activebackground=acc)
         except tk.TclError:
-            pass  # nut da bi destroy (vd danh sach da duoc load() lai)
+            pass
 
     def _schedule_poll_busy(self):
         if self._poll_after_id is not None:
@@ -1055,10 +888,6 @@ class ContentTableWidget(tk.Frame):
         self._poll_after_id = self.after(400, self._poll_busy)
 
     def _poll_busy(self):
-        """Kiem tra xem tac vu cai dat cua dong dang 'Hủy' da xong chua
-        (thanh cong / loi / bi huy deu tinh la xong) - dua vao
-        owner._dang_co_tac_vu() da co san, khong can modrinthmod.py /
-        forgemod.py bao lai truc tiep cho widget nay."""
         self._poll_after_id = None
         idx = self._installing_row
         if idx is None:
@@ -1076,15 +905,6 @@ class ContentTableWidget(tk.Frame):
         self._schedule_poll_busy()
 
     def sync_installing_state(self):
-        """Doi chieu lai trang thai nut Cai dat/Hủy cua dong DANG DUOC CHON
-        (self._selected) voi trang thai "dang co tac vu chay" thuc te cua
-        owner (ModMcWindow/ModMcFrame) - dung khi bang danh sach nay duoc
-        hien lai (vd sau khi nguoi dung bam "Quay lai danh sach" tu
-        ModDetailWindow, noi ma viec cai dat/huy co the da duoc bat dau/ket
-        thuc TU DO chu khong phai tu nut tren dong nay).
-
-        Goi ham nay moi khi frame chua bang nay duoc pack() tro lai (xem
-        _swap_to_list() trong mod_mc.py)."""
         if self._owner is None or not hasattr(self._owner, "_dang_co_tac_vu"):
             return
         try:
@@ -1093,10 +913,7 @@ class ContentTableWidget(tk.Frame):
             dang_ban = False
 
         if dang_ban:
-            # Chi co the biet CHINH XAC dong nao dang cai neu do la dong
-            # dang duoc chon (self._selected) - vi day la thiet ke 1 tac vu
-            # tai 1 thoi diem cua ca ung dung (xem _dang_co_tac_vu()/
-            # _huy_tac_vu() o ModMcWindow/ModMcFrame).
+
             if self._selected != -1 and self._installing_row != self._selected:
                 if self._installing_row is not None:
                     self._set_btn_install_state(self._installing_row, installing=False)
@@ -1117,9 +934,7 @@ class ContentTableWidget(tk.Frame):
     def _select(self, idx, install=False, view=False):
         if idx < 0 or idx >= len(self._rows):
             return
-        # Doc mau theme MOI NHAT moi lan chon/bo chon, tranh dung mau
-        # da cu (cache tu luc khoi tao) gay sai mau (vd den) khi theme
-        # (app hoac he thong) da doi sau khi bang duoc dung.
+
         self._c = theme.colors()
         if self._selected != -1 and self._selected < len(self._rows):
             self._set_row_bg(self._selected, self._c["row_bg"])
@@ -1139,12 +954,7 @@ class ContentTableWidget(tk.Frame):
     def get_selected(self):
         return self._selected
 
-
 def make_install_panel(parent, bg, lbl_phien_ban, lbl_instance, btn_text, btn_color, btn_cmd):
-    """
-    Tao panel chon phien ban + instance + nut cai.
-    Tra ve (cbo_ver, cbo_inst).
-    """
     bp = tk.Frame(parent, bg=bg)
     bp.pack(fill="x", padx=10, pady=(4, 8))
 

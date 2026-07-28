@@ -32,7 +32,6 @@ class VersionFrame(tk.Frame):
         self.cbo_mod_loader.pack(pady=5)
         self.cbo_mod_loader.bind("<<ComboboxSelected>>", self.cap_nhat_danh_sach_mod_version)
 
-        # Chưa pack() ngay - ẩn/hiện tùy theo loại mod loader được chọn
         self.lbl_mod_ver = tk.Label(self, text="Chọn Phiên bản Mod Loader cụ thể:", font=("Arial", 10, "bold"), fg="#2E7D32")
         self.cbo_mod_versions = ttk.Combobox(self, font=("Arial", 10), state="readonly", width=35)
 

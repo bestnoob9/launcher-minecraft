@@ -7,9 +7,7 @@ class AccountFrame(tk.Frame):
     def __init__(self, parent, on_change_callback):
         super().__init__(parent)
         self.on_change_callback = on_change_callback
-        # Đồng bộ username.json ngay khi mở app: các tài khoản đã tạo TỪ
-        # TRƯỚC khi có tính năng này cũng được backfill UUID vào file,
-        # không cần đợi tới lúc bấm "Vào game".
+
         config.dong_bo_username_json(
             config.current_config.get("thu_muc_game", ""),
             config.current_config.get("danh_sach_acc", []),
@@ -53,7 +51,6 @@ class AccountFrame(tk.Frame):
         return self.cbo_username.get().strip()
 
     def khoa(self, tat: bool):
-        """Khóa/mở khóa toàn bộ UI tài khoản. tat=True → khóa, False → mở."""
         trang_thai_cb = "disabled" if tat else "readonly"
         trang_thai_btn = "disabled" if tat else "normal"
         self.cbo_username.configure(state=trang_thai_cb)
@@ -61,7 +58,7 @@ class AccountFrame(tk.Frame):
         self.btn_del_acc.configure(state=trang_thai_btn)
 
     def them_tai_khoan(self):
-        # Nếu main.py đã wire inline panel thì dùng, không thì fallback Toplevel
+
         if hasattr(self, 'on_open_add_panel') and self.on_open_add_panel:
             self.on_open_add_panel()
             return
@@ -122,10 +119,6 @@ class AccountFrame(tk.Frame):
             config.luu_toan_bo_cau_hinh()
             self.on_change_callback()
     def build_add_panel(self, parent, on_close):
-        """
-        Dựng form Thêm tài khoản vào 'parent' (Frame inline).
-        on_close() được gọi khi người dùng hủy hoặc thêm xong.
-        """
         bar = tk.Frame(parent)
         bar.pack(fill="x", padx=16, pady=(12, 4))
         tk.Label(bar, text="➕ Thêm tài khoản", font=("Arial", 12, "bold"), fg="#4CAF50").pack(side="left")

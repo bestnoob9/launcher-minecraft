@@ -1,14 +1,3 @@
-"""
-forgemod.py
------------
-Tat ca method lien quan den CurseForge trong ModMcWindow / ModMcFrame:
-  - Tab Modpack        (CurseForge)
-  - Tab Mod            (CurseForge)
-  - Tab Resource Pack  (CurseForge)
-  - Tab Shader         (CurseForge)
-
-Duoc mix vao class chinh qua ke thua ForgeModMixin.
-"""
 
 import os
 import shutil
@@ -36,10 +25,8 @@ from components.install_utils import (
     luu_modpack_da_cai,
 )
 
-_NO_INST = "— Chưa chọn —"   # Gia tri placeholder "khong chon instance"
+_NO_INST = "— Chưa chọn —"
 
-# CurseForge dung version string rieng (vd "26.2") thay vi "1.21.4".
-# Bang mapping MC ver -> CF ver de loc phien ban dung format.
 _MC_TO_CF = {
     "1.21.5": "26.3", "1.21.4": "26.2", "1.21.3": "26.1", "1.21.2": "26.1",
     "1.21.1": "26.1", "1.21":   "26.0",
@@ -52,9 +39,7 @@ _MC_TO_CF = {
     "1.16.2": "21.2", "1.16.1": "21.1", "1.16": "21.0",
 }
 
-
 def _cf_build_url(version_data):
-    """Tra ve download URL tu version_data CurseForge (xu ly truong hop CF an URL)."""
     url = version_data.get("downloadUrl", "")
     if not url:
         fid = version_data.get("id", 0)
@@ -65,36 +50,17 @@ def _cf_build_url(version_data):
                    f"{ids[:4]}/{ids[4:].lstrip('0') or '0'}/{urllib.parse.quote(fn)}")
     return url
 
-
 class ForgeModMixin:
-    """
-    Mixin chua toan bo logic cho cac tab CurseForge (Modpack / Mod / RSP / Shader).
-
-    Yeu cau class cha co cac thuoc tinh:
-        self.tab_cf, self.tab_modcf, self.tab_rsp_cf, self.tab_sh_cf
-        self.ent_search, self.lbl_status,
-        self._cancel_event, self._tang_tac_vu(), self._giam_tac_vu(),
-        self._swap_to_detail(), self._get_inst_mc_loader(),
-        TacVuBiHuy (exception class)
-    """
 
     def _load_categories_async(self, fb, class_id):
-        """
-        Tai danh sach category THAT cua CurseForge (theo class_id) trong
-        thread phu, roi fill vao dropdown Category cua FilterBar 'fb' khi
-        xong. Goi 1 lan ngay sau khi tao moi FilterBar cho 4 tab CurseForge
-        (Modpack=4471, Mod=6, Resource Pack=12, Shader=6552).
-        """
         def _t():
             try:
                 cats = lay_category_curseforge(class_id)
                 if cats:
                     fb.after(0, lambda: fb.set_categories(cats))
             except Exception:
-                pass  # giu nguyen list rong/mac dinh neu loi - khong chan UI
+                pass
         threading.Thread(target=_t, daemon=True).start()
-
-    # TAB: MODPACK CURSEFORGE
 
     def _build_modpack_curseforge(self):
         from components.widgets import FilterBar, ContentTableWidget
@@ -186,9 +152,7 @@ class ForgeModMixin:
                     _finish()
                     return
                 fname    = version_data.get("fileName", "modpack.zip")
-                # Neu modpack nay DA duoc cai o mot instance nao do roi -> cai
-                # DE LEN CHINH instance do (cap nhat/ha phien ban tai cho),
-                # thay vi luon tao instance moi theo ten[:30] nhu truoc day.
+
                 _da_cai  = lay_trang_thai_da_cai("modpack", "curseforge", mid)
                 ten_inst = _da_cai["ten_instance"] if _da_cai else ten[:30]
                 self.lbl_status.config(text="Đang tải từ CurseForge...", fg="#E64A19")
@@ -204,7 +168,7 @@ class ForgeModMixin:
                             pct = int(da / tong * 100)
                             self.after(0, lambda: self.lbl_status.config(
                                 text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#E64A19"))
-                            # Giai doan tai file goi modpack chiem 0-10% thanh tien trinh chung
+
                             self.ghi_tien_do(pct // 10, f"Đang tải gói: {pct}%")
                             if progress_cb:
                                 self.after(0, lambda: progress_cb(pct // 10, 100))
@@ -218,24 +182,18 @@ class ForgeModMixin:
                                                version_data.get("id"),
                                                version_data.get("displayName", version_data.get("fileName", "")),
                                                ngay=version_data.get("fileDate"))
-                            # QUAN TRONG: goi _giam_tac_vu() O DAY (khi modpack
-                            # da THUC SU cai xong), khong phai ngay sau khi goi
-                            # cai_modpack_tu_file() - vi ham do chay ngam trong
-                            # 1 thread rieng va tra ve ngay lap tuc. Neu giam
-                            # tac vu qua som, nut "Hủy" se bi tat ngay ca khi
-                            # con dang tai x/xxx mod.
+
                             self._giam_tac_vu()
                             self._done()
                             _finish()
                         def _huy_va_xoa():
-                            # Goi khi cai_modpack_tu_file ket thuc do BI HUY/LOI -
-                            # rieng voi _done_va_xoa (chi danh cho THANH CONG).
+
                             try: shutil.rmtree(tmp)
                             except: pass
                             self._giam_tac_vu()
                             _finish()
                         def _modpack_progress(da_mod, tong_mod):
-                            # Giai doan cai tung mod chiem 10-100% thanh tien trinh chung
+
                             if tong_mod:
                                 self.ghi_tien_do(10 + int(da_mod / tong_mod * 90),
                                                   f"{da_mod}/{tong_mod} mod")
@@ -265,9 +223,7 @@ class ForgeModMixin:
             return
 
         if install:
-            # Cai truc tiep: tu tai danh sach phien ban, uu tien phien ban
-            # khop voi MC Ver dang loc tren FilterBar (neu co), khong thi
-            # lay phien ban dau tien (moi nhat) - KHONG mo man chi tiet.
+
             self._tang_tac_vu()
             self.lbl_status.config(text=f"Đang tải phiên bản '{ten}'...", fg="#E64A19")
             def _t():
@@ -299,8 +255,6 @@ class ForgeModMixin:
                     self.after(0, _err)
             threading.Thread(target=_t, daemon=True).start()
             return
-
-    # TAB: MOD CURSEFORGE
 
     def _build_mod_curseforge(self):
         from components.widgets import FilterBar, ContentTableWidget
@@ -499,8 +453,6 @@ class ForgeModMixin:
         ten_inst = self.cbo_modcf_inst.get().strip(); ten_inst = "" if ten_inst == _NO_INST else ten_inst
         mcv, loader = self._get_inst_mc_loader(ten_inst) if ten_inst else ("", "")
 
-        # Dong bo MC Ver va Loader len FilterBar khi chon Instance,
-        # nhung KHONG khoa - nguoi dung van co the tu chinh lai.
         if mcv:
             try:
                 cbo_mc = self.fb_modcf.cbo_mc
@@ -618,8 +570,6 @@ class ForgeModMixin:
                 self._giam_tac_vu()
         threading.Thread(target=_t, daemon=True).start()
 
-    # TAB: RESOURCE PACK CURSEFORGE
-
     def _build_rsp_cf_tab(self):
         from components.widgets import FilterBar, ContentTableWidget
         from components.mod_mc import PaginationBar
@@ -652,8 +602,7 @@ class ForgeModMixin:
         self.cbo_rsp_cf_inst = ttk.Combobox(bp, values=[_NO_INST] + ds_inst, font=("Arial", 9), width=42, height=5)
         self.cbo_rsp_cf_inst.set(_NO_INST)
         self.cbo_rsp_cf_inst.grid(row=1, column=1, padx=6)
-        # RSP khong can loc phien ban theo Instance - chi dong bo lai
-        # danh sach Instance.
+
         self.cbo_rsp_cf_inst.bind("<ButtonPress>", lambda e: self._sync_inst_cbo(self.cbo_rsp_cf_inst))
         tk.Button(bp, text="Cài RSP", font=("Arial", 9, "bold"),
                   bg="#AB47BC", fg="white", activebackground="#AB47BC", activeforeground="white",
@@ -804,8 +753,6 @@ class ForgeModMixin:
         threading.Thread(target=_t, daemon=True).start()
 
     def _filter_rsp_cf_ver(self):
-        """RSP khong can loc/khoa theo Instance - chi hien toan bo
-        phien ban, nguoi dung tu chon neu can."""
         files  = self._rsp_cf_files
         ds_all = [f"{fi.get('displayName', fi.get('fileName',''))}  -  MC {', '.join(fi.get('gameVersions',[]))}"
                   for fi in files]
@@ -872,8 +819,6 @@ class ForgeModMixin:
                 self._giam_tac_vu()
         threading.Thread(target=_t, daemon=True).start()
 
-    # TAB: SHADER CURSEFORGE
-
     def _build_shader_cf_tab(self):
         from components.widgets import FilterBar, ContentTableWidget
         from components.mod_mc import PaginationBar
@@ -906,8 +851,7 @@ class ForgeModMixin:
         self.cbo_sh_cf_inst = ttk.Combobox(bp, values=[_NO_INST] + ds_inst, font=("Arial", 9), width=42, height=5)
         self.cbo_sh_cf_inst.set(_NO_INST)
         self.cbo_sh_cf_inst.grid(row=1, column=1, padx=6)
-        # Shader khong can loc phien ban theo Instance - chi dong bo lai
-        # danh sach Instance.
+
         self.cbo_sh_cf_inst.bind("<ButtonPress>", lambda e: self._sync_inst_cbo(self.cbo_sh_cf_inst))
         tk.Button(bp, text="Cài Shader", font=("Arial", 9, "bold"),
                   bg="#FB8C00", fg="white", activebackground="#FB8C00", activeforeground="white",
@@ -1058,8 +1002,6 @@ class ForgeModMixin:
         threading.Thread(target=_t, daemon=True).start()
 
     def _filter_sh_cf_ver(self):
-        """Shader khong can loc/khoa theo Instance - chi hien toan bo
-        phien ban, nguoi dung tu chon neu can."""
         files  = self._sh_cf_files
         ds_all = [f"{fi.get('displayName', fi.get('fileName',''))}  -  MC {', '.join(fi.get('gameVersions',[]))}"
                   for fi in files]

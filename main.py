@@ -12,16 +12,13 @@ from components.account_frame import AccountFrame
 from components.instance_frame import InstanceFrame
 from setup_wizard import kiem_tra_va_chay_wizard
 
-
 def _can_giua_man_hinh(win, width, height):
-    """Canh cửa sổ ra giữa màn hình theo kích thước width x height."""
     win.update_idletasks()
     sw = win.winfo_screenwidth()
     sh = win.winfo_screenheight()
     x = (sw - width) // 2
     y = (sh - height) // 2
     win.geometry(f"{width}x{height}+{x}+{y}")
-
 
 def _doc_cau_hinh_may():
     import math
@@ -86,12 +83,11 @@ def _doc_cau_hinh_may():
         info["ram_total_mb"] = total_mb
         info["ram_total_gb"] = _lam_tron_ram_gb(total_mb)
     else:
-        print("[System] Không phát hiện được RAM, dùng tạm 8 GB.")
+        print("[System] where ram bro")
 
     config.current_config["_system_info"] = info
 
 class ConsoleWindow(tk.Toplevel):
-    # Màu cố định, không bị theme ghi đè
     _BG_MAIN   = "#1e1e1e"
     _BG_BAR    = "#2d2d2d"
     _BG_BTN    = "#3c3c3c"
@@ -105,8 +101,6 @@ class ConsoleWindow(tk.Toplevel):
         self.resizable(True, True)
         self.protocol("WM_DELETE_WINDOW", self.withdraw)
         _gan_icon_app(self)
-
-        # Đặt màu nền cửa sổ cố định
         self.configure(bg=self._BG_MAIN)
 
         self.txt = tk.Text(self, font=("Consolas", 9),
@@ -133,28 +127,23 @@ class ConsoleWindow(tk.Toplevel):
         self.lbl_count.pack(side="right", padx=8)
 
         self._line_count = 0
-
-        # Chống theme ghi đè: khôi phục màu mỗi khi cửa sổ được hiển thị
         self.bind("<Map>", self._restore_colors)
 
         self.withdraw()
 
     def _restore_colors(self, event=None):
-        """Khôi phục màu cố định sau khi theme có thể đã thay đổi."""
         try:
             self.configure(bg=self._BG_MAIN)
             self.txt.configure(bg=self._BG_MAIN, fg=self._FG_TEXT)
             self._btn_clear.configure(bg=self._BG_BTN, fg="white",
                                       activebackground="#555", activeforeground="white")
             self.lbl_count.configure(bg=self._BG_BAR, fg=self._FG_COUNT)
-            # Tìm btn_frame qua parent của lbl_count
             bf = self.lbl_count.master
             if bf:
                 bf.configure(bg=self._BG_BAR)
         except Exception:
             pass
     def append(self, text):
-        """Thêm text vào console (thread-safe qua after)."""
         self.txt.config(state="normal")
         self.txt.insert("end", text)
         self.txt.see("end")
@@ -173,17 +162,13 @@ class ConsoleWindow(tk.Toplevel):
         self.deiconify()
         self.lift()
 
-
 class MinecraftLauncherApp:
-    # Màu tab bar
     _TAB_ACTIVE_BG   = "#1E88E5"
     _TAB_INACTIVE_BG = "#37474F"
     _TAB_FG          = "white"
 
     @staticmethod
     def _doc_kich_thuoc_cua_so():
-        """Doc kich thuoc cua so launcher (width, height) tu config, kem
-        gia tri mac dinh an toan neu chua co / bi loi dinh dang."""
         import re
         raw = str(config.current_config.get("kich_thuoc_cua_so", "1280x720"))
         match = re.search(r"(\d+)\s*x\s*(\d+)", raw)
@@ -194,15 +179,13 @@ class MinecraftLauncherApp:
         return 1280, 720
 
     def ap_dung_kich_thuoc_cua_so(self):
-        """Goi lai sau khi nguoi dung luu kich thuoc cua so moi trong Settings
-        de resize + can giua cua so ngay, khong can khoi dong lai app."""
         rong_cs, cao_cs = self._doc_kich_thuoc_cua_so()
         self.root.minsize(min(800, rong_cs), min(600, cao_cs))
         _can_giua_man_hinh(self.root, rong_cs, cao_cs)
 
     def __init__(self, root):
         self.root = root
-        self.root.title("Bacontete MCL")
+        self.root.title("Test MCL")
 
         rong_cs, cao_cs = self._doc_kich_thuoc_cua_so()
         self.root.minsize(min(800, rong_cs), min(600, cao_cs))
@@ -216,22 +199,18 @@ class MinecraftLauncherApp:
         self._huy_tai = False
 
         self.console = ConsoleWindow(root)
-        self._current_view = None          # tên view đang hiển thị
-        self._tab_buttons  = {}            # tên → Button widget
-        self._view_frames  = {}            # tên → Frame widget
+        self._current_view = None          
+        self._tab_buttons  = {}            
+        self._view_frames  = {}            
 
         self.create_widgets()
         theme.apply_theme(self.root)
         self.root.protocol("WM_DELETE_WINDOW", self._xu_ly_thoat)
 
-        # Hiện view mặc định
-        self._switch_view("home")
-
-    # ------------------------------------------------------------------ #
-    #  SKELETON LAYOUT                                                     #
+        self._switch_view("home")                                              
     def create_widgets(self):
         lbl_main_title = tk.Label(
-            self.root, text="Bacontete MCL",
+            self.root, text="Test MCL",
             font=("Arial", 16, "bold"), fg="#1E88E5"
         )
         lbl_main_title.pack(pady=(14, 6))
@@ -259,8 +238,6 @@ class MinecraftLauncherApp:
             btn.pack(side="left", fill="y")
             self._tab_buttons[name] = btn
 
-        # Nhãn trạng thái nổi (góc trên-phải) - hiện % tiến trình cài đặt
-        # Modpack/Mod/RSP/Shader đang chạy ngầm, hiển thị dù đang ở tab nào.
         self.lbl_floating_progress = tk.Label(
             self._tab_bar,
             text="",
@@ -270,7 +247,6 @@ class MinecraftLauncherApp:
         )
         self.lbl_floating_progress.pack(side="right", padx=(0, 12))
 
-        # Nút console cố định bên phải tab bar
         btn_console = tk.Button(
             self._tab_bar,
             text="🖥 Console",
@@ -291,14 +267,12 @@ class MinecraftLauncherApp:
         self._view_frames["modpack"]  = self._build_modpack_view(self._container)
         self._view_frames["settings"] = self._build_settings_view(self._container)
 
-        # Bắt đầu polling trạng thái tiến trình Modpack (chạy ngầm dù đổi tab)
         self._poll_modpack_progress()
 
     def _switch_view(self, name: str):
         if self._current_view == name:
             return
 
-        # Kiểm tra nếu đang ở modpack và có tác vụ chạy
         if self._current_view == "modpack":
             modpack_frame = self._view_frames.get("modpack")
             if modpack_frame and hasattr(modpack_frame, "can_switch"):
@@ -311,12 +285,11 @@ class MinecraftLauncherApp:
                     )
                     return
 
-        # Kiểm tra nếu đang ở Cài đặt mà có thay đổi chưa lưu
         if self._current_view == "settings":
             settings_frame = self._view_frames.get("settings")
             if settings_frame and hasattr(settings_frame, "confirm_discard_changes"):
                 if not settings_frame.confirm_discard_changes():
-                    return  # người dùng chọn ở lại để lưu -> không chuyển tab
+                    return  
 
         for frame in self._view_frames.values():
             frame.pack_forget()
@@ -371,7 +344,6 @@ class MinecraftLauncherApp:
         self.btn_open_folder.pack(side="left")
 
         self._home_overlay = tk.Frame(frame)
-        # Không place ngay — chỉ show khi cần
 
         self.instance_frame.on_open_create_panel = self._show_create_instance_panel
         self.account_frame.on_open_add_panel = self._show_add_account_panel
@@ -379,14 +351,12 @@ class MinecraftLauncherApp:
         return frame
 
     def _show_overlay(self):
-        """Hiện overlay, ẩn main layer."""
         self._home_main.place_forget()
         self._home_overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
         for w in self._home_overlay.winfo_children():
             w.destroy()
 
     def _hide_overlay(self):
-        """Ẩn overlay, hiện lại main layer."""
         self._home_overlay.place_forget()
         for w in self._home_overlay.winfo_children():
             w.destroy()
@@ -430,14 +400,9 @@ class MinecraftLauncherApp:
             subprocess.Popen(["xdg-open", thu_muc])
 
     def _poll_modpack_progress(self):
-        """Polling moi 500ms de doc trang thai tien trinh cai dat tu ModMcFrame
-        (Modpack/Mod/RSP/Shader) va hien len nhan noi goc tren-phai, du nguoi
-        dung dang o tab nao (Choi/Modpack/Cai dat). Tu lap lai vo han bang
-        self.root.after - tu dung lai neu cua so chinh da bi destroy, tranh
-        loi 'invalid command name' khi app da dong."""
         try:
             if not self.root.winfo_exists():
-                return  # cua so da dong - dung han, khong lap lai nua
+                return 
             modpack_frame = self._view_frames.get("modpack")
             pct = getattr(modpack_frame, "_last_progress_pct", None) if modpack_frame else None
             if pct is not None:
@@ -449,13 +414,13 @@ class MinecraftLauncherApp:
             else:
                 self.lbl_floating_progress.config(text="")
         except tk.TclError:
-            return  # widget/cua so da bi destroy giua luc dang cap nhat - dung han
+            return  
         except Exception:
             pass
         try:
             self.root.after(500, self._poll_modpack_progress)
         except tk.TclError:
-            pass  # cua so da dong dung luc nay - khong can lap lai nua
+            pass  
 
     def _xu_ly_thoat(self):
         import components.mod_mc as mod_mc
@@ -490,7 +455,6 @@ class MinecraftLauncherApp:
         theme.apply_theme(self.instance_frame)
 
     def hien_thi_progress(self, hien=True):
-        """Hien / an khu vuc thanh tien do."""
         if hien:
             self.frame_progress.pack(fill="x", padx=40, pady=(0, 2),
                                      after=self.btn_launch)
@@ -519,8 +483,6 @@ class MinecraftLauncherApp:
         self.instance_frame.khoa(False)
 
     def _an_launcher_khi_choi(self):
-        """An cua so launcher neu nguoi dung bat tuy chon 'An launcher khi
-        vao game' trong Settings (mac dinh la An)."""
         try:
             if config.current_config.get("an_launcher_khi_choi", True):
                 self.root.withdraw()
@@ -528,7 +490,6 @@ class MinecraftLauncherApp:
             pass
 
     def _hien_lai_launcher(self):
-        """Hien lai cua so launcher (goi khi game tat / bi huy)."""
         try:
             self.root.deiconify()
             self.root.lift()
@@ -633,7 +594,6 @@ class MinecraftLauncherApp:
 
         threading.Thread(target=luong_khoi_dong, daemon=True).start()
 
-
 if __name__ == "__main__":
     root = tk.Tk()
     root.withdraw()
@@ -643,10 +603,6 @@ if __name__ == "__main__":
     _doc_cau_hinh_may()
     kiem_tra_va_chay_wizard(root)
 
-    # Đồng bộ lại file_config_json về đúng vị trí sau wizard.
-    # Trường hợp wizard bỏ qua (đã cấu hình từ trước), tai_toan_bo_cau_hinh()
-    # có thể đã trỏ đúng; trường hợp wizard vừa chạy, cap_nhat_duong_dan_config
-    # đảm bảo file tạm cạnh .exe không bị dùng lại trong phiên làm việc này.
     thu_muc = config.current_config.get("thu_muc_game", "").strip()
     if thu_muc:
         config.cap_nhat_duong_dan_config(thu_muc)

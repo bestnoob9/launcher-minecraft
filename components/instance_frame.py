@@ -11,7 +11,6 @@ import theme
 from icon_utils import gan_icon_app
 from components.install_utils import ten_folder_an_toan
 
-
 def kiem_tra_ten_hop_le(ten):
     chuan_hoa = unicodedata.normalize('NFD', ten)
     for c in chuan_hoa:
@@ -29,7 +28,6 @@ def kiem_tra_ten_hop_le(ten):
                 "❌ Sai: thế giới, 我的世界"
             )
     return True, ""
-
 
 class InstanceFrame(tk.Frame):
     def __init__(self, parent, on_change_callback):
@@ -50,7 +48,6 @@ class InstanceFrame(tk.Frame):
         frame_inner = tk.Frame(self)
         frame_inner.pack(pady=5)
 
-        # Tạo Latest Version nếu danh sách trống
         ds_instance = list(config.current_config["danh_sach_instances"].keys())
         if not ds_instance or "Default_Instance" in ds_instance:
             config.current_config["danh_sach_instances"].pop("Default_Instance", None)
@@ -65,11 +62,7 @@ class InstanceFrame(tk.Frame):
             config.current_config["current_instance"] = ten_mac_dinh
             config.luu_toan_bo_cau_hinh()
             ds_instance = list(config.current_config["danh_sach_instances"].keys())
-            # Không tạo folder Latest_Version trên disk — instance ảo chỉ trong config.
 
-        # Tự động cập nhật version_goc cho "Latest Version" mỗi lần mở.
-        # Chỉ cập nhật config RAM + lưu file cấu hình, KHÔNG tạo folder trên disk
-        # để watcher không nhầm đây là instance thật và tạo lại mỗi lần khởi động.
         if "Latest Version" in config.current_config["danh_sach_instances"]:
             try:
                 release_versions = core.lay_danh_sach_phien_ban_chinh()
@@ -106,7 +99,6 @@ class InstanceFrame(tk.Frame):
         self.cap_nhat_nhan_thong_tin()
 
     def _get_folders_on_disk(self):
-        """Trả về set tên instance (dạng display) từ các folder thực tế trên disk."""
         result = set()
         if not os.path.exists(self.thu_muc_instances):
             return result
@@ -116,7 +108,6 @@ class InstanceFrame(tk.Frame):
         return result
 
     def _sync_watcher(self):
-        """Chạy nền, poll mỗi 2 giây, sync folder disk <-> config."""
         while self._watcher_running:
             try:
                 self._dong_bo_instances()
@@ -125,20 +116,12 @@ class InstanceFrame(tk.Frame):
             time.sleep(2)
 
     def _dong_bo_instances(self):
-        """So sánh disk vs config, cập nhật 2 chiều nếu có thay đổi."""
         folders_disk = self._get_folders_on_disk()
         instances_config = set(config.current_config.get("danh_sach_instances", {}).keys())
 
-        # Folder mới trên disk nhưng chưa có trong config → thêm vào
-        # Loại trừ cả "Latest_Version" (dạng folder trên disk) vì "Latest Version"
-        # là instance đặc biệt chỉ tồn tại trong config, không cần folder thực sự.
-        # Nếu không loại trừ, watcher sẽ thấy folder Latest_Version trên disk
-        # (được tạo tự động bởi os.makedirs) nhưng không khớp key "Latest Version"
-        # trong config → cứ tạo instance mới mỗi lần khởi động.
         _SPECIAL_INSTANCES = {"Latest Version", "Latest_Version"}
         them_moi = folders_disk - instances_config - _SPECIAL_INSTANCES
-        # Instance trong config nhưng folder đã bị xóa ngoài disk → xóa khỏi config
-        # (không xóa "Latest Version" dù không có folder)
+
         bi_xoa = instances_config - folders_disk - _SPECIAL_INSTANCES
 
         if not them_moi and not bi_xoa:
@@ -150,7 +133,6 @@ class InstanceFrame(tk.Frame):
             ten_folder = ten_folder_an_toan(ten)
             file_info = os.path.join(self.thu_muc_instances, ten_folder, "instance_info.json")
 
-            # Đợi tối đa 3 giây để cai_modpack_tu_file ghi xong instance_info.json
             _waited = 0
             while not os.path.exists(file_info) and _waited < 6:
                 time.sleep(0.5)
@@ -163,8 +145,7 @@ class InstanceFrame(tk.Frame):
                     loai_game   = data.get("loai_game", "Vanilla")
                     version_goc = data.get("version_goc", "1.21.1")
                     version_mod = data.get("version_mod", "Vanilla")
-                    # Tu dong sua Forge version_mod bi luu thieu prefix MC version
-                    # vd: "43.5.0" -> "1.19.2-43.5.0"
+
                     if loai_game == "Forge" and version_mod not in ("Vanilla", "") \
                             and not version_mod.startswith(version_goc):
                         version_mod = f"{version_goc}-{version_mod}"
@@ -177,7 +158,7 @@ class InstanceFrame(tk.Frame):
                 except Exception:
                     loai_game, version_goc, version_mod = "Vanilla", "1.21.1", "Vanilla"
             else:
-                # Tự đoán từ tên folder nếu không có file info
+
                 ten_lower = ten_folder.lower()
                 loai_game = "Vanilla"
                 for loader in ["fabric", "neoforge", "forge", "quilt"]:
@@ -208,7 +189,7 @@ class InstanceFrame(tk.Frame):
 
         for ten in bi_xoa:
             del config.current_config["danh_sach_instances"][ten]
-            # Nếu instance đang chọn bị xóa → reset về Latest Version
+
             if config.current_config.get("current_instance") == ten:
                 config.current_config["current_instance"] = "Latest Version"
             changed = True
@@ -218,13 +199,11 @@ class InstanceFrame(tk.Frame):
             self.after(0, self._lam_moi_dropdown)
 
     def _lam_moi_dropdown(self):
-        """Cập nhật dropdown từ config, ưu tiên current_instance trong config."""
         ds_moi = list(config.current_config["danh_sach_instances"].keys())
         hien_tai = self.cbo_instance.get()
         current_in_config = config.current_config.get("current_instance", "")
         self.cbo_instance["values"] = ds_moi
 
-        # Ưu tiên: current_instance trong config (mới nhất) > đang chọn > đầu danh sách
         if current_in_config and current_in_config in ds_moi:
             self.cbo_instance.set(current_in_config)
         elif hien_tai in ds_moi:
@@ -234,7 +213,6 @@ class InstanceFrame(tk.Frame):
         self.cap_nhat_nhan_thong_tin()
 
     def khoa(self, tat: bool):
-        """Khóa/mở khóa toàn bộ UI instance. tat=True → khóa, False → mở."""
         trang_thai_cb  = "disabled" if tat else "readonly"
         trang_thai_btn = "disabled" if tat else "normal"
         self.cbo_instance.configure(state=trang_thai_cb)
@@ -304,9 +282,6 @@ class InstanceFrame(tk.Frame):
         self.cap_nhat_nhan_thong_tin()
         self.on_change_callback()
 
-    
-
-    # --- CỬA SỔ TẠO PHIÊN BẢN MỚI (inline panel qua callback) ---
     def mo_cua_so_tao_instance(self):
         if hasattr(self, 'on_open_create_panel') and self.on_open_create_panel:
             self.on_open_create_panel()
@@ -380,12 +355,12 @@ class InstanceFrame(tk.Frame):
                 loaders = ["Vanilla", "Fabric", "Forge", "Quilt", "NeoForge"]
             elif loai == "Snapshot":
                 loaders = ["Vanilla", "Fabric", "Quilt"]
-            else:  # Beta, Alpha
+            else:
                 loaders = ["Vanilla"]
             
             cbo_mod_type['values'] = loaders
             cbo_mod_type.set("Vanilla")
-            # Ẩn mod loader detail nếu đang chọn
+
             lbl_mod_detail.pack_forget()
             cbo_mod_ver.pack_forget()
             lbl_loading_mod.pack_forget()
@@ -400,9 +375,8 @@ class InstanceFrame(tk.Frame):
                 cbo_ver.set("")
             cap_nhat_mod_loader_theo_loai() 
 
-        # cbo_loai_ver.bind("<<ComboboxSelected>>", cap_nhat_danh_sach_ver)
         cbo_loai_ver.bind("<<ComboboxSelected>>", lambda e: [cap_nhat_danh_sach_ver(), cap_nhat_mod_loader_theo_loai()])
-        cap_nhat_danh_sach_ver()  # load Release ngay khi mở
+        cap_nhat_danh_sach_ver()
 
         tk.Label(win_create, text="Chọn Loại Game (Mod Loader):", font=("Arial", 10, "bold")).pack(pady=(10, 2))
         cbo_mod_type = ttk.Combobox(
@@ -456,7 +430,6 @@ class InstanceFrame(tk.Frame):
         cbo_ver.bind("<<ComboboxSelected>>", cap_nhat_list_mod_detail)
         cbo_mod_type.bind("<<ComboboxSelected>>", cap_nhat_list_mod_detail)
 
-        # Xử lý nút Xác nhận tạo
         def xu_ly_tao():
             ten_nhap = ent_name.get().strip()
 
@@ -512,11 +485,6 @@ class InstanceFrame(tk.Frame):
 
         theme.apply_theme(win_create)
     def build_create_panel(self, parent, on_close):
-        """
-        Dựng form Tạo phiên bản mới vào 'parent' (Frame inline).
-        on_close() được gọi khi người dùng hủy hoặc tạo xong.
-        Trả về frame chứa toàn bộ form để caller pack/show.
-        """
         p = parent
 
         bar = tk.Frame(p)

@@ -1,19 +1,9 @@
-"""
-setup_wizard.py
----------------
-Hiển thị cửa sổ chọn/nhập đường dẫn lưu game khi chưa có cấu hình.
-Gọi hàm `kiem_tra_va_chay_wizard(root)` trước khi khởi chạy launcher chính.
-Trả về True nếu đường dẫn hợp lệ (có thể tiếp tục), False nếu người dùng đóng cửa sổ.
-"""
-
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import config
 
-
 def _duong_dan_hop_le(path: str) -> bool:
-    """Kiểm tra đường dẫn không rỗng và có thể tạo được."""
     if not path or not path.strip():
         return False
     try:
@@ -22,13 +12,7 @@ def _duong_dan_hop_le(path: str) -> bool:
     except Exception:
         return False
 
-
 def kiem_tra_va_chay_wizard(root) -> bool:
-    """
-    Kiểm tra xem đường dẫn lưu game đã được cấu hình chưa.
-    - Nếu đã có và thư mục tồn tại → bỏ qua, trả về True ngay.
-    - Nếu chưa có hoặc thư mục không tồn tại → mở wizard.
-    """
     thu_muc_hien_tai = config.current_config.get("thu_muc_game", "").strip()
 
     duong_dan_mac_dinh = os.path.normpath(os.path.join(os.getcwd(), ".MinecraftFile"))
@@ -42,7 +26,6 @@ def kiem_tra_va_chay_wizard(root) -> bool:
         return True
 
     return _mo_cua_so_wizard(root)
-
 
 def _mo_cua_so_wizard(root) -> bool:
     ket_qua = {"ok": False}
@@ -109,12 +92,9 @@ def _mo_cua_so_wizard(root) -> bool:
         if not _duong_dan_hop_le(duong_dan):
             lbl_loi.config(text="⚠  Không thể tạo thư mục tại đường dẫn này. Vui lòng chọn lại!")
             return
-
-        # Kiểm tra xem thư mục này đã có launcher_config.json chưa
         import json as _json
         file_chinh_thuc = config._lay_duong_dan_config(duong_dan)
         if os.path.exists(file_chinh_thuc):
-            # Đã có config cũ → load lại vào current_config, KHÔNG ghi đè
             try:
                 with open(file_chinh_thuc, "r", encoding="utf-8") as _f:
                     data_cu = _json.load(_f)
@@ -123,10 +103,8 @@ def _mo_cua_so_wizard(root) -> bool:
             except Exception as e:
                 lbl_loi.config(text=f"⚠  Đọc config thất bại: {e}")
                 return
-            # Chỉ cập nhật pointer + trỏ file_config_json, không lưu
             config.cap_nhat_duong_dan_config(duong_dan)
         else:
-            # Chưa có → ghi thu_muc_game vào config hiện tại rồi lưu mới
             config.current_config["thu_muc_game"] = duong_dan
             config.cap_nhat_duong_dan_config(duong_dan)
             config.luu_toan_bo_cau_hinh()
@@ -149,9 +127,7 @@ def _mo_cua_so_wizard(root) -> bool:
     root.wait_window(win)
     return ket_qua["ok"]
 
-
 def _dong_cua_so(win, ket_qua, root):
-    """Người dùng đóng wizard mà không xác nhận."""
     if messagebox.askyesno(
         "Thoát?",
         "Bạn chưa chọn thư mục lưu game.\nThoát launcher?",

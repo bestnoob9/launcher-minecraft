@@ -1,14 +1,3 @@
-"""
-mod_mc.py
----------
-Cua so chinh Content Manager (ModMcWindow / ModMcFrame).
-Toan bo logic tab da duoc tach ra:
-  - components/Mod/modrinthmod.py  : Modpack MR, Mod MR, RSP MR, Shader MR, Cai tu File
-  - components/Mod/forgemod.py     : Modpack CF, Mod CF, RSP CF, Shader CF
-  - components/api_helpers.py      : goi API Modrinth / CurseForge
-  - components/install_utils.py    : tai file va cai dat
-  - components/widgets.py          : FilterBar, ContentTableWidget
-"""
 
 import threading
 
@@ -21,13 +10,7 @@ from icon_utils import gan_icon_app
 
 from components.widgets import BG_DARK, BG_SEL, FG_TITLE, ContentTableWidget
 
-
 def _tim_content_table(widget):
-    """Tim de quy widget ContentTableWidget dau tien ben trong 'widget' (vd
-    lv_frame cua mot tab) - dung de dong bo trang thai nut Cai dat/Hủy tren
-    dong danh sach voi trang thai da bam trong ModDetailWindow (xem
-    _swap_to_list() ben duoi), ma KHONG can modrinthmod.py / forgemod.py tu
-    luu lai tham chieu rieng den widget nay."""
     if isinstance(widget, ContentTableWidget):
         return widget
     for child in widget.winfo_children():
@@ -40,14 +23,10 @@ from components.Mod.modrinthmod import ModrinthModMixin
 from components.Mod.forgemod import ForgeModMixin
 from components.install_utils import dang_cai_modpack
 
-
 class TacVuBiHuy(Exception):
-    """Duoc nem ra khi nguoi dung nhan nut 'Hủy' trong khi dang tai/cai dat."""
     pass
 
-
 class PaginationBar(tk.Frame):
-    """Thanh chuyen trang: <  1  2  ...  N  >"""
 
     def __init__(self, parent, on_page, accent_color="#1E88E5", bg=None, **kw):
         bg = bg or (parent["bg"] if isinstance(parent, (tk.Frame, tk.Toplevel)) else "#f5f5f7")
@@ -99,7 +78,6 @@ class PaginationBar(tk.Frame):
             last = p
         self._btn(">", (lambda: self._go(self.page + 1)) if self.page < tp else None)
 
-
 class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
 
     def __init__(self, parent, callback_lam_moi=None):
@@ -113,9 +91,8 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
 
         self._so_tac_vu_dang_chay = 0
         self._cancel_event        = threading.Event()
-        # Trang thai tien trinh moi nhat - de main.py polling hien thanh
-        # trang thai noi goc tren-phai du dang o tab nao.
-        self._last_progress_pct   = None   # int 0-100 hoac None neu khong co
+
+        self._last_progress_pct   = None
         self._last_progress_label = ""
         self._debounce_search     = None
 
@@ -141,22 +118,16 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
             self._last_progress_label = ""
 
     def ghi_tien_do(self, pct, label=""):
-        """Ghi lai % tien do moi nhat - goi tu cac closure cai dat trong
-        modrinthmod.py / forgemod.py de main.py co the polling hien thanh
-        trang thai noi (goc tren-phai) du nguoi dung dang o tab nao."""
         self._last_progress_pct = max(0, min(100, int(pct)))
         self._last_progress_label = label
 
     def _huy_tac_vu(self):
-        """Dung cho nut Huy o status bar chinh - tu hoi xac nhan."""
         if self._so_tac_vu_dang_chay <= 0:
             return
         if messagebox.askyesno("Hủy", "Bạn có chắc muốn hủy?", parent=self):
             self._huy_tac_vu_khong_hoi()
 
     def _huy_tac_vu_khong_hoi(self):
-        """Huy ngay khong hoi lai - dung lam cancel_cb cho ModDetailWindow,
-        vi panel do da tu hoi xac nhan truoc khi goi ham nay."""
         if self._so_tac_vu_dang_chay <= 0:
             return
         self._cancel_event.set()
@@ -199,9 +170,7 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         for w in dv_frame.winfo_children():
             w.destroy()
         lv_frame.pack(fill="both", expand=True)
-        # Dong bo lai nut Cai dat/Hủy tren dong danh sach voi trang thai
-        # thuc te - vi viec cai dat/huy co the vua duoc bat dau/ket thuc
-        # NGAY TRONG ModDetailWindow (dv_frame) thay vi tu nut tren dong.
+
         table = _tim_content_table(lv_frame)
         if table is not None:
             table.sync_installing_state()
@@ -240,17 +209,11 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
                   activebackground="#607D8B", activeforeground="white",
                   command=self._top_current_tab).pack(side="left", padx=4)
 
-        # Status bar - tao va pack TRUOC Notebook chinh, dung side="bottom" de
-        # luon duoc danh rieng khong gian o day cua so, KHONG bi Notebook
-        # (pack voi expand=True) day ra ngoai vung nhin thay khi noi dung ben
-        # trong (vd ModDetailWindow) qua dai.
         status_bar = tk.Frame(self)
         status_bar.pack(side="bottom", fill="x", padx=14, pady=(2, 6))
         self.lbl_status = tk.Label(status_bar, text="Đang tải...",
                                    font=("Arial", 9, "italic"), fg="#1E88E5", anchor="w")
         self.lbl_status.pack(side="left", fill="x", expand=True)
-        # (Da bo nut "Hủy" chung o goc duoi-phai - viec huy tac vu gio dam
-        # nhiem boi nut "Hủy" ngay tren tung dong danh sach, xem widgets.py)
 
         self.nb = ttk.Notebook(self)
         self.nb.pack(fill="both", expand=True, padx=12, pady=4)
@@ -394,12 +357,7 @@ class ModMcWindow(ModrinthModMixin, ForgeModMixin, tk.Toplevel):
         messagebox.showinfo("Thành công",
             "Đã cài đặt thành công!\nInstance mới đã xuất hiện trong danh sách.", parent=self)
 
-
 class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
-    """
-    Phien ban nhung inline cua ModMcWindow dung cho View Switching.
-    Ke thua truc tiep ca hai Mixin nen tat ca method deu co san ngay.
-    """
 
     def __init__(self, parent, callback_lam_moi=None):
         super().__init__(parent)
@@ -407,9 +365,8 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
 
         self._so_tac_vu_dang_chay = 0
         self._cancel_event        = threading.Event()
-        # Trang thai tien trinh moi nhat - de main.py polling hien thanh
-        # trang thai noi goc tren-phai du dang o tab nao.
-        self._last_progress_pct   = None   # int 0-100 hoac None neu khong co
+
+        self._last_progress_pct   = None
         self._last_progress_label = ""
         self._debounce_search     = None
 
@@ -423,9 +380,6 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
         self._build_ui()
 
     def can_switch(self) -> bool:
-        """Luon cho phep chuyen view, ke ca khi dang co tac vu tai/cai dat
-        chay ngam - vi ModMcFrame khong bi destroy khi doi tab (chi pack_forget),
-        nen thread cai dat van song binh thuong va co the tiep tuc/huy duoc."""
         return True
 
     def _tang_tac_vu(self):
@@ -440,22 +394,16 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
             self._last_progress_label = ""
 
     def ghi_tien_do(self, pct, label=""):
-        """Ghi lai % tien do moi nhat - goi tu cac closure cai dat trong
-        modrinthmod.py / forgemod.py de main.py co the polling hien thanh
-        trang thai noi (goc tren-phai) du nguoi dung dang o tab nao."""
         self._last_progress_pct = max(0, min(100, int(pct)))
         self._last_progress_label = label
 
     def _huy_tac_vu(self):
-        """Dung cho nut Huy o status bar chinh - tu hoi xac nhan."""
         if self._so_tac_vu_dang_chay <= 0:
             return
         if messagebox.askyesno("Hủy", "Bạn có chắc muốn hủy?", parent=self):
             self._huy_tac_vu_khong_hoi()
 
     def _huy_tac_vu_khong_hoi(self):
-        """Huy ngay khong hoi lai - dung lam cancel_cb cho ModDetailWindow,
-        vi panel do da tu hoi xac nhan truoc khi goi ham nay."""
         if self._so_tac_vu_dang_chay <= 0:
             return
         self._cancel_event.set()
@@ -488,9 +436,7 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
         for w in dv_frame.winfo_children():
             w.destroy()
         lv_frame.pack(fill="both", expand=True)
-        # Dong bo lai nut Cai dat/Hủy tren dong danh sach voi trang thai
-        # thuc te - vi viec cai dat/huy co the vua duoc bat dau/ket thuc
-        # NGAY TRONG ModDetailWindow (dv_frame) thay vi tu nut tren dong.
+
         table = _tim_content_table(lv_frame)
         if table is not None:
             table.sync_installing_state()
@@ -546,17 +492,11 @@ class ModMcFrame(ModrinthModMixin, ForgeModMixin, tk.Frame):
                   activebackground="#607D8B", activeforeground="white",
                   command=self._top_current_tab).pack(side="left", padx=4)
 
-        # Status bar - tao va pack TRUOC Notebook chinh, dung side="bottom" de
-        # luon duoc danh rieng khong gian o day cua so, KHONG bi Notebook
-        # (pack voi expand=True) day ra ngoai vung nhin thay khi noi dung ben
-        # trong (vd ModDetailWindow) qua dai.
         status_bar = tk.Frame(self)
         status_bar.pack(side="bottom", fill="x", padx=14, pady=(2, 6))
         self.lbl_status = tk.Label(status_bar, text="Đang tải...",
                                    font=("Arial", 9, "italic"), fg="#1E88E5", anchor="w")
         self.lbl_status.pack(side="left", fill="x", expand=True)
-        # (Da bo nut "Hủy" chung o goc duoi-phai - viec huy tac vu gio dam
-        # nhiem boi nut "Hủy" ngay tren tung dong danh sach, xem widgets.py)
 
         self.nb = ttk.Notebook(self)
         self.nb.pack(fill="both", expand=True, padx=12, pady=4)

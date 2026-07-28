@@ -1,21 +1,3 @@
-"""
-mod_detail_window.py
---------------------
-Panel xem thong tin chi tiet cua mot Mod / Modpack / Resource Pack / Shader.
-Duoc nhung truc tiep vao tab tuong ung trong ModMcWindow (View Switching)
-khi nguoi dung double-click vao mot dong trong ContentTableWidget - thay the
-ban danh sach bang panel chi tiet, khong mo cua so rieng.
-
-Hien thi:
-  - Anh banner / icon (lon)
-  - Tieu de, tac gia, so luot tai, mo ta ngan
-  - Combobox chon phien ban
-  - Tab "Changelog" cua phien ban dang chon
-  - Nut "← Quay lai danh sach" -> goi on_back() de container chuyen ve view danh sach
-  - Nut "Cai dat" -> goi install_callback(version_data) roi tu quay lai danh sach
-
-Tuong thich ca Modrinth lan CurseForge.
-"""
 
 import io
 import re
@@ -38,11 +20,9 @@ try:
 except Exception:
     _PIL_OK = False
 
-
 MODRINTH_UA = "MinecraftLauncher/1.0 (github.com/user/mc-launcher)"
 
 def _fetch_image(url, size=(500, 180)):
-    """Tra ve PhotoImage hoac None neu loi / khong co PIL."""
     if not url or not _PIL_OK:
         return None
     try:
@@ -55,10 +35,7 @@ def _fetch_image(url, size=(500, 180)):
     except Exception:
         return None
 
-
 def _html_to_md(text):
-    """Quy doi tho HTML (mo ta CurseForge) ve dang gan-markdown de dung
-    chung 1 bo render voi Modrinth (markdown that)."""
     if not text:
         return ""
     t = text
@@ -73,10 +50,7 @@ def _html_to_md(text):
     t = html.unescape(t)
     return t
 
-
 def _parse_rich_blocks(raw):
-    """Tach noi dung markdown(-hoa) thanh danh sach block:
-    ('h', level, text) | ('li', text) | ('p', text) | ('img', url)"""
     blocks = []
     para_lines = []
 
@@ -107,13 +81,9 @@ def _parse_rich_blocks(raw):
     _flush()
     return blocks
 
-
 _INLINE_RE = re.compile(r"\*\*([^*]+)\*\*|\*([^*]+)\*|\[([^\]]+)\]\(([^)]+)\)")
 
-
 def _strip_md(text):
-    """Loai bo mot so markdown don gian de hien thi dang text thuan
-    (dung cho tab Bản ghi thay đổi)."""
     text = re.sub(r"^#{1,6}\s*", "", text, flags=re.MULTILINE)
     text = re.sub(r"\*{1,2}([^*]+)\*{1,2}", r"\1", text)
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
@@ -121,42 +91,7 @@ def _strip_md(text):
     text = html.unescape(text)
     return text.strip()
 
-
-
-
-
 class ModDetailWindow(tk.Frame):
-    """
-    Panel thong tin chi tiet mod - nhung truc tiep vao tab (View Switching),
-    thay the cho cua so popup truoc day.
-
-    Parameters
-    ----------
-    parent       : tk widget cha - frame chua se duoc pack panel nay vao
-                   (vd: detail-view container cua mot tab trong ModMcWindow)
-    source       : 'modrinth' | 'curseforge'
-    data         : dict du lieu cua mod (1 phan tu tu API)
-    versions_raw : list phien ban da tai truoc (co the rong -> se tai them)
-    install_cb   : callable(version_data, on_done=None, progress_cb=None) -> goi
-                   khi nhan "Cai dat". version_data la dict phien ban dang chon.
-                   Ben goi (mod_mc.py / modrinthmod.py / forgemod.py) PHAI tu
-                   goi on_done() khi tac vu tai/cai dat ket thuc - du la thanh
-                   cong, loi, hay bi huy - de panel nay biet duong ma doi nut
-                   "Hủy" tro lai thanh "Cai dat". Neu duoc cung cap progress_cb,
-                   ben goi nen goi progress_cb(da, tong) de cap nhat thanh %.
-    on_back      : callable() -> goi khi nguoi dung nhan "Quay lai danh sach"
-                   (de container chuyen view tro lai bang danh sach)
-    cancel_cb    : callable() -> goi khi nguoi dung nhan nut Cai dat LUC DANG
-                   CAI (nut da tu doi thanh "Hủy" - xem _on_install_or_cancel).
-                   Thuong la self._huy_tac_vu cua ModMcWindow/ModMcFrame - ham
-                   nay se tu hoi xac nhan va set _cancel_event.
-                   __self__ cua cancel_cb (owner) cung duoc dung de doc
-                   owner._dang_co_tac_vu() - giup panel nay TU DONG hien
-                   trang thai "Hủy" ngay khi mo len, neu tac vu cai dat da
-                   duoc bat dau tu noi khac (vd nut Cai dat tren tung dong
-                   trong ContentTableWidget) - xem _dong_bo_trang_thai_ban_dau().
-    accent       : mau accent (hex string)
-    """
 
     def __init__(self, parent, source, data, versions_raw,
                  install_cb, on_back=None, cancel_cb=None, accent="#1E88E5",
@@ -169,24 +104,12 @@ class ModDetailWindow(tk.Frame):
         self._on_back   = on_back
         self._cancel_cb = cancel_cb
         self._accent   = accent
-        self._banner_photo = None   # giu ref tranh GC
-        self._dang_cai  = False     # True trong luc cho install_cb hoan tat
+        self._banner_photo = None
+        self._dang_cai  = False
 
-        # installed_info: dict {'ten_instance','version_id','version_number'}
-        # neu mod/modpack/rsp/shader NAY da duoc cai o dau do roi (tra ve boi
-        # install_utils.lay_trang_thai_da_cai(), do modrinthmod.py/forgemod.py
-        # tinh san va truyen vao) - None neu chua cai o dau ca. Dung de doi
-        # nhan nut "Cài đặt" -> "Cập nhật"/"Hạ phiên bản"/"Cài lại" tuy theo
-        # phien ban dang duoc chon trong to hop ben duoi so voi phien ban da
-        # cai - xem _cap_nhat_nhan_nut_cai_dat().
         self._installed_info = installed_info
         self._nhan_nut_hien_tai = "⬇  Cài đặt"
 
-        # Lay owner (ModMcWindow/ModMcFrame) qua __self__ cua cancel_cb -
-        # giong ky thuat ContentTableWidget dang dung voi on_select_cb - de
-        # co the tu doc owner._dang_co_tac_vu() (dong bo trang thai voi cac
-        # dong trong ContentTableWidget) MA KHONG can sua modrinthmod.py /
-        # forgemod.py.
         self._owner = getattr(cancel_cb, "__self__", None)
         self._poll_after_id = None
 
@@ -198,20 +121,15 @@ class ModDetailWindow(tk.Frame):
             self._icon_url  = data.get("icon_url", "")
             self._pid     = data.get("project_id", data.get("slug", ""))
             self._project_url = f"https://modrinth.com/project/{self._pid}" if self._pid else ""
-            # Gallery: du lieu tu /v2/search KHONG co field 'gallery' (chi co
-            # o /v2/project/{id} chi tiet) - neu data da co san (vd truyen tu
-            # noi khac) thi dung luon, neu khong se tu goi API rieng trong
-            # _load_gallery() de lay day du.
+
             self._gallery_pending = "gallery" not in data
             gallery = data.get("gallery") or []
             self._gallery_urls = [
                 g.get("url", "") for g in gallery if isinstance(g, dict) and g.get("url")
             ]
-            # 'description' tu /v2/search la tom tat ngan - mo ta day du
-            # (markdown) nam o field 'body', chi co khi goi /v2/project/{id}.
-            # Neu data da co san 'body' (vd truyen tu noi khac) thi dung luon.
+
             self._desc_full = data.get("body") or self._desc
-        else:  # curseforge
+        else:
             self._title   = data.get("name", "")
             authors       = data.get("authors", [])
             self._author  = authors[0].get("name", "") if authors else ""
@@ -224,20 +142,17 @@ class ModDetailWindow(tk.Frame):
             links = data.get("links") or {}
             self._project_url = links.get("websiteUrl", "") or (f"https://www.curseforge.com/projects/{self._pid}" if self._pid else "")
             self._gallery_pending = False
-            # Gallery: screenshots cua CurseForge
+
             shots = data.get("screenshots") or []
             self._gallery_urls = [
                 s.get("url", "") or s.get("thumbnailUrl", "")
                 for s in shots if isinstance(s, dict)
             ]
             self._gallery_urls = [u for u in self._gallery_urls if u]
-            # CurseForge: field 'description' (HTML day du) thuong khong co
-            # trong ket qua tim kiem - chi co 'summary' ngan. Dung tam
-            # 'summary' lam noi dung Gioi thieu, se khong fetch them vi
-            # khong co san ham lay chi tiet rieng cho phan nay.
+
             self._desc_full = data.get("description") or self._desc
 
-        self._gallery_photos = []   # giu ref PhotoImage tranh GC
+        self._gallery_photos = []
         self._gallery_big_photo = None
 
         self._build_ui()
@@ -252,10 +167,6 @@ class ModDetailWindow(tk.Frame):
         self._dong_bo_trang_thai_ban_dau()
 
     def _dong_bo_trang_thai_ban_dau(self):
-        """Neu da co tac vu cai dat dang chay (bat dau tu noi khac, vd nut
-        Cai dat tren mot dong trong ContentTableWidget) TRUOC KHI panel nay
-        duoc mo len, hien luon nut "Hủy" + thanh tien trinh ngay tu dau va
-        bat dau theo doi (poll) de biet luc tac vu do ket thuc."""
         if self._owner is None or not hasattr(self._owner, "_dang_co_tac_vu"):
             return
         try:
@@ -267,10 +178,9 @@ class ModDetailWindow(tk.Frame):
             self._set_install_ui_state(installing=True)
             self._schedule_poll_busy()
 
-    # Chieu rong icon khi cua so du rong (px)
-    _ICON_FULL  = 96   # hien icon day du
-    _ICON_SMALL = 48   # thu nho khi cua so hep
-    _HIDE_ICON_BELOW = 340  # an han icon neu qua hep
+    _ICON_FULL  = 96
+    _ICON_SMALL = 48
+    _HIDE_ICON_BELOW = 340
 
     def _build_ui(self):
         clr = _theme.colors() if _theme else {}
@@ -285,13 +195,6 @@ class ModDetailWindow(tk.Frame):
 
         self.configure(bg=BG)
 
-        # Toan bo layout chinh dung grid de kiem soat row expand chinh xac:
-        #   row 0 - nut quay lai          (co dinh, khong expand)
-        #   row 1 - panel anh + thong tin (co dinh)
-        #   row 2 - separator             (co dinh)
-        #   row 3 - chon phien ban        (co dinh)
-        #   row 4 - notebook changelog    (EXPAND - chiem phan con lai)
-        #   row 5 - thanh nut cai dat     (co dinh, luon o day)
         self.rowconfigure(4, weight=1)
         self.columnconfigure(0, weight=1)
 
@@ -321,9 +224,6 @@ class ModDetailWindow(tk.Frame):
             relief="flat", bd=0)
         self.lbl_banner.pack()
 
-        # Nut "Cai dat"/"Hủy" + "Mo trinh duyet" dat canh tieu de (goc tren
-        # ben phai), giong bo cuc tren trang CurseForge/Modrinth - thay vi
-        # nam rieng o thanh duoi cung nhu truoc.
         self._header_btns = tk.Frame(self._top, bg=BG)
         self._header_btns.grid(row=0, column=2, sticky="ne", padx=(8, 0))
 
@@ -430,7 +330,7 @@ class ModDetailWindow(tk.Frame):
         self.txt_intro.tag_configure("link", foreground=link_color, underline=True)
         self.txt_intro.tag_configure("img_pad", spacing1=4, spacing3=8)
 
-        self._intro_photos = []   # giu ref PhotoImage trong tab Gioi thieu
+        self._intro_photos = []
         self._intro_render_id = 0
         self._render_intro_async(self._desc_full)
 
@@ -470,7 +370,7 @@ class ModDetailWindow(tk.Frame):
         self.lbl_gallery_big = tk.Label(
             self._gal_big_frame, bg=ICON_BG, relief="flat", bd=0)
         self.lbl_gallery_big.pack()
-        self._gal_big_frame.pack_forget()  # an cho den khi co anh duoc chon
+        self._gal_big_frame.pack_forget()
 
         self._gal_outer = tk.Frame(tab_gallery, bg=BG)
         self._gal_outer.pack(fill="both", expand=True, padx=4, pady=4)
@@ -509,23 +409,18 @@ class ModDetailWindow(tk.Frame):
         self.pb_install = ttk.Progressbar(
             btn_bar, orient="horizontal", mode="determinate",
             variable=self._progress_var, maximum=100, length=200)
-        # Se duoc grid() vao row=0 khi bat dau cai (xem _set_install_ui_state)
 
         self.lbl_progress_pct = tk.Label(
             btn_bar, text="", font=("Arial", 9, "bold"),
             fg=self._accent, bg=BG)
-        # Cung chi grid() khi dang cai
 
         self.lbl_cancel_hint = tk.Label(
             btn_bar, text="💡 Đang cài đặt — bấm nút Hủy ở góc trên để dừng.",
             font=("Arial", 8, "italic"), fg=FG_SUB, bg=BG, anchor="w")
-        # Chi grid() khi dang cai (xem _set_install_ui_state)
 
         if _theme:
             _theme.apply_theme(self)
 
-        # Do rong cot nut header (dung de tru vao wraplength cua tieu de/mo
-        # ta trong _on_resize, tranh chu bi de len nut khi cua so hep lai).
         self.update_idletasks()
         self._btn_col_w = self._header_btns.winfo_reqwidth()
 
@@ -544,7 +439,7 @@ class ModDetailWindow(tk.Frame):
         threading.Thread(target=_t, daemon=True).start()
 
     def _set_banner(self, photo):
-        self._banner_photo = photo  # giu ref
+        self._banner_photo = photo
         try:
             self.lbl_banner.configure(image=photo, width=photo.width(),
                                        height=photo.height())
@@ -561,10 +456,6 @@ class ModDetailWindow(tk.Frame):
         self._load_gallery_thumbnails()
 
     def _fetch_modrinth_gallery_then_load(self):
-        """
-        Du lieu tu /v2/search khong co field 'gallery', nen phai goi them
-        /v2/project/{id} de lay gallery thuc te truoc khi tai thumbnail.
-        """
         def _t():
             urls = []
             body = ""
@@ -637,7 +528,7 @@ class ModDetailWindow(tk.Frame):
 
         cols = 3
         for i, (url, photo) in enumerate(ok_results):
-            self._gallery_photos.append(photo)  # giu ref tranh GC
+            self._gallery_photos.append(photo)
             r, c = divmod(i, cols)
             cell = tk.Frame(self._gal_inner, bg=BG)
             cell.grid(row=r, column=c, padx=6, pady=6, sticky="n")
@@ -651,7 +542,6 @@ class ModDetailWindow(tk.Frame):
                      lambda e, u=url: self._show_gallery_big(u))
 
     def _show_gallery_big(self, url):
-        """Phong to anh duoc click trong tab Hinh anh (khong mo cua so moi)."""
         def _t():
             photo = _fetch_image(url, size=(640, 360))
             if photo:
@@ -660,43 +550,36 @@ class ModDetailWindow(tk.Frame):
         threading.Thread(target=_t, daemon=True).start()
 
     def _set_gallery_big(self, photo):
-        self._gallery_big_photo = photo  # giu ref
+        self._gallery_big_photo = photo
         try:
             self.lbl_gallery_big.configure(image=photo)
             self.lbl_gallery_big.image = photo
-            # Dung before= de dam bao khung anh lon luon nam TRUOC vung luoi
-            # thumbnail (gal_outer) - khong thi pack lai se day no xuong duoi
-            # cung, bi gal_outer (expand=True) che mat khoi vung nhin thay.
+
             self._gal_big_frame.pack(fill="x", padx=4, pady=(4, 0), before=self._gal_outer)
         except tk.TclError:
             pass
 
     def _hide_gallery_big(self):
-        """Dong khung anh phong to, tra lai khong gian cho luoi thumbnail."""
         try:
             self._gal_big_frame.pack_forget()
         except tk.TclError:
             pass
 
     def _on_resize(self, event=None):
-        """Goi moi khi panel thay doi chieu rong.
-        - An / hien icon ben trai.
-        - Cap nhat wraplength cho label title va desc.
-        """
         try:
             w = self.winfo_width()
         except Exception:
             return
 
-        ICON_COL = self._ICON_FULL + 12   # rong icon + khoang cach
+        ICON_COL = self._ICON_FULL + 12
         BTN_COL  = getattr(self, "_btn_col_w", 0)
 
         if w < self._HIDE_ICON_BELOW:
-            # An han icon, danh toan bo chieu rong con lai cho text
+
             self._icon_cell.grid_remove()
             info_w = max(w - 40 - BTN_COL, 60)
         else:
-            # Hien icon
+
             self._icon_cell.grid()
             info_w = max(w - 40 - ICON_COL - BTN_COL, 60)
 
@@ -728,11 +611,6 @@ class ModDetailWindow(tk.Frame):
         threading.Thread(target=_t, daemon=True).start()
 
     def _safe_after(self, fn):
-        """
-        Lap lich chay fn() tren main thread, nhung chi neu panel nay
-        van con ton tai. Tranh loi khi nguoi dung bam 'Quay lai danh sach'
-        truoc khi tac vu tai du lieu nen (banner / versions) hoan tat.
-        """
         def _wrapped():
             if not self.winfo_exists():
                 return
@@ -775,22 +653,11 @@ class ModDetailWindow(tk.Frame):
             self._cap_nhat_nhan_nut_cai_dat()
 
     def _lay_khoa_so_sanh_phien_ban(self, version_data):
-        """Tra ve (dinh_danh, ngay_phat_hanh) cua 1 phien ban - dung de biet
-        do co PHAI CHINH XAC phien ban da cai hay khong (dinh_danh trung),
-        va phien ban nao MOI HON (so sanh ngay_phat_hanh dang chuoi ISO,
-        sap xep dung thu tu thoi gian ma khong can parse date)."""
         if self._source == "modrinth":
             return str(version_data.get("id", "")), (version_data.get("date_published", "") or "")
         return str(version_data.get("id", "")), (version_data.get("fileDate", "") or "")
 
     def _cap_nhat_nhan_nut_cai_dat(self):
-        """Doi nhan nut "Cài đặt" thanh "Cập nhật"/"Hạ phiên bản"/"Cài lại"
-        tuy theo phien ban DANG DUOC CHON trong to hop so voi phien ban DA
-        CAI (self._installed_info, do modrinthmod.py/forgemod.py tinh san
-        qua install_utils.lay_trang_thai_da_cai() va truyen vao luc mo panel
-        nay). Goi lai moi khi nguoi dung doi lua chon phien ban - vi ho co
-        the chon 1 phien ban CU HON ban dang cai (Ha phien ban) hoac MOI HON
-        (Cap nhat)."""
         if not self._installed_info:
             self._nhan_nut_hien_tai = "⬇  Cài đặt"
         else:
@@ -807,8 +674,7 @@ class ModDetailWindow(tk.Frame):
                     self._nhan_nut_hien_tai = ("⬇  Hạ phiên bản" if ngay < old_ngay
                                                 else "⬆  Cập nhật")
                 else:
-                    # Khong co ngay de so sanh (vd thieu du lieu) - van bao la
-                    # Cap nhat vi khong the biet chac chieu huong.
+
                     self._nhan_nut_hien_tai = "⬆  Cập nhật"
         if not self._dang_cai:
             try:
@@ -834,10 +700,6 @@ class ModDetailWindow(tk.Frame):
         self._set_changelog(text)
 
     def _render_intro_async(self, raw):
-        """Render mo ta dang 'rich text' (tieu de, in dam/nghieng, gach
-        dau dong, link, anh chen trong noi dung) thay vi chi text thuan.
-        Tai anh trong thread rieng roi chen vao Text mot lan tren main
-        thread de tranh giat/flicker."""
         self._intro_render_id += 1
         token = self._intro_render_id
 
@@ -862,7 +724,7 @@ class ModDetailWindow(tk.Frame):
 
     def _fill_intro_blocks(self, blocks, photos, token):
         if token != self._intro_render_id:
-            return  # da co lan render moi hon (vd doi version) - bo qua
+            return
         try:
             w = self.txt_intro
             w.config(state="normal")
@@ -893,11 +755,9 @@ class ModDetailWindow(tk.Frame):
             w.config(state="disabled")
             w.yview_moveto(0)
         except tk.TclError:
-            pass  # widget da bi destroy (vd nguoi dung quay lai danh sach)
+            pass
 
     def _insert_inline(self, w, text, base_tags):
-        """Chen 1 doan text vao Text widget, xu ly **dam**, *nghieng*,
-        [link](url) trong cung dong."""
         pos = 0
         for m in _INLINE_RE.finditer(text):
             if m.start() > pos:
@@ -926,21 +786,10 @@ class ModDetailWindow(tk.Frame):
         self.txt_log.yview_moveto(0)
 
     def _go_back(self):
-        """Goi khi nguoi dung nhan nut 'Quay lai danh sach'.
-        Cho phep quay lai NGAY CA KHI dang cai dat - tien trinh van tiep tuc
-        chay ngam (giong tinh thần can_switch() luon True cua mod_mc.py).
-        progress_cb/on_done deu da tu kiem tra winfo_exists() truoc khi dong
-        vao widget, nen an toan khi panel nay bi destroy giua luc dang cai."""
         if self._on_back:
             self._on_back()
 
     def _on_install_or_cancel(self):
-        """Bam nut nay khi CHUA cai -> bat dau cai dat, nut tu doi thanh
-        "Hủy". Bam LAI trong luc dang cai (nut dang la "Hủy") -> goi
-        cancel_cb() (thuong la owner._huy_tac_vu, se tu hoi xac nhan) de huy
-        tac vu ngay tai day - giong het cach nut Cai dat/Hủy tren tung dong
-        trong ContentTableWidget (widgets.py) hoat dong, giup dong bo trang
-        thai giua hai noi."""
         if self._dang_cai:
             if self._cancel_cb:
                 try:
@@ -968,18 +817,11 @@ class ModDetailWindow(tk.Frame):
         self._progress_var.set(0)
         self.lbl_progress_pct.configure(text="")
         self._set_install_ui_state(installing=True)
-        # KHONG quay lai danh sach ngay - panel o lai de nguoi dung theo doi
-        # tien do, van co the bam "Quay lai danh sach" bat cu luc nao.
+
         self._schedule_poll_busy()
         self._install_cb(vd, on_done=self._on_install_done, progress_cb=self.update_progress)
 
     def _schedule_poll_busy(self):
-        """Lap lich kiem tra dinh ky (giong _schedule_poll_busy cua
-        ContentTableWidget trong widgets.py) xem tac vu cai dat da xong
-        chua - can thiet cho truong hop tac vu bi huy/ket thuc TU NOI KHAC
-        (vd nguoi dung quay lai danh sach roi bam Hủy tren dong, hoac tac vu
-        duoc huy tu thanh trang thai chinh) ma khong di qua on_done() cua
-        panel nay."""
         if self._poll_after_id is not None:
             try:
                 self.after_cancel(self._poll_after_id)
@@ -1003,11 +845,6 @@ class ModDetailWindow(tk.Frame):
         self._schedule_poll_busy()
 
     def _on_install_done(self):
-        """Goi boi ben cai dat thuc su (mod_mc.py / modrinthmod.py / forgemod.py)
-        khi tac vu tai/cai dat ket thuc - du thanh cong, loi, hay bi huy.
-        Cung duoc goi tu _poll_busy() khi phat hien tac vu da xong ma khong
-        di qua duong nay (vd bi huy tu noi khac). An toan khi panel da bi
-        destroy (vd nguoi dung da dong cua so)."""
         if not self.winfo_exists():
             return
         self._dang_cai = False
@@ -1023,12 +860,6 @@ class ModDetailWindow(tk.Frame):
             pass
 
     def update_progress(self, da, tong, label_text=None):
-        """Cap nhat thanh tien trinh % - goi boi ben cai dat thuc su qua
-        progress_cb(da, tong, label_text=None). 'da'/'tong' dung de tinh % cho
-        thanh progressbar (luon theo thang 0-100, vi du so mod da cai/tong so
-        mod cho Modpack, hoac % byte da tai cho Mod/RSP/Shader le).
-        'label_text' tuy chon - neu duoc truyen se hien thi thay cho '{pct}%'
-        (vi du '12/45 mod' cho Modpack). An toan khi panel da bi destroy."""
         if not self.winfo_exists():
             return
         try:
@@ -1039,10 +870,6 @@ class ModDetailWindow(tk.Frame):
             pass
 
     def _set_install_ui_state(self, installing):
-        """Cap nhat giao dien nut Cai dat: luc dang cai, nut DOI THANH "Hủy"
-        (mau do, giong het nut tren tung dong cua ContentTableWidget) va VAN
-        BAM DUOC de huy - xem _on_install_or_cancel(). Nut 'Quay lai danh
-        sach' luon duoc giu o trang thai 'normal', khong bi khoa."""
         if installing:
             self.btn_install.configure(
                 text="✕  Hủy", bg="#E53935", activebackground="#E53935",

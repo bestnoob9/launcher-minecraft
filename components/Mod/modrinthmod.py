@@ -1,15 +1,3 @@
-"""
-modrinthmod.py
---------------
-Tat ca method lien quan den Modrinth trong ModMcWindow / ModMcFrame:
-  - Tab Modpack   (Modrinth)
-  - Tab Mod       (Modrinth)
-  - Tab Resource Pack (Modrinth)
-  - Tab Shader    (Modrinth)
-  - Tab Cai tu File (dung chung cho ca Modrinth lan CurseForge)
-
-Duoc mix vao class chinh qua ke thua ModrinthModMixin.
-"""
 
 import os
 import shutil
@@ -36,40 +24,18 @@ from components.install_utils import (
     luu_modpack_da_cai,
 )
 
-
-_NO_INST = "— Chưa chọn —"   # Gia tri placeholder "khong chon instance"
-
+_NO_INST = "— Chưa chọn —"
 
 class ModrinthModMixin:
-    """
-    Mixin chua toan bo logic cho cac tab Modrinth (Modpack / Mod / RSP / Shader)
-    va tab Cai tu File.
-
-    Yeu cau class cha co cac thuoc tinh:
-        self.tab_mr, self.tab_modmr, self.tab_rsp, self.tab_sh, self.tab_f
-        self.ent_search, self.lbl_status,
-        self._cancel_event, self._tang_tac_vu(), self._giam_tac_vu(),
-        self._swap_to_detail(), self._get_inst_mc_loader(),
-        TacVuBiHuy (exception class)
-    """
-
-    # TAB: MODPACK MODRINTH
 
     def _load_categories_mr_async(self, fb, project_type):
-        """
-        Tai danh sach category THAT cua Modrinth (theo project_type) trong
-        thread phu, roi fill vao popup chon-nhieu cua FilterBar 'fb' khi
-        xong. Goi 1 lan ngay sau khi tao moi FilterBar cho 4 tab Modrinth
-        (modpack / mod / resourcepack / shader) - moi loai co danh sach
-        category rieng (giong sidebar "Loai" trong Modrinth App that).
-        """
         def _t():
             try:
                 cats = lay_category_modrinth(project_type)
                 if cats:
                     fb.after(0, lambda: fb.set_categories(cats))
             except Exception:
-                pass  # giu popup rong ("Dang tai...") neu loi - khong chan UI
+                pass
         threading.Thread(target=_t, daemon=True).start()
 
     def _build_modpack_modrinth(self):
@@ -161,9 +127,7 @@ class ModrinthModMixin:
                 return
             url      = prim["url"]
             fname    = prim.get("filename", "modpack.mrpack")
-            # Neu modpack nay DA duoc cai o mot instance nao do roi -> cai
-            # DE LEN CHINH instance do (cap nhat/ha phien ban tai cho), thay
-            # vi luon tao instance moi theo ten[:30] nhu truoc day.
+
             _da_cai  = lay_trang_thai_da_cai("modpack", "modrinth", pid)
             ten_inst = _da_cai["ten_instance"] if _da_cai else ten[:30]
             self.lbl_status.config(text="Đang tải...", fg="#1E88E5")
@@ -179,7 +143,7 @@ class ModrinthModMixin:
                         pct = int(da / tong * 100)
                         self.after(0, lambda: self.lbl_status.config(
                             text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#1E88E5"))
-                        # Giai doan tai file goi modpack chiem 0-10% thanh tien trinh chung
+
                         self.ghi_tien_do(pct // 10, f"Đang tải gói: {pct}%")
                         if progress_cb:
                             self.after(0, lambda: progress_cb(pct // 10, 100))
@@ -189,11 +153,7 @@ class ModrinthModMixin:
                     def _done_va_xoa():
                         try: shutil.rmtree(_tmp)
                         except: pass
-                        # Ghi lai project_id + phien ban CUA CHINH modpack nay
-                        # (khac voi "version_mod" - la phien ban mod loader -
-                        # da duoc cai_modpack_tu_file tu ghi rieng) de lan sau
-                        # biet modpack nay DA cai, doi nut thanh Cap nhat/Ha
-                        # phien ban thay vi Cai dat.
+
                         luu_modpack_da_cai(ten_inst, "modrinth", pid,
                                            version_data.get("id"),
                                            version_data.get("version_number"),
@@ -202,16 +162,13 @@ class ModrinthModMixin:
                         self._done()
                         _finish()
                     def _huy_va_xoa():
-                        # Goi khi cai_modpack_tu_file ket thuc do BI HUY/LOI
-                        # (rieng voi _done_va_xoa o tren, vi do chi danh cho
-                        # truong hop THANH CONG - tranh hien nham thong bao
-                        # "Da cai dat thanh cong!" khi thuc ra da bi huy).
+
                         try: shutil.rmtree(_tmp)
                         except: pass
                         self._giam_tac_vu()
                         _finish()
                     def _modpack_progress(da_mod, tong_mod):
-                        # Giai doan cai tung mod chiem 10-100% thanh tien trinh chung
+
                         if tong_mod:
                             self.ghi_tien_do(10 + int(da_mod / tong_mod * 90),
                                               f"{da_mod}/{tong_mod} mod")
@@ -242,9 +199,7 @@ class ModrinthModMixin:
             return
 
         if install:
-            # Cai truc tiep: tu tai danh sach phien ban, uu tien phien ban
-            # khop voi MC Ver dang loc tren FilterBar (neu co), khong thi
-            # lay phien ban dau tien (moi nhat) - KHONG mo man chi tiet.
+
             self._tang_tac_vu()
             self.lbl_status.config(text=f"Đang tải phiên bản '{ten}'...", fg="#1E88E5")
             def _t():
@@ -273,8 +228,6 @@ class ModrinthModMixin:
                     self.after(0, _err)
             threading.Thread(target=_t, daemon=True).start()
             return
-
-    # TAB: MOD MODRINTH
 
     def _build_mod_modrinth(self):
         from components.widgets import FilterBar, ContentTableWidget
@@ -442,11 +395,6 @@ class ModrinthModMixin:
                                       "mods", "modrinth", pid, ten_instance=ten_inst_hien_tai))
             return
 
-        # Click thuong (chi chon dong) HOAC bam nut "Cài đặt" (install=True,
-        # cai truc tiep khong mo man chi tiet): deu can tai + loc danh sach
-        # phien ban truoc. Khac nhau o buoc cuoi - install=True se tu dong
-        # goi luon _install_modmr() ngay sau khi loc xong (dung dung phien
-        # ban dau tien - phu hop nhat - va Instance dang duoc chon).
         if install:
             self._tang_tac_vu()
         self.cbo_modmr_ver.set("Dang tai phien ban...")
@@ -469,7 +417,6 @@ class ModrinthModMixin:
         threading.Thread(target=_t, daemon=True).start()
 
     def _sync_inst_cbo(self, cbo):
-        """Dong bo danh sach instance voi config hien tai moi khi mo dropdown."""
         ds_inst = list(config.current_config.get("danh_sach_instances", {}).keys())
         cur_val = cbo.get()
         cbo.config(values=[_NO_INST] + ds_inst)
@@ -484,8 +431,6 @@ class ModrinthModMixin:
         ten_inst = self.cbo_modmr_inst.get().strip(); ten_inst = "" if ten_inst == _NO_INST else ten_inst
         mcv, loader = self._get_inst_mc_loader(ten_inst) if ten_inst else ("", "")
 
-        # Dong bo MC Ver va Loader len FilterBar khi chon Instance,
-        # nhung KHONG khoa - nguoi dung van co the tu chinh lai.
         if mcv:
             try:
                 cbo_mc = self.fb_modmr.cbo_mc
@@ -508,7 +453,6 @@ class ModrinthModMixin:
             except Exception:
                 pass
 
-        # Lay mc ver / loader tu FilterBar (co the da duoc nguoi dung tu chinh)
         try:
             fb_mc, fb_ld, _ = self.fb_modmr.get()
         except Exception:
@@ -604,8 +548,6 @@ class ModrinthModMixin:
                 self._giam_tac_vu()
         threading.Thread(target=_t, daemon=True).start()
 
-    # TAB: RESOURCE PACK MODRINTH
-
     def _build_rsp_tab(self):
         from components.widgets import FilterBar, ContentTableWidget
         from components.mod_mc import PaginationBar
@@ -639,8 +581,7 @@ class ModrinthModMixin:
         self.cbo_rsp_inst = ttk.Combobox(bp, values=[_NO_INST] + ds_inst, font=("Arial", 9), width=42, height=5)
         self.cbo_rsp_inst.set(_NO_INST)
         self.cbo_rsp_inst.grid(row=1, column=1, padx=6)
-        # RSP khong can loc phien ban theo Instance (khong phu thuoc chat
-        # vao MC version nhu Mod) - chi dong bo lai danh sach Instance.
+
         self.cbo_rsp_inst.bind("<ButtonPress>", lambda e: self._sync_inst_cbo(self.cbo_rsp_inst))
         tk.Button(bp, text="Cài RSP", font=("Arial", 9, "bold"),
                   bg="#8E24AA", fg="white", activebackground="#8E24AA", activeforeground="white",
@@ -787,8 +728,6 @@ class ModrinthModMixin:
         threading.Thread(target=_t, daemon=True).start()
 
     def _filter_rsp_ver(self):
-        """RSP khong can loc/khoa theo Instance - chi hien toan bo phien
-        ban, nguoi dung tu chon neu can."""
         vs     = self._rsp_vers_raw
         ds_all = [f"{v.get('name','?')}  -  MC {', '.join(v.get('game_versions',[]))}" for v in vs]
         self._rsp_ver_idx_map = list(range(len(vs)))
@@ -852,8 +791,6 @@ class ModrinthModMixin:
                 self._giam_tac_vu()
         threading.Thread(target=_t, daemon=True).start()
 
-    # TAB: SHADER MODRINTH
-
     def _build_shader_tab(self):
         from components.widgets import FilterBar, ContentTableWidget
         from components.mod_mc import PaginationBar
@@ -887,8 +824,7 @@ class ModrinthModMixin:
         self.cbo_sh_inst = ttk.Combobox(bp, values=[_NO_INST] + ds_inst, font=("Arial", 9), width=42, height=5)
         self.cbo_sh_inst.set(_NO_INST)
         self.cbo_sh_inst.grid(row=1, column=1, padx=6)
-        # Shader khong can loc phien ban theo Instance - chi dong bo lai
-        # danh sach Instance.
+
         self.cbo_sh_inst.bind("<ButtonPress>", lambda e: self._sync_inst_cbo(self.cbo_sh_inst))
         tk.Button(bp, text="Cài Shader", font=("Arial", 9, "bold"),
                   bg="#F57C00", fg="white", activebackground="#F57C00", activeforeground="white",
@@ -1035,8 +971,6 @@ class ModrinthModMixin:
         threading.Thread(target=_t, daemon=True).start()
 
     def _filter_sh_ver(self):
-        """Shader khong can loc/khoa theo Instance - chi hien toan bo
-        phien ban, nguoi dung tu chon neu can."""
         vs     = self._sh_vers_raw
         ds_all = [f"{v.get('name','?')}  -  MC {', '.join(v.get('game_versions',[]))}" for v in vs]
         self._sh_ver_idx_map = list(range(len(vs)))
@@ -1099,8 +1033,6 @@ class ModrinthModMixin:
             finally:
                 self._giam_tac_vu()
         threading.Thread(target=_t, daemon=True).start()
-
-    # TAB: CAI TU FILE (dung chung cho Modrinth & CurseForge)
 
     def _build_file(self):
         from components.install_utils import cai_modpack_tu_file
@@ -1167,16 +1099,12 @@ class ModrinthModMixin:
 
         self._tang_tac_vu()
         if loai == "Modpack":
-            # cai_modpack_tu_file() chay ngam trong 1 thread rieng va tra ve
-            # NGAY LAP TUC - KHONG duoc goi _giam_tac_vu() ngay sau day (finally
-            # cu se lam nut "Hủy" bi tat ngay khi modpack con dang tai x/xxx mod).
-            # Phai doi callback_xong/callback_huy bao ve that su ket thuc.
+
             def _done_va_xoa():
                 self._giam_tac_vu()
                 self._done()
             def _huy_va_xoa():
-                # Rieng cho truong hop BI HUY/LOI - tranh hien nham thong bao
-                # "Da cai dat thanh cong" khi thuc ra da bi huy.
+
                 self._giam_tac_vu()
             try:
                 cai_modpack_tu_file(path, ten, self.lbl_status, _done_va_xoa,

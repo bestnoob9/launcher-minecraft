@@ -9,26 +9,13 @@ import hashlib
 import uuid
 from components.install_utils import ten_folder_an_toan
 
-
 def offline_uuid(username: str) -> str:
-    """Sinh UUID dung cong thuc offline-mode chuan cua Minecraft
-    (tuong duong UUID.nameUUIDFromBytes tren chuoi
-    "OfflinePlayer:<username>".getBytes(UTF-8) ben Java), KHONG prepend
-    namespace NAMESPACE_DNS nhu uuid3. Dam bao UUID sinh ra khop chinh
-    xac voi UUID ma server offline-mode tu tinh cho tai khoan nay."""
     data = f"OfflinePlayer:{username}".encode("utf-8")
     digest = bytearray(hashlib.md5(data).digest())
-    digest[6] = (digest[6] & 0x0F) | 0x30  # version 3
-    digest[8] = (digest[8] & 0x3F) | 0x80  # variant IETF
+    digest[6] = (digest[6] & 0x0F) | 0x30
+    digest[8] = (digest[8] & 0x3F) | 0x80
     return str(uuid.UUID(bytes=bytes(digest)))
 
-# =====================================================================
-# AN TOAN BO CUA SO CMD DEN CHO MOI TIEN TRINH CON TREN WINDOWS
-# (vd: java -jar installer khi minecraft_launcher_lib cai Fabric/Forge/
-#  Quilt/NeoForge ben trong). Patch nay ghi de subprocess.Popen.__init__
-# nen ap dung cho CA cac lenh subprocess goi tu ben trong cac thu vien
-# khac (minecraft_launcher_lib), khong chi lenh ta tu goi.
-# =====================================================================
 if sys.platform == "win32":
     _popen_init_goc = subprocess.Popen.__init__
 
@@ -75,13 +62,9 @@ def tai_danh_sach_mod(loai_game, version_goc):
 
                 parts = version_goc.split('.')
                 if parts and parts[0] == "1":
-                    # Kieu cu: "1.XX.Y" (vd 1.21.1) -> NeoForge dat ten theo
-                    # XX.Y.build (vd 21.1.234), bo qua phan "1." dau tien.
                     sub_ver = parts[1] if len(parts) > 1 else ""
                     patch_ver = parts[2] if len(parts) > 2 else "0"
                 else:
-                    # Kieu moi tu ban Minecraft sau nay, khong con tien to "1."
-                    # (vd "26.2") -> NeoForge dung thang 2 phan dau nay lam prefix.
                     sub_ver = parts[0] if len(parts) > 0 else ""
                     patch_ver = parts[1] if len(parts) > 1 else "0"
                 tien_to = f"{sub_ver}.{patch_ver}."
@@ -166,9 +149,6 @@ def cap_nhat_va_quet_instances(thu_muc_game):
 
     return ds_instance_thuc_te
 
-# =====================================================================
-# BỘ KHỞI TẠO JVM ARGUMENTS TỐI ƯU HÓA
-# =====================================================================
 def get_all_jvm_presets():
     return {
         "aikar_optimized": [
@@ -205,9 +185,6 @@ def build_jvm_arguments(current_config, ram_min, ram_max, version_goc=None):
     final_args = []
     final_args.append(f"-Xms{ram_min}")
     final_args.append(f"-Xmx{ram_max}")
-    # Chi bypass auth Mojang (che do offline) khi chay 1.16.5 / 1.16.4.
-    # Cac phien ban khac se KHONG bi chan ket noi den may chu xac thuc
-    # that cua Mojang/Microsoft nua.
     if str(version_goc).strip() in ("1.16.5", "1.16.4"):
         final_args.append("-Dminecraft.api.auth.enabled=false")
         final_args.append("-Dminecraft.api.auth.host=https://nope.invalid")
@@ -227,32 +204,14 @@ def build_jvm_arguments(current_config, ram_min, ram_max, version_goc=None):
 
     return final_args
 
-# =====================================================================
-# CÀI ĐẶT VÀ TIẾN TRÌNH GAME
-# =====================================================================
-
 def _da_cai_minecraft_co_ban(thu_muc_game, version_id):
-    """
-    Kiem tra nhanh xem version Minecraft goc (vanilla) da co day du
-    file .json + .jar trong thu muc versions/ chua.
-    Neu da co -> bo qua goi install_minecraft_version (do nhanh) de
-    khong phai quet/kiem tra lai toan bo assets/libraries moi lan vao game.
-    """
     vdir = os.path.join(thu_muc_game, "versions", version_id)
     return (
         os.path.exists(os.path.join(vdir, f"{version_id}.json"))
         and os.path.exists(os.path.join(vdir, f"{version_id}.jar"))
     )
 
-
 def _tim_phien_ban_loader_da_cai(thu_muc_versions, tu_khoa, dieu_kien_phu=None):
-    """
-    Quet thu_muc_versions, tim folder co ten chua `tu_khoa` (vd 'fabric',
-    'quilt', 'forge', 'neoforge') va da co file .json (nghia la profile
-    da duoc cai dat hoan tat truoc do).
-    dieu_kien_phu(folder) -> bool: dieu kien loc them (vd khop version goc / loader).
-    Tra ve ten folder neu tim thay, None neu chua cai.
-    """
     if not os.path.exists(thu_muc_versions):
         return None
     for folder in os.listdir(thu_muc_versions):
@@ -266,17 +225,7 @@ def _tim_phien_ban_loader_da_cai(thu_muc_versions, tu_khoa, dieu_kien_phu=None):
         return folder
     return None
 
-
 def _khop_chinh_xac_version(ver, text):
-    """
-    Kiem tra 'ver' co xuat hien trong 'text' nhu mot token phien ban day du,
-    KHONG bi nham voi mot phien ban dai hon chua no.
-    Vd: _khop_chinh_xac_version("1.21.1", "1.21.1-forge-52.0.11") -> True
-        _khop_chinh_xac_version("1.21.1", "1.21.11-forge-52.0.11") -> False
-    Cach lam: tim moi vi tri xuat hien cua 'ver' trong 'text', chap nhan
-    chi khi ky tu ngay truoc/sau (neu co) khong phai la chu so (tuc 'ver'
-    khong bi noi dai them boi cac chu so khac).
-    """
     if not ver:
         return False
     for m in re.finditer(re.escape(ver), text):
@@ -287,14 +236,12 @@ def _khop_chinh_xac_version(ver, text):
             return True
     return False
 
-
 def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_muc_game, ten_instance, options, callback_progress=None, should_cancel=None):
     thu_muc_instance_rieng = os.path.join(thu_muc_game, "Instances", ten_instance)
     os.makedirs(thu_muc_instance_rieng, exist_ok=True)
     options["gameDirectory"] = thu_muc_instance_rieng
-
-    # --- Tao CallbackDict de cap nhat tien do ---
-    _max = [100]  # dung list de co the thay doi ben trong lambda
+    
+    _max = [100]  
 
     def _set_max(val):
         if val and val > 0:
@@ -309,7 +256,6 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
 
     def _set_status(msg):
         if callback_progress:
-            # Giu nguyen phan tram hien tai, chi cap nhat mo ta
             callback_progress(None, str(msg))
 
     _callbacks = {
@@ -325,11 +271,6 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
     id_phien_ban_chay = version_goc
     thu_muc_versions = os.path.join(thu_muc_game, "versions")
 
-    # Chuan hoa loai_game ve dung 1 trong cac gia tri chuan ben duoi, tranh
-    # truong hop gia tri luu trong instance_info.json bi sai hoa/thuong
-    # (vd "Neoforge" thay vi "NeoForge" - co the do noi khac ghi vao, nhu
-    # code cai modpack tu Modrinth/CurseForge dung .capitalize()) khien cac
-    # nhanh if/elif duoi day khong khop nhanh nao ca va am tham chay Vanilla.
     _BAN_DO_LOAI_GAME = {
         "fabric": "Fabric", "quilt": "Quilt",
         "neoforge": "NeoForge", "forge": "Forge", "vanilla": "Vanilla",
@@ -343,11 +284,10 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
         )
         if da_cai:
             id_phien_ban_chay = da_cai
-            _set_status(f"Da cai Fabric {version_mod_da_chon}, bo qua cai dat lai...")
+            _set_status(f"skip")
         else:
             minecraft_launcher_lib.fabric.install_fabric(version_goc, thu_muc_game, loader_version=version_mod_da_chon, callback=_callbacks)
             if os.path.exists(thu_muc_versions):
-                # Uu tien khop chinh xac ca version_goc lan version_mod (tranh lay sai loader version)
                 best = None
                 for folder in os.listdir(thu_muc_versions):
                     if "fabric" in folder.lower() and _khop_chinh_xac_version(version_goc, folder):
@@ -367,7 +307,7 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
         )
         if da_cai:
             id_phien_ban_chay = da_cai
-            _set_status(f"Da cai Quilt {version_mod_da_chon}, bo qua cai dat lai...")
+            _set_status(f"skip")
         else:
             minecraft_launcher_lib.quilt.install_quilt(version_goc, thu_muc_game, loader_version=version_mod_da_chon, callback=_callbacks)
             if os.path.exists(thu_muc_versions):
@@ -390,13 +330,8 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
         )
         if da_cai:
             id_phien_ban_chay = da_cai
-            _set_status(f"Da cai NeoForge {version_mod_da_chon}, bo qua cai dat lai...")
+            _set_status(f"skip")
         else:
-            # Tu ban 8.0, minecraft-launcher-lib BO HAN module "neoforge" rieng,
-            # chuyen het sang module "mod_loader" thong nhat cho ca
-            # Forge/NeoForge/Fabric/Quilt. Uu tien dung API moi nay; neu thu
-            # vien dang dung la ban cu hon 8.0 (chua co mod_loader), fallback
-            # ve module "neoforge" cu (neu co) de van tuong thich nguoc.
             if hasattr(minecraft_launcher_lib, "mod_loader"):
                 try:
                     loader = minecraft_launcher_lib.mod_loader.get_mod_loader("neoforge")
@@ -410,14 +345,14 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
                     minecraft_launcher_lib.neoforge.install_neoforge_version(
                         version_mod_da_chon, thu_muc_game, callback=_callbacks)
                 except AttributeError:
-                    raise Exception("NeoForge chưa được hỗ trợ. Hãy chạy: pip install --upgrade minecraft-launcher-lib")
+                    raise Exception("NeoForge chưa được hỗ trợ. Hãy đợi thg làm launcher cập nhập")
                 if os.path.exists(thu_muc_versions):
                     for folder in os.listdir(thu_muc_versions):
                         if "neoforge" in folder.lower() and _khop_chinh_xac_version(version_mod_da_chon, folder):
                             id_phien_ban_chay = folder
                             break
             else:
-                raise Exception("NeoForge chưa được hỗ trợ. Hãy chạy: pip install --upgrade minecraft-launcher-lib")
+                raise Exception("NeoForge chưa được hỗ trợ. Hãy đợi thg làm launcher cập nhập")
 
     elif loai_game == "Forge" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
         da_cai = _tim_phien_ban_loader_da_cai(
@@ -426,7 +361,7 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
         )
         if da_cai:
             id_phien_ban_chay = da_cai
-            _set_status(f"Da cai Forge cho {version_goc}, bo qua cai dat lai...")
+            _set_status(f"skip")
         else:
             minecraft_launcher_lib.forge.install_forge_version(version_mod_da_chon, thu_muc_game, callback=_callbacks)
             if os.path.exists(thu_muc_versions):
@@ -451,8 +386,6 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
             break
 
     if not _da_patch:
-        # Lop du phong: quet toan bo lenh tim gia tri "msa" dung 1 minh
-        # (khong ghep chung voi tu khac) va thay bang "legacy".
         for _i, _arg in enumerate(lenh_goc):
             if _arg == "msa":
                 lenh_goc[_i] = "legacy"
@@ -469,16 +402,12 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
     ten_folder_instance = ten_folder_an_toan(ten_instance)
     thu_muc_instance_rieng = os.path.join(thu_muc_game, "Instances", ten_folder_instance)
     
-    # Tự tạo thư mục nếu chưa có
     os.makedirs(thu_muc_instance_rieng, exist_ok=True)
 
     file_thong_tin = os.path.join(thu_muc_instance_rieng, "instance_info.json")
 
-    # Nếu chưa có file json thì tự tạo từ config thay vì báo lỗi
     if not os.path.exists(file_thong_tin):
         ds_instances = config.current_config.get("danh_sach_instances", {})
-        # Thử tìm theo tên hiển thị, fallback sang tên folder (phòng trường
-        # hợp tên folder bị lọc ký tự khác với tên hiển thị gốc)
         data_instance = ds_instances.get(ten_instance) or ds_instances.get(ten_folder_instance)
 
         if not data_instance:
@@ -491,12 +420,6 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
             lbl_status.after(0, lambda: lbl_status.config(text=f"Lỗi tạo file cấu hình: {e}", fg="red"))
             return
 
-    # "Latest Version" la instance dac biet LUON phai tro toi ban Minecraft moi
-    # nhat - version_goc cua no duoc tu dong cap nhat trong config (xem
-    # instance_frame.py) moi lan mo app, nhung instance_info.json tren dia
-    # chi duoc ghi 1 lan luc tao nen co the bi "ket" o phien ban cu. Vi vay,
-    # voi instance nay, luon dong bo lai version_goc moi nhat tu config truoc
-    # khi doc, tranh chay nham phien ban cu (vd 26.1.2 trong khi config da la 26.2).
     if ten_instance == "Latest Version":
         ds_instances = config.current_config.get("danh_sach_instances", {})
         data_latest = ds_instances.get("Latest Version")
@@ -505,7 +428,7 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
                 with open(file_thong_tin, "w", encoding="utf-8") as f:
                     json.dump(data_latest, f, indent=4, ensure_ascii=False)
             except Exception:
-                pass  # neu ghi loi thi van tiep tuc doc file cu, khong chan nguoi dung
+                pass  
 
     try:
         with open(file_thong_tin, "r", encoding="utf-8") as f:
@@ -517,16 +440,12 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
     def _parse_ram(val, default):
         import re as _re
         val = str(val).strip().upper().replace(" ", "")
-        # Ho tro ca so thap phan (vd "3.5GB" tu config cu) de tranh am tham
-        # rot ve gia tri default 4G khi RAM nguoi dung chon khong tron GB.
         m = _re.match(r"^(\d+(?:\.\d+)?)\s*(GB|MB|G|M)?$", val)
         if m:
             num_str, unit = m.group(1), (m.group(2) or "G")
             unit = unit.replace("GB", "G").replace("MB", "M")
             num = float(num_str)
             if unit == "G":
-                # JVM khong nhan duoc so thap phan sau -Xmx/-Xms (vd -Xmx3.5G la loi)
-                # nen quy doi sang MB nguyen khi co phan thap phan.
                 if num != int(num):
                     return f"{int(round(num * 1024))}M"
                 return f"{int(num)}G"
@@ -545,14 +464,8 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
         version_goc=thong_tin_instance.get("version_goc")
     )
 
-    # Tai khoan offline - lay UUID da luu trong username.json (neu chua co
-    # thi ham nay se tu sinh theo dung cong thuc offline-mode cua Minecraft
-    # - UUID.nameUUIDFromBytes tren chuoi "OfflinePlayer:<ten>" - roi luu
-    # lai). Dam bao 1 username luon gan voi DUNG 1 UUID co dinh, khong tinh
-    # lai moi lan chon/chay tai khoan.
     _username = tai_khoan
     _uuid_str = config.lay_hoac_luu_uuid(tai_khoan, thu_muc_game)
-    #_token = "0"
 
     options = {
         "username": _username,
@@ -591,23 +504,6 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
         _startupinfo = None
         _creationflags = 0
         if _sys.platform == "win32":
-            # QUAN TRONG: KHONG duoc set STARTF_USESHOWWINDOW / SW_HIDE o day.
-            # Cac ban Minecraft cu (<=1.12.x, dung LWJGL2/org.lwjgl.opengl.Display)
-            # tao cua so game bang native Win32 va KE THUA trang thai hien thi
-            # ban dau tu STARTUPINFO cua tien trinh cha (qua GetStartupInfo).
-            # Neu SW_HIDE duoc set, cua so game se bi tao ra o trang thai AN
-            # ngay tu dau -> Java van chay binh thuong (ngam) nhung khong bao
-            # gio hien cua so len. Cac ban moi (LWJGL3/GLFW, >=1.13) khong bi
-            # anh huong vi GLFW tu goi ShowWindow(SW_SHOW) tuong minh, bo qua
-            # nCmdShow ke thua.
-            #
-            # Luu y: ham _popen_init_an_cmd (patch toan cuc o dau file) se TU
-            # DONG chen SW_HIDE vao neu startupinfo=None duoc truyen vao Popen.
-            # Vi vay o day PHAI truyen mot STARTUPINFO() RONG (khong bat co
-            # STARTF_USESHOWWINDOW) de "ne" dieu kien do, dam bao cua so game
-            # khong bi ep an. CREATE_NO_WINDOW van an toan de giu (chi chan
-            # console cmd loe len neu java_path tro toi java.exe thay vi
-            # javaw.exe, khong anh huong toi cua so game).
             _startupinfo = subprocess.STARTUPINFO()
             _creationflags = subprocess.CREATE_NO_WINDOW
         proc = subprocess.Popen(
@@ -627,19 +523,10 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
         lbl_status.after(0, lambda: lbl_status.config(text="Sẵn sàng", fg="gray"))
         return None
     except Exception as e:
-        # QUAN TRONG: KHONG tu "an" loi va return None o day. Truoc day code
-        # chi cap nhat lbl_status roi return None, nhung ben goi (main.py)
-        # ngay sau do lai TU GHI DE lbl_status thanh "San sang" (vi proc=None
-        # duoc hieu la "da huy hop le", giong InterruptedError) - khien thong
-        # bao loi thuc su (vd thieu loader NeoForge, version_mod sai dinh
-        # dang...) bi xoa mat trong vong chua toi 1 giay, tao cam giac "bam
-        # Vao game ma khong co gi xay ra". Raise lai de main.py's except
-        # Exception (co messagebox.showerror ro rang) xu ly dung.
         err = str(e)
         lbl_status.after(0, lambda: lbl_status.config(text=f"Thất bại: {err}", fg="red"))
         raise
 def lay_danh_sach_phien_ban_theo_loai(loai):
-    """loai: release | snapshot | old_beta | old_alpha"""
     try:
         all_versions = minecraft_launcher_lib.utils.get_version_list()
         return [v["id"] for v in all_versions if v["type"] == loai]

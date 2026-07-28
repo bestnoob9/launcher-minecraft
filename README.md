@@ -64,10 +64,4 @@ RSP Shader Modpack được tích hợp sẵn trong launcher, cho phép cài đ�
 
 Mọi đóng góp, báo lỗi hoặc đề xuất tính năng đều được hoan nghênh. Hãy tạo Issue hoặc Pull Request trên repository.
 
-## 📄 Giấy phép
-
-Dự án được phát hành theo giấy phép [MIT](LICENSE).
-
----
-
 Made with ❤️ by bestnoob9.

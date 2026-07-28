@@ -18,7 +18,7 @@
 
 - Python 3.9+
 - Java (khuyến nghị Java 17+ cho các phiên bản Minecraft mới)
-- Hệ điều hành: Windows ✅ / Linux ❌ / macOS ❌
+- Hệ điều hành: Windows / Linux / macOS
 
 ## 📦 Cài đặt
 
@@ -32,7 +32,7 @@ python main.py
 ## 🚀 Sử dụng
 
 1. Mở NoName MCL
-2. Đăng nhập tài khoản Minecraft
+2. Nhập tên người chơi (chế độ offline)
 3. Tạo hoặc chọn một profile
 4. Vào tab **Mods** để duyệt và cài mod từ CurseForge / Modrinth
 5. Vào tab **Shaders** để cài nhanh **RSP Shader Modpack**
@@ -66,6 +66,8 @@ Mọi đóng góp, báo lỗi hoặc đề xuất tính năng đều được ho
 
 ## 📄 Giấy phép
 
-Lấy thoải mái đi miễn là thêm chữ học hỏi từ NoName MCL là được :-Đ
+Dự án được phát hành theo giấy phép [MIT](https://github.com/bestnoob9/launcher-minecraft/blob/main/LICENSE).
 
-Made with ❤️ by bestnoob9.
+---
+
+Made with ❤️ by bestnoob9

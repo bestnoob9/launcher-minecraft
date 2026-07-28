@@ -64,4 +64,8 @@ RSP Shader Modpack được tích hợp sẵn trong launcher, cho phép cài đ�
 
 Mọi đóng góp, báo lỗi hoặc đề xuất tính năng đều được hoan nghênh. Hãy tạo Issue hoặc Pull Request trên repository.
 
+## 📄 Giấy phép
+
+Lấy thoải mái đi miễn là thêm chữ học hỏi từ NoName MCL là được :-Đ
+
 Made with ❤️ by bestnoob9.

@@ -1,10 +1,10 @@
-
 import urllib.request
 import urllib.parse
 import urllib.error
 import json
 
-CURSEFORGE_API_KEY  = "$2a$10$tlioOAg8vpMZg3nN1c5lautxofMN2DXCzLn4.8nyr.MTBG4IYHVT2"
+CURSEFORGE_PROXY_BASE = "https://dark-thunder-4c52.vubest2009.workers.dev"
+
 MODRINTH_USER_AGENT = "MinecraftLauncher/1.0 (github.com/user/mc-launcher)"
 
 def _request_json(url, headers=None):
@@ -93,17 +93,13 @@ def lay_curseforge_popular(class_id=4471, limit=50, offset=0):
         "gameId": 432, "classId": class_id,
         "pageSize": limit, "index": offset, "sortField": 2, "sortOrder": "desc",
     })
-    data = _request_json(
-        f"https://api.curseforge.com/v1/mods/search?{params}",
-        {"x-api-key": CURSEFORGE_API_KEY})
+    data = _request_json(f"{CURSEFORGE_PROXY_BASE}/v1/mods/search?{params}")
     total = data.get("pagination", {}).get("totalCount", 0)
     return data.get("data", []), total
 
 def lay_category_curseforge(class_id=4471):
     params = urllib.parse.urlencode({"gameId": 432, "classId": class_id})
-    data = _request_json(
-        f"https://api.curseforge.com/v1/categories?{params}",
-        {"x-api-key": CURSEFORGE_API_KEY})
+    data = _request_json(f"{CURSEFORGE_PROXY_BASE}/v1/categories?{params}")
     cats = data.get("data", [])
 
     return sorted(
@@ -124,14 +120,10 @@ def tim_kiem_curseforge(tu_khoa, mc_version="", loader="", limit=50, class_id=44
             p["modLoaderType"] = lm[loader]
     if category_id:
         p["categoryId"] = category_id
-    data = _request_json(
-        f"https://api.curseforge.com/v1/mods/search?{urllib.parse.urlencode(p)}",
-        {"x-api-key": CURSEFORGE_API_KEY})
+    data = _request_json(f"{CURSEFORGE_PROXY_BASE}/v1/mods/search?{urllib.parse.urlencode(p)}")
     total = data.get("pagination", {}).get("totalCount", 0)
     return data.get("data", []), total
 
 def lay_phien_ban_curseforge(mod_id):
-    data = _request_json(
-        f"https://api.curseforge.com/v1/mods/{mod_id}/files?pageSize=30",
-        {"x-api-key": CURSEFORGE_API_KEY})
+    data = _request_json(f"{CURSEFORGE_PROXY_BASE}/v1/mods/{mod_id}/files?pageSize=30")
     return data.get("data", [])

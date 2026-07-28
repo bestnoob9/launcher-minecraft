@@ -1,4 +1,3 @@
-
 import os
 import io
 import json
@@ -13,7 +12,7 @@ import concurrent.futures
 import config
 from components.api_helpers import (
     MODRINTH_USER_AGENT,
-    CURSEFORGE_API_KEY,
+    CURSEFORGE_PROXY_BASE,
     _request_json,
 )
 
@@ -425,8 +424,8 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                         return
 
                     try:
-                        url_info  = f"https://api.curseforge.com/v1/mods/{project_id}/files/{file_id}"
-                        file_data = _request_json(url_info, {"x-api-key": CURSEFORGE_API_KEY})
+                        url_info  = f"{CURSEFORGE_PROXY_BASE}/v1/mods/{project_id}/files/{file_id}"
+                        file_data = _request_json(url_info)
                         file_info = file_data.get("data", {})
                         ten_file  = file_info.get("fileName", f"{file_id}.jar")
                         dl_url    = file_info.get("downloadUrl", "")
@@ -436,8 +435,7 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
 
                         try:
                             proj_data = _request_json(
-                                f"https://api.curseforge.com/v1/mods/{project_id}",
-                                {"x-api-key": CURSEFORGE_API_KEY})
+                                f"{CURSEFORGE_PROXY_BASE}/v1/mods/{project_id}")
                             class_id_cf = proj_data.get("data", {}).get("classId", 6)
                         except Exception:
                             class_id_cf = 6

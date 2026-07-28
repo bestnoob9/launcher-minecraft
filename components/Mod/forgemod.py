@@ -1,4 +1,3 @@
-
 import os
 import shutil
 import threading
@@ -9,7 +8,6 @@ from tkinter import ttk, messagebox
 
 import config
 from components.api_helpers import (
-    CURSEFORGE_API_KEY,
     lay_curseforge_popular,
     tim_kiem_curseforge,
     lay_phien_ban_curseforge,
@@ -172,7 +170,7 @@ class ForgeModMixin:
                             self.ghi_tien_do(pct // 10, f"Đang tải gói: {pct}%")
                             if progress_cb:
                                 self.after(0, lambda: progress_cb(pct // 10, 100))
-                        tai_file(url, pz, prog, extra_headers={"x-api-key": CURSEFORGE_API_KEY})
+                        tai_file(url, pz, prog)
                         if self._cancel_event.is_set():
                             raise TacVuBiHuy("Da huy cai modpack")
                         def _done_va_xoa():
@@ -389,7 +387,7 @@ class ForgeModMixin:
                             self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
                             if progress_cb:
                                 self.after(0, lambda: progress_cb(da, tong))
-                        tai_file(url, pz, prog, extra_headers={"x-api-key": CURSEFORGE_API_KEY})
+                        tai_file(url, pz, prog)
                         if self._cancel_event.is_set():
                             raise TacVuBiHuy("Da huy cai mod")
                         def _done():
@@ -548,7 +546,7 @@ class ForgeModMixin:
                     self.after(0, lambda: self.lbl_status.config(
                         text=f"Đang tải mod: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#F9A825"))
                     self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
-                tai_file(url, pz, prog, extra_headers={"x-api-key": CURSEFORGE_API_KEY})
+                tai_file(url, pz, prog)
                 if self._cancel_event.is_set():
                     raise TacVuBiHuy("Da huy cai mod")
                 def _done():
@@ -696,7 +694,7 @@ class ForgeModMixin:
                             self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
                             if progress_cb:
                                 self.after(0, lambda: progress_cb(da, tong))
-                        tai_file(url, pz, prog, extra_headers={"x-api-key": CURSEFORGE_API_KEY})
+                        tai_file(url, pz, prog)
                         if self._cancel_event.is_set():
                             raise TacVuBiHuy("Da huy cai RSP")
                         def _done():
@@ -797,7 +795,7 @@ class ForgeModMixin:
                     self.after(0, lambda: self.lbl_status.config(
                         text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#AB47BC"))
                     self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
-                tai_file(url, pz, prog, extra_headers={"x-api-key": CURSEFORGE_API_KEY})
+                tai_file(url, pz, prog)
                 if self._cancel_event.is_set():
                     raise TacVuBiHuy("Da huy cai RSP")
                 def _done():
@@ -945,7 +943,7 @@ class ForgeModMixin:
                             self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
                             if progress_cb:
                                 self.after(0, lambda: progress_cb(da, tong))
-                        tai_file(url, pz, prog, extra_headers={"x-api-key": CURSEFORGE_API_KEY})
+                        tai_file(url, pz, prog)
                         if self._cancel_event.is_set():
                             raise TacVuBiHuy("Da huy cai Shader")
                         def _done():
@@ -1046,7 +1044,7 @@ class ForgeModMixin:
                     self.after(0, lambda: self.lbl_status.config(
                         text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#FB8C00"))
                     self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
-                tai_file(url, pz, prog, extra_headers={"x-api-key": CURSEFORGE_API_KEY})
+                tai_file(url, pz, prog)
                 if self._cancel_event.is_set():
                     raise TacVuBiHuy("Da huy cai Shader")
                 def _done():

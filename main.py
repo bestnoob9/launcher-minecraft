@@ -3,7 +3,6 @@ from tkinter import ttk, messagebox
 import threading
 import os
 import sys
-
 import config
 import core
 import theme
@@ -185,7 +184,7 @@ class MinecraftLauncherApp:
 
     def __init__(self, root):
         self.root = root
-        self.root.title("Test MCL")
+        self.root.title("NoName MCL")
 
         rong_cs, cao_cs = self._doc_kich_thuoc_cua_so()
         self.root.minsize(min(800, rong_cs), min(600, cao_cs))
@@ -210,7 +209,7 @@ class MinecraftLauncherApp:
         self._switch_view("home")                                              
     def create_widgets(self):
         lbl_main_title = tk.Label(
-            self.root, text="Test MCL",
+            self.root, text="NoName MCL",
             font=("Arial", 16, "bold"), fg="#1E88E5"
         )
         lbl_main_title.pack(pady=(14, 6))

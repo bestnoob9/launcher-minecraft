@@ -23,10 +23,50 @@ _TEN_FILE_CONFIG    = "launcher_config.json"
 
 _FILE_POINTER = os.path.join(_LAUNCHER_DIR, "launcher_path.json")
 
+import re as _re
+
+def chuan_hoa_duong_dan_thu_muc(duong_dan: str) -> str:
+    """Chuẩn hóa đường dẫn thư mục do người dùng chọn.
+
+    Sửa 2 lỗi thường gặp trên Windows:
+    1) Khi chọn thư mục là GỐC của một ổ đĩa (vd "D:\\"),
+       tkinter.filedialog.askdirectory() có thể trả về "D:" (thiếu "\\"
+       ở cuối). Chuỗi "D:" là đường dẫn TƯƠNG ĐỐI theo "thư mục hiện tại
+       của ổ D", không phải tuyệt đối.
+    2) Khi người dùng gõ tay đường dẫn và quên dấu ":" sau chữ cái ổ đĩa
+       (vd gõ "D\\gota" thay vì "D:\\gota"). Chuỗi "D\\gota" bị Windows
+       hiểu là đường dẫn tương đối, dẫn tới việc tạo nhầm thư mục con
+       tên "D" ngay cạnh launcher.
+    Cả 2 trường hợp trên nếu không sửa sẽ khiến os.path.join(...) ghép
+    sai và ghi dữ liệu nhầm chỗ. Hàm này chuẩn hóa để luôn ra một đường
+    dẫn tuyệt đối hợp lệ.
+    """
+    if not duong_dan:
+        return duong_dan
+    duong_dan = duong_dan.strip()
+    # Vá lỗi thiếu dấu ":" ngay sau 1 chữ cái ổ đĩa ở đầu chuỗi,
+    # vd "D\gota" -> "D:\gota", "D/gota" -> "D:/gota"
+    m = _re.match(r'^([A-Za-z])([\\/])(.*)$', duong_dan)
+    if m:
+        duong_dan = f"{m.group(1)}:{m.group(2)}{m.group(3)}"
+    duong_dan = os.path.normpath(duong_dan)
+    drive, tail = os.path.splitdrive(duong_dan)
+    if drive and not tail:
+        duong_dan = drive + os.sep
+    return duong_dan
+
+def duong_dan_hop_le(duong_dan: str) -> bool:
+    """Kiểm tra đường dẫn đã tuyệt đối và hợp lệ hay chưa (sau khi đã
+    chuan_hoa_duong_dan_thu_muc). Dùng để chặn lưu các giá trị dở dang,
+    ví dụ thiếu dấu hai chấm sau ổ đĩa."""
+    if not duong_dan:
+        return False
+    return os.path.isabs(duong_dan)
+
 def _doc_pointer() -> str:
     try:
         with open(_FILE_POINTER, "r", encoding="utf-8") as f:
-            return json.load(f).get("thu_muc_game", "").strip()
+            return chuan_hoa_duong_dan_thu_muc(json.load(f).get("thu_muc_game", "").strip())
     except Exception:
         return ""
 
@@ -109,6 +149,7 @@ def dong_bo_username_json(thu_muc_game: str = "", danh_sach_acc: list = None) ->
 
 def cap_nhat_duong_dan_config(thu_muc_game: str):
     global file_config_json
+    thu_muc_game = chuan_hoa_duong_dan_thu_muc(thu_muc_game)
     duong_dan_moi = _lay_duong_dan_config(thu_muc_game)
 
     _ghi_pointer(thu_muc_game)
@@ -173,7 +214,7 @@ def tai_toan_bo_cau_hinh():
             with open(_FILE_CONFIG_TAM, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            thu_muc_trong_tam = data.get("thu_muc_game", "").strip()
+            thu_muc_trong_tam = chuan_hoa_duong_dan_thu_muc(data.get("thu_muc_game", "").strip())
             if thu_muc_trong_tam and not thu_muc:
                 thu_muc = thu_muc_trong_tam
                 file_config_json = _lay_duong_dan_config(thu_muc)
@@ -187,6 +228,14 @@ def tai_toan_bo_cau_hinh():
     for key in config_mac_dinh:
         if key not in data:
             data[key] = config_mac_dinh[key]
+
+    # Luôn tin theo vị trí thư mục thực tế (từ pointer), KHÔNG dùng giá
+    # trị "thu_muc_game" cũ ghi sẵn bên trong file đã tải (hoặc giá trị
+    # mặc định rỗng), vì file có thể đã bị copy/di chuyển sang thư mục
+    # khác, hoặc bị xoá/tái tạo. Áp dụng vô điều kiện, bất kể data đến
+    # từ đâu ở trên, để tránh việc mất dấu vết thư mục đang dùng.
+    if thu_muc:
+        data["thu_muc_game"] = thu_muc
 
     if "Latest Version" in data.get("danh_sach_instances", {}):
         data["danh_sach_instances"]["Latest Version"]["version_goc"] = _lay_phien_ban_moi_nhat()

@@ -69,7 +69,7 @@ def _mo_cua_so_wizard(root) -> bool:
             initialdir=var_path.get() if os.path.exists(var_path.get()) else os.path.expanduser("~"),
         )
         if duong_dan:
-            var_path.set(os.path.normpath(duong_dan))
+            var_path.set(config.chuan_hoa_duong_dan_thu_muc(duong_dan))
 
     tk.Button(
         frame_path,
@@ -85,9 +85,12 @@ def _mo_cua_so_wizard(root) -> bool:
     lbl_loi.pack(pady=(10, 0))
 
     def xac_nhan():
-        duong_dan = var_path.get().strip()
+        duong_dan = config.chuan_hoa_duong_dan_thu_muc(var_path.get().strip())
         if not duong_dan:
             lbl_loi.config(text="⚠  Đường dẫn không được để trống!")
+            return
+        if not config.duong_dan_hop_le(duong_dan):
+            lbl_loi.config(text="⚠  Đường dẫn không hợp lệ (thiếu dấu \":\" sau ổ đĩa, vd \"D:\\Games\"). Vui lòng bấm 📂 để chọn thư mục thay vì gõ tay!")
             return
         if not _duong_dan_hop_le(duong_dan):
             lbl_loi.config(text="⚠  Không thể tạo thư mục tại đường dẫn này. Vui lòng chọn lại!")

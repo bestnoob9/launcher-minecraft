@@ -498,6 +498,7 @@ class SettingFrame(tk.Frame):
         from tkinter import filedialog
         thu_muc = filedialog.askdirectory(title="Chọn thư mục lưu Game")
         if thu_muc:
+            thu_muc = config.chuan_hoa_duong_dan_thu_muc(thu_muc)
             self.ent_path.delete(0, tk.END)
             self.ent_path.insert(0, thu_muc)
 
@@ -515,10 +516,19 @@ class SettingFrame(tk.Frame):
 
     def luu_cau_hinh(self):
         from tkinter import messagebox
-        path = self.ent_path.get().strip()
+        path = config.chuan_hoa_duong_dan_thu_muc(self.ent_path.get().strip())
         if not path:
             messagebox.showwarning("Cảnh báo", "Đường dẫn game không được để trống!")
             return
+        if not config.duong_dan_hop_le(path):
+            messagebox.showerror(
+                "Đường dẫn không hợp lệ",
+                f"Đường dẫn \"{path}\" không hợp lệ (thiếu dấu \":\" sau ổ đĩa, vd \"D:\\Games\").\n"
+                "Vui lòng bấm nút 📂 để chọn thư mục thay vì gõ tay."
+            )
+            return
+        self.ent_path.delete(0, tk.END)
+        self.ent_path.insert(0, path)
 
         rong_input = self.ent_width.get().strip()
         cao_input = self.ent_height.get().strip()
@@ -1063,6 +1073,7 @@ class SettingWindow(tk.Toplevel):
     def chon_duong_dan(self):
         thu_muc = filedialog.askdirectory(title="Chọn thư mục lưu Game")
         if thu_muc:
+            thu_muc = config.chuan_hoa_duong_dan_thu_muc(thu_muc)
             self.ent_path.delete(0, tk.END)
             self.ent_path.insert(0, thu_muc)
 
@@ -1081,10 +1092,19 @@ class SettingWindow(tk.Toplevel):
             self.ent_java_path.insert(0, java_file)
 
     def luu_cau_hinh(self):
-        path = self.ent_path.get().strip()
+        path = config.chuan_hoa_duong_dan_thu_muc(self.ent_path.get().strip())
         if not path:
             messagebox.showwarning("Cảnh báo", "Đường dẫn game không được để trống!")
             return
+        if not config.duong_dan_hop_le(path):
+            messagebox.showerror(
+                "Đường dẫn không hợp lệ",
+                f"Đường dẫn \"{path}\" không hợp lệ (thiếu dấu \":\" sau ổ đĩa, vd \"D:\\Games\").\n"
+                "Vui lòng bấm nút 📂 để chọn thư mục thay vì gõ tay."
+            )
+            return
+        self.ent_path.delete(0, tk.END)
+        self.ent_path.insert(0, path)
             
         rong_input = self.ent_width.get().strip()
         cao_input = self.ent_height.get().strip()

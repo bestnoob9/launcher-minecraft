@@ -103,31 +103,6 @@ def colors():
         "entry_fg":  "#1a1a1a",
     }
 
-def sidebar_colors():
-    """Bang mau cho sidebar (thanh ben trai). Khong con la 1 bang mau
-    xanh-tim co dinh nua - sidebar gio hoa theo theme sang/toi hien tai
-    cua app (dung chung tinh chat "toi/sang" voi vung noi dung), chi giu
-    rieng 1 mau nhan (accent) de lam noi bat tab dang chon / nut CHOI."""
-    if is_dark():
-        return {
-            "bg":        "#1a1a1a",
-            "bg_alt":    "#151515",
-            "border":    "#303030",
-            "text":      "#e8e8e8",
-            "text_dim":  "#9a9a9a",
-            "accent":    "#1E88E5",
-            "accent_fg": "white",
-        }
-    return {
-        "bg":        "#f2f2f4",
-        "bg_alt":    "#e6e6ea",
-        "border":    "#d5d5da",
-        "text":      "#1a1a1a",
-        "text_dim":  "#6c6c70",
-        "accent":    "#1E88E5",
-        "accent_fg": "white",
-    }
-
 _BG_OPTS = ("bg", "background", "highlightbackground",
             "selectbackground", "activebackground", "readonlybackground",
             "insertbackground", "selectcolor")

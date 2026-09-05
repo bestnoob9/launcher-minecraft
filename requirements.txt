@@ -1,0 +1,8 @@
+minecraft-launcher-lib>=6.0
+psutil>=5.9
+Pillow>=10.0
+
+# Chi danh cho Windows - dung de doc chinh xac hon dung luong RAM that cua may.
+# Neu khong cai duoc (vi du tren Linux/macOS) launcher van chay binh thuong,
+# chi lay RAM it chinh xac hon qua psutil.
+wmi>=1.5; sys_platform == "win32"

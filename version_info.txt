@@ -1,0 +1,44 @@
+# UTF-8
+#
+# File thong tin phien ban (version resource) cho file .exe khi build bang
+# PyInstaller (--version-file). File nay giup .exe co day du thong tin
+# Company/Product/Description/Version trong tab "Details" khi bam chuot
+# phai > Properties tren Windows, thay vi de trong (file .exe khong co
+# thong tin gi thuong de bi Windows Defender/SmartScreen va nguoi dung nghi
+# ngo hon la file "khong ro nguon goc"/gia mao).
+#
+# LUU Y QUAN TRONG: file nay CHỈ giup .exe trong "co ve" chuyen nghiep hon,
+# KHONG the tu no loai bo hoan toan canh bao SmartScreen "Windows protected
+# your PC" / "Unknown publisher" tren may khac. Canh bao do chi mat han khi
+# file .exe duoc KY SO (code sign) bang 1 chung chi (certificate) do 1 to
+# chuc cap chung chi (CA) duoc Windows tin tuong cap - xem huong dan ky so
+# o cuoi file "build for windows.bat".
+
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(1, 0, 0, 0),
+    prodvers=(1, 0, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+    ),
+  kids=[
+    StringFileInfo(
+      [
+      StringTable(
+        u'042904e4',
+        [StringStruct(u'CompanyName', u'NoName MCL'),
+        StringStruct(u'FileDescription', u'NoName MCL - Minecraft Launcher'),
+        StringStruct(u'FileVersion', u'1.0.0.0'),
+        StringStruct(u'InternalName', u'MinecraftLauncher'),
+        StringStruct(u'LegalCopyright', u'\xa9 NoName MCL. All rights reserved.'),
+        StringStruct(u'OriginalFilename', u'MinecraftLauncher.exe'),
+        StringStruct(u'ProductName', u'NoName MCL'),
+        StringStruct(u'ProductVersion', u'1.0.0.0')])
+      ]),
+    VarFileInfo([VarStruct(u'Translation', [1033, 1252])])
+  ]
+)

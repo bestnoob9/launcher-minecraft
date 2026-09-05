@@ -6,13 +6,9 @@ import theme
 from icon_utils import gan_icon_app
 
 class SettingFrame(tk.Frame):
-    def __init__(self, parent, on_save_callback, modal=None):
+    def __init__(self, parent, on_save_callback):
         super().__init__(parent)
         self.on_save_callback = on_save_callback
-        # modal: doi tuong components.modal.AppModal do app truyen vao (xem
-        # main.py). Co no thi cac thong bao Luu/Loi se hien qua 1 card giua
-        # launcher thay vi tk.messagebox. Neu None, dung fallback messagebox.
-        self.modal = modal
         self._init_data()
         self._build_scrollable_content()
 
@@ -79,36 +75,11 @@ class SettingFrame(tk.Frame):
         canvas.bind("<Configure>", _on_canvas_configure)
 
         def _on_mousewheel(e):
-            if not self.winfo_ismapped():
-                return
-            delta = getattr(e, "delta", 0)
-            if delta:
-                canvas.yview_scroll(int(-1 * (delta / 120)), "units")
-            return "break"
-
-        def _on_linux_up(e):
-            if self.winfo_ismapped():
-                canvas.yview_scroll(-3, "units")
-            return "break"
-
-        def _on_linux_down(e):
-            if self.winfo_ismapped():
-                canvas.yview_scroll(3, "units")
-            return "break"
-
-        def _bind_wheel(widget):
-            widget.bind("<MouseWheel>", _on_mousewheel)
-            widget.bind("<Button-4>", _on_linux_up)
-            widget.bind("<Button-5>", _on_linux_down)
-            for child in widget.winfo_children():
-                _bind_wheel(child)
-
-        self._settings_canvas = canvas
-        self._bind_settings_wheel = _bind_wheel
+            canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
         self._build_widgets(self._inner)
         theme.apply_theme(self._inner)
-        _bind_wheel(self)
 
         self._is_dirty = False
         self._setup_dirty_tracking()
@@ -406,12 +377,19 @@ class SettingFrame(tk.Frame):
     def has_unsaved_changes(self) -> bool:
         return getattr(self, "_is_dirty", False)
 
-    def discard_changes(self):
-        """Danh dau da 'bo qua' thay doi chua luu (goi sau khi nguoi dung
-        xac nhan roi tab ma khong luu, tu modal.confirm() ben ngoai - xem
-        main.py:_switch_view). Thay cho confirm_discard_changes() cu (dung
-        messagebox.askyesno chan dong bo, khong con phu hop voi modal moi)."""
-        self._is_dirty = False
+    def confirm_discard_changes(self) -> bool:
+        if not self.has_unsaved_changes():
+            return True
+
+        dong_y_roi_di = messagebox.askyesno(
+            "Thay đổi chưa được lưu",
+            "Bạn có thay đổi trong Cài đặt chưa được lưu.\n"
+            "Bạn có chắc muốn rời đi khi chưa lưu không?"
+        )
+        if dong_y_roi_di:
+
+            self._is_dirty = False
+        return dong_y_roi_di
 
     def _lay_ram_hien_tai(self) -> str:
         try:
@@ -515,12 +493,6 @@ class SettingFrame(tk.Frame):
             theme.apply_theme(root)
         except Exception:
             pass
-        try:
-            app = getattr(root, "app", None)
-            if app is not None and hasattr(app, "ap_dung_theme_sidebar"):
-                app.ap_dung_theme_sidebar()
-        except Exception:
-            pass
 
     def chon_duong_dan(self):
         from tkinter import filedialog
@@ -542,32 +514,17 @@ class SettingFrame(tk.Frame):
             self.ent_java_path.delete(0, tk.END)
             self.ent_java_path.insert(0, java_file)
 
-    def _thong_bao(self, title, message, loai="info"):
-        """Hien 1 thong bao: uu tien self.modal (card trong launcher). Neu
-        khong co modal (vd SettingFrame duoc dung doc lap, khong qua
-        main.py), fallback ve tk.messagebox nhu truoc."""
-        if self.modal is not None:
-            self.modal.alert(title, message)
-            return
-        from tkinter import messagebox
-        if loai == "warning":
-            messagebox.showwarning(title, message)
-        elif loai == "error":
-            messagebox.showerror(title, message)
-        else:
-            messagebox.showinfo(title, message)
-
     def luu_cau_hinh(self):
+        from tkinter import messagebox
         path = config.chuan_hoa_duong_dan_thu_muc(self.ent_path.get().strip())
         if not path:
-            self._thong_bao("Cảnh báo", "Đường dẫn game không được để trống!", "warning")
+            messagebox.showwarning("Cảnh báo", "Đường dẫn game không được để trống!")
             return
         if not config.duong_dan_hop_le(path):
-            self._thong_bao(
+            messagebox.showerror(
                 "Đường dẫn không hợp lệ",
                 f"Đường dẫn \"{path}\" không hợp lệ (thiếu dấu \":\" sau ổ đĩa, vd \"D:\\Games\").\n"
-                "Vui lòng bấm nút 📂 để chọn thư mục thay vì gõ tay.",
-                "error"
+                "Vui lòng bấm nút 📂 để chọn thư mục thay vì gõ tay."
             )
             return
         self.ent_path.delete(0, tk.END)
@@ -576,22 +533,22 @@ class SettingFrame(tk.Frame):
         rong_input = self.ent_width.get().strip()
         cao_input = self.ent_height.get().strip()
         if not rong_input.isdigit() or not cao_input.isdigit():
-            self._thong_bao("Lỗi nhập liệu", "Kích thước màn hình phải là số nguyên dương!\nVí dụ: Rộng 1920 - Cao 1080", "error")
+            messagebox.showerror("Lỗi nhập liệu", "Kích thước màn hình phải là số nguyên dương!\nVí dụ: Rộng 1920 - Cao 1080")
             return
         int_rong, int_cao = int(rong_input), int(cao_input)
         if int_rong < 300 or int_cao < 300:
-            self._thong_bao("Cảnh báo", "Độ phân giải quá nhỏ có thể gây lỗi hiển thị game!", "warning")
+            messagebox.showwarning("Cảnh báo", "Độ phân giải quá nhỏ có thể gây lỗi hiển thị game!")
             return
         res_chuan_hoa = f"{int_rong}x{int_cao}"
 
         cs_rong_input = self.ent_cs_width.get().strip()
         cs_cao_input = self.ent_cs_height.get().strip()
         if not cs_rong_input.isdigit() or not cs_cao_input.isdigit():
-            self._thong_bao("Lỗi nhập liệu", "Kích thước cửa sổ launcher phải là số nguyên dương!\nVí dụ: Rộng 1280 - Cao 720", "error")
+            messagebox.showerror("Lỗi nhập liệu", "Kích thước cửa sổ launcher phải là số nguyên dương!\nVí dụ: Rộng 1280 - Cao 720")
             return
         cs_int_rong, cs_int_cao = int(cs_rong_input), int(cs_cao_input)
         if cs_int_rong < 800 or cs_int_cao < 600:
-            self._thong_bao("Cảnh báo", "Kích thước cửa sổ launcher tối thiểu là 800 x 600!", "warning")
+            messagebox.showwarning("Cảnh báo", "Kích thước cửa sổ launcher tối thiểu là 800 x 600!")
             return
         cs_chuan_hoa = f"{cs_int_rong}x{cs_int_cao}"
 
@@ -630,7 +587,7 @@ class SettingFrame(tk.Frame):
 
         config.luu_toan_bo_cau_hinh()
         self._is_dirty = False
-        self._thong_bao("Thành công", "Đã lưu toàn bộ cấu hình hệ thống!", "info")
+        messagebox.showinfo("Thành công", "Đã lưu toàn bộ cấu hình hệ thống!")
         if self.on_save_callback:
             self.on_save_callback()
 
@@ -1110,12 +1067,6 @@ class SettingWindow(tk.Toplevel):
             root = self.master
             theme.apply_theme_to_all_toplevels(root)
             theme.apply_theme(self)
-        except Exception:
-            pass
-        try:
-            app = getattr(root, "app", None)
-            if app is not None and hasattr(app, "ap_dung_theme_sidebar"):
-                app.ap_dung_theme_sidebar()
         except Exception:
             pass
 

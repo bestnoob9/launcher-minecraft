@@ -85,13 +85,6 @@ def tim_kiem_modrinth(project_type, tu_khoa, mc_version="", loader="", category=
 def lay_phien_ban_modrinth(project_id):
     return _request_json(f"https://api.modrinth.com/v2/project/{project_id}/version")
 
-def lay_version_modrinth_theo_id(version_id):
-    """Lay 1 phien ban Modrinth CU THE theo version_id (khac lay_phien_ban_modrinth
-    - ham do lay TAT CA phien ban cua 1 project). Dung khi giai quyet dependency
-    tro thang toi 1 phien ban cu the (dependency.version_id) thay vi tro toi ca
-    project (dependency.project_id)."""
-    return _request_json(f"https://api.modrinth.com/v2/version/{version_id}")
-
 def lay_project_modrinth(project_id):
     return _request_json(f"https://api.modrinth.com/v2/project/{project_id}")
 
@@ -134,12 +127,3 @@ def tim_kiem_curseforge(tu_khoa, mc_version="", loader="", limit=50, class_id=44
 def lay_phien_ban_curseforge(mod_id):
     data = _request_json(f"{CURSEFORGE_PROXY_BASE}/v1/mods/{mod_id}/files?pageSize=30")
     return data.get("data", [])
-
-def lay_mo_ta_curseforge(mod_id):
-    """Lay mo ta DAY DU (HTML) cua 1 mod CurseForge. Khac voi field 'summary'
-    tra ve san trong Mod object (chi la 1-2 cau tom tat ngan) - API CurseForge
-    KHONG co field 'description' trong Mod object nhu code cu tung gia dinh,
-    ma phai goi rieng endpoint nay (GET /v1/mods/{modId}/description) moi lay
-    duoc noi dung day du."""
-    data = _request_json(f"{CURSEFORGE_PROXY_BASE}/v1/mods/{mod_id}/description")
-    return data.get("data", "") or ""

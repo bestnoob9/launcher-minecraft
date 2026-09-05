@@ -185,19 +185,12 @@ def build_jvm_arguments(current_config, ram_min, ram_max, version_goc=None):
     final_args = []
     final_args.append(f"-Xms{ram_min}")
     final_args.append(f"-Xmx{ram_max}")
-    #if str(version_goc).strip() in ("1.16.5", "1.16.4"):
-        #final_args.append("-Dminecraft.api.auth.enabled=false")
-        #final_args.append("-Dminecraft.api.auth.host=https://nope.invalid")
-        #final_args.append("-Dminecraft.api.account.host=https://nope.invalid")
-        #final_args.append("-Dminecraft.api.session.host=https://nope.invalid")
-        #final_args.append("-Dminecraft.api.services.host=https://nope.invalid")
-    final_args.extend([
-        "-Dminecraft.api.auth.enabled=false",
-        "-Dminecraft.api.auth.host=https://nope.invalid",
-        "-Dminecraft.api.account.host=https://nope.invalid",
-        "-Dminecraft.api.session.host=https://nope.invalid",
-        "-Dminecraft.api.services.host=https://nope.invalid",
-    ])
+    if str(version_goc).strip() in ("1.16.5", "1.16.4"):
+        final_args.append("-Dminecraft.api.auth.enabled=false")
+        final_args.append("-Dminecraft.api.auth.host=https://nope.invalid")
+        final_args.append("-Dminecraft.api.account.host=https://nope.invalid")
+        final_args.append("-Dminecraft.api.session.host=https://nope.invalid")
+        final_args.append("-Dminecraft.api.services.host=https://nope.invalid")
 
     mode = current_config.get("jvm_mode", "default")
     if mode == "preset":
@@ -242,20 +235,6 @@ def _khop_chinh_xac_version(ver, text):
         if truoc_ok and sau_ok:
             return True
     return False
-
-def _khop_forge_folder(version_goc, version_mod, folder):
-    # minecraft_launcher_lib cai Forge vao folder dang "{version_goc}-forge-{loader_ver}"
-    # (vd "1.19.2-43.5.1" -> "1.19.2-forge-43.5.1"), KHONG phai nguyen van chuoi version_mod.
-    # Neu so khop ca chuoi "1.19.2-43.5.1" thi se khong bao gio trung, nen phai tach rieng
-    # phan so hieu loader ("43.5.1") ra de so khop.
-    if not _khop_chinh_xac_version(version_goc, folder):
-        return False
-    loader_part = version_mod
-    if version_mod.startswith(version_goc + "-"):
-        loader_part = version_mod[len(version_goc) + 1:]
-    if not loader_part:
-        return True
-    return _khop_chinh_xac_version(loader_part, folder)
 
 def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_muc_game, ten_instance, options, callback_progress=None, should_cancel=None):
     thu_muc_instance_rieng = os.path.join(thu_muc_game, "Instances", ten_instance)
@@ -378,7 +357,7 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
     elif loai_game == "Forge" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
         da_cai = _tim_phien_ban_loader_da_cai(
             thu_muc_versions, "forge",
-            lambda f: _khop_forge_folder(version_goc, version_mod_da_chon, f)
+            lambda f: _khop_chinh_xac_version(version_goc, f)
         )
         if da_cai:
             id_phien_ban_chay = da_cai
@@ -386,17 +365,10 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
         else:
             minecraft_launcher_lib.forge.install_forge_version(version_mod_da_chon, thu_muc_game, callback=_callbacks)
             if os.path.exists(thu_muc_versions):
-                best = None
                 for folder in os.listdir(thu_muc_versions):
                     if "forge" in folder.lower() and _khop_chinh_xac_version(version_goc, folder):
-                        if _khop_forge_folder(version_goc, version_mod_da_chon, folder):
-                            id_phien_ban_chay = folder
-                            best = folder
-                            break
-                        elif best is None:
-                            best = folder
-                if id_phien_ban_chay == version_goc and best:
-                    id_phien_ban_chay = best
+                        id_phien_ban_chay = folder
+                        break
 
     file_info = os.path.join(thu_muc_instance_rieng, "instance_info.json")
     if not os.path.exists(file_info):
@@ -404,22 +376,20 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
         with open(file_info, "w", encoding="utf-8") as f:
             json.dump(data_ghi, f, indent=4, ensure_ascii=False)
 
-    lenh_goc = minecraft_launcher_lib.command.get_minecraft_command(
-        id_phien_ban_chay, thu_muc_game, options
-    )
+    lenh_goc = minecraft_launcher_lib.command.get_minecraft_command(id_phien_ban_chay, thu_muc_game, options)
 
-    # Offline: userType legacy + accessToken không rỗng
-    # (tránh Invalid session khi vào bằng IP:port / Add Server)
-    _token_dummy = (options.get("token") or "").strip() or ("0" * 32)
+    _da_patch = False
     for _i, _arg in enumerate(lenh_goc):
         if _arg == "--userType" and _i + 1 < len(lenh_goc):
             lenh_goc[_i + 1] = "legacy"
-        elif _arg == "--accessToken" and _i + 1 < len(lenh_goc):
-            if not str(lenh_goc[_i + 1]).strip():
-                lenh_goc[_i + 1] = _token_dummy
-        elif _arg == "msa":
-            lenh_goc[_i] = "legacy"
+            _da_patch = True
+            break
 
+    if not _da_patch:
+        for _i, _arg in enumerate(lenh_goc):
+            if _arg == "msa":
+                lenh_goc[_i] = "legacy"
+                _da_patch = True
     return lenh_goc
 
 def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callback_progress=None, should_cancel=None):
@@ -496,12 +466,11 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
 
     _username = tai_khoan
     _uuid_str = config.lay_hoac_luu_uuid(tai_khoan, thu_muc_game)
-    _token = "0" * 32  # dummy, không rỗng
 
     options = {
         "username": _username,
         "uuid": _uuid_str,
-        "token": _token,
+        "token": "",
         "jvmArguments": danh_sach_jvm_args,
         "customResolution": True,
         "resolutionWidth": rong,

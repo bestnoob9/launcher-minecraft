@@ -75,14 +75,14 @@ class ForgeModMixin:
         self.dv_cf = tk.Frame(f, bg=BG)
         lv = self.lv_cf
 
-        self.fb_cf = FilterBar(lv, self._search_cf, accent_color="#00ACC1", show_category=True, bg=BG)
+        self.fb_cf = FilterBar(lv, self._search_cf, accent_color="#E64A19", show_category=True, bg=BG)
         self.fb_cf.pack(fill="x", padx=10, pady=(8, 4))
         self._load_categories_async(self.fb_cf, 4471)
         self.list_cf = ContentTableWidget(lv, "curseforge", self._select_cf,
                                           is_installed_cb=self._is_cf_installed)
         self.list_cf.pack(fill="both", expand=True, padx=10)
 
-        self.pg_cf = PaginationBar(lv, self._goto_cf_page, accent_color="#00ACC1", bg=BG)
+        self.pg_cf = PaginationBar(lv, self._goto_cf_page, accent_color="#E64A19", bg=BG)
         self.pg_cf.pack(fill="x", padx=10, pady=(2, 8))
 
         self._cf_data        = []
@@ -96,12 +96,12 @@ class ForgeModMixin:
         self._cf_page    = page
         self._cf_last_kw = None
         try:
-            r, total = lay_curseforge_popular(class_id=4471, limit=25, offset=(page - 1) * 25)
+            r, total = lay_curseforge_popular(class_id=4471, limit=50, offset=(page - 1) * 50)
             self._cf_data  = r
             self._cf_total = total
             self.after(0, lambda: (
                 self.list_cf.load(r),
-                self.pg_cf.set_total(total, 25, page),
+                self.pg_cf.set_total(total, 50, page),
                 self.lbl_status.config(text=f"Top Modpack (CurseForge) - trang {page}", fg="#2b8c54"),
             ))
         except Exception as e:
@@ -112,16 +112,16 @@ class ForgeModMixin:
         mc, ld, c = self.fb_cf.get()
         self._cf_page    = page
         self._cf_last_kw = (kw, mc, ld, c)
-        self.lbl_status.config(text="Đang tìm CF...", fg="#00ACC1")
+        self.lbl_status.config(text="Đang tìm CF...", fg="#E64A19")
         def _t():
             try:
-                r, total = tim_kiem_curseforge(kw, mc, ld, limit=25, class_id=4471,
-                                                offset=(page - 1) * 25, category_id=c)
+                r, total = tim_kiem_curseforge(kw, mc, ld, limit=50, class_id=4471,
+                                                offset=(page - 1) * 50, category_id=c)
                 self._cf_data  = r
                 self._cf_total = total
                 self.after(0, lambda: (
                     self.list_cf.load(r),
-                    self.pg_cf.set_total(total, 25, page),
+                    self.pg_cf.set_total(total, 50, page),
                     self.lbl_status.config(text=f"{total} modpack - trang {page}", fg="#2b8c54"),
                 ))
             except Exception as e:
@@ -156,7 +156,8 @@ class ForgeModMixin:
 
             _da_cai  = lay_trang_thai_da_cai("modpack", "curseforge", mid)
             ten_inst = _da_cai["ten_instance"] if _da_cai else ten[:30]
-            self.lbl_status.config(text="Đang tải từ CurseForge...", fg="#00ACC1")
+            self.lbl_status.config(text="Đang tải từ CurseForge...", fg="#E64A19")
+            self._tang_tac_vu()
             def _t():
                 try:
                     tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
@@ -167,7 +168,7 @@ class ForgeModMixin:
                             raise TacVuBiHuy("Da huy tai modpack")
                         pct = int(da / tong * 100)
                         self.after(0, lambda: self.lbl_status.config(
-                            text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#00ACC1"))
+                            text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#E64A19"))
 
                         self.ghi_tien_do(pct // 10, f"Đang tải gói: {pct}%")
                         if progress_cb:
@@ -202,7 +203,7 @@ class ForgeModMixin:
                                         label_text=f"{da_mod}/{tong_mod} mod")
                     cai_modpack_tu_file(pz, ten_inst, self.lbl_status, _done_va_xoa,
                                         cancel_event=self._cancel_event,
-                                        progress_cb=_modpack_progress,
+                                        progress_cb=_modpack_progress if progress_cb else None,
                                         callback_huy=_huy_va_xoa)
                 except TacVuBiHuy:
                     try: shutil.rmtree(tmp)
@@ -214,23 +215,20 @@ class ForgeModMixin:
                     self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi: {e}", fg="red"))
                     self._giam_tac_vu()
                     _finish()
-            def _bat_dau():
-                self._tang_tac_vu()
-                threading.Thread(target=_t, daemon=True).start()
-            self._chay_hoac_xep_hang(f"Modpack: {fname}", _bat_dau,
-                                      item_id=("modpack", "curseforge", mid))
+            threading.Thread(target=_t, daemon=True).start()
 
         if view:
             self._swap_to_detail(self.lv_cf, self.dv_cf, "curseforge", r,
                                   [], install_cb=_install_from_detail,
-                                  accent="#00ACC1", installed_info=lay_trang_thai_da_cai(
+                                  accent="#E64A19", installed_info=lay_trang_thai_da_cai(
                                       "modpack", "curseforge", mid),
                                   loai="modpack")
             return
 
         if install:
 
-            self.lbl_status.config(text=f"Đang tải phiên bản '{ten}'...", fg="#00ACC1")
+            self._tang_tac_vu()
+            self.lbl_status.config(text=f"Đang tải phiên bản '{ten}'...", fg="#E64A19")
             def _t():
                 try:
                     files = lay_phien_ban_curseforge(mid)
@@ -261,11 +259,7 @@ class ForgeModMixin:
                             f"Không tải được danh sách phiên bản Modpack từ CurseForge.\n{e}",
                             parent=self)
                     self.after(0, _err)
-            def _bat_dau():
-                self._tang_tac_vu()
-                threading.Thread(target=_t, daemon=True).start()
-            self._chay_hoac_xep_hang(f"Modpack: {ten}", _bat_dau,
-                                      item_id=("modpack", "curseforge", mid))
+            threading.Thread(target=_t, daemon=True).start()
             return
 
     def _build_mod_curseforge(self):
@@ -286,7 +280,7 @@ class ForgeModMixin:
         self.dv_modcf = tk.Frame(f, bg=BG)
         lv = self.lv_modcf
 
-        self.fb_modcf = FilterBar(lv, self._search_modcf, accent_color="#00ACC1", show_category=True, bg=BG)
+        self.fb_modcf = FilterBar(lv, self._search_modcf, accent_color="#F9A825", show_category=True, bg=BG)
         self.fb_modcf.pack(fill="x", padx=10, pady=(8, 4))
         self._load_categories_async(self.fb_modcf, 6)
 
@@ -303,26 +297,26 @@ class ForgeModMixin:
         self.cbo_modcf_inst.bind("<<ComboboxSelected>>", lambda e: self._on_modcf_inst_change())
         self.cbo_modcf_inst.bind("<ButtonPress>", lambda e: self._sync_inst_cbo(self.cbo_modcf_inst))
         tk.Button(bp, text="Cài Mod", font=("Arial", 9, "bold"),
-                  bg="#00ACC1", fg="white", activebackground="#00ACC1", activeforeground="white",
+                  bg="#F9A825", fg="white", activebackground="#F9A825", activeforeground="white",
                   width=14, pady=4, command=self._install_modcf).grid(row=0, column=2, rowspan=2, padx=8)
 
         self.list_modcf = ContentTableWidget(lv, "curseforge", self._select_modcf,
                                              is_installed_cb=self._is_modcf_installed)
         self.list_modcf.pack(fill="both", expand=True, padx=10)
 
-        self.pg_modcf = PaginationBar(lv, self._goto_modcf_page, accent_color="#00ACC1", bg=BG)
+        self.pg_modcf = PaginationBar(lv, self._goto_modcf_page, accent_color="#F9A825", bg=BG)
         self.pg_modcf.pack(fill="x", padx=10, pady=(2, 0))
 
     def _load_modcf_top(self, page=1):
         self._modcf_page    = page
         self._modcf_last_kw = None
         try:
-            r, total = lay_curseforge_popular(class_id=6, limit=25, offset=(page - 1) * 25)
+            r, total = lay_curseforge_popular(class_id=6, limit=50, offset=(page - 1) * 50)
             self._modcf_data  = r
             self._modcf_total = total
             self.after(0, lambda: (
                 self.list_modcf.load(r),
-                self.pg_modcf.set_total(total, 25, page),
+                self.pg_modcf.set_total(total, 50, page),
                 self.lbl_status.config(text=f"Top Mod (CurseForge) - trang {page}", fg="#2b8c54"),
             ))
         except Exception as e:
@@ -333,16 +327,16 @@ class ForgeModMixin:
         mc, ld, c = self.fb_modcf.get()
         self._modcf_page    = page
         self._modcf_last_kw = (kw, mc, ld, c)
-        self.lbl_status.config(text="Đang tìm Mod CurseForge...", fg="#00ACC1")
+        self.lbl_status.config(text="Đang tìm Mod CurseForge...", fg="#F9A825")
         def _t():
             try:
-                r, total = tim_kiem_curseforge(kw, mc, ld, limit=25, class_id=6,
-                                                offset=(page - 1) * 25, category_id=c)
+                r, total = tim_kiem_curseforge(kw, mc, ld, limit=50, class_id=6,
+                                                offset=(page - 1) * 50, category_id=c)
                 self._modcf_data  = r
                 self._modcf_total = total
                 self.after(0, lambda: (
                     self.list_modcf.load(r),
-                    self.pg_modcf.set_total(total, 25, page),
+                    self.pg_modcf.set_total(total, 50, page),
                     self.lbl_status.config(text=f"{total} mod - trang {page}", fg="#2b8c54"),
                 ))
             except Exception as e:
@@ -431,29 +425,15 @@ class ForgeModMixin:
                     messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self)
                     _finish()
                     return
-                mcv_chk, loader = self._get_inst_mc_loader(ten_inst)
+                _, loader = self._get_inst_mc_loader(ten_inst)
                 if loader and loader.lower() == "vanilla":
                     messagebox.showwarning("Không thể cài Mod",
                         f"Instance '{ten_inst}' dùng Vanilla (không có mod loader).\n"
                         "Hãy chọn instance dùng Fabric, Forge, Quilt hoặc NeoForge.", parent=self)
                     _finish()
                     return
-                gvs_chk = version_data.get("gameVersions", [])
-                if mcv_chk:
-                    cf_ver_chk = _MC_TO_CF.get(mcv_chk, mcv_chk)
-                    if cf_ver_chk not in gvs_chk and mcv_chk not in gvs_chk:
-                        messagebox.showerror("Lỗi",
-                            f"Phiên bản mod này không hỗ trợ Minecraft {mcv_chk} "
-                            f"(yêu cầu của Instance '{ten_inst}'). Không thể cài.", parent=self)
-                        _finish()
-                        return
-                if loader and loader.lower() not in [g.lower() for g in gvs_chk]:
-                    messagebox.showerror("Lỗi",
-                        f"Phiên bản mod này không hỗ trợ Loader '{loader}' "
-                        f"(yêu cầu của Instance '{ten_inst}'). Không thể cài.", parent=self)
-                    _finish()
-                    return
-                self.lbl_status.config(text="Đang tải Mod từ CurseForge...", fg="#00ACC1")
+                self.lbl_status.config(text="Đang tải Mod từ CurseForge...", fg="#F9A825")
+                self._tang_tac_vu()
                 def _t():
                     try:
                         tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
@@ -464,7 +444,7 @@ class ForgeModMixin:
                                 raise TacVuBiHuy("Da huy tai mod")
                             pct = int(da / tong * 100)
                             self.after(0, lambda: self.lbl_status.config(
-                                text=f"Đang tải mod: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#00ACC1"))
+                                text=f"Đang tải mod: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#F9A825"))
                             self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
                             if progress_cb:
                                 self.after(0, lambda: progress_cb(da, tong))
@@ -493,17 +473,13 @@ class ForgeModMixin:
                         _finish()
                     finally:
                         self._giam_tac_vu()
-                def _bat_dau():
-                    self._tang_tac_vu()
-                    threading.Thread(target=_t, daemon=True).start()
-                self._chay_hoac_xep_hang(f"Mod: {fname}", _bat_dau,
-                                          item_id=("mods", "curseforge", mid))
+                threading.Thread(target=_t, daemon=True).start()
 
             ten_inst_hien_tai = self.cbo_modcf_inst.get().strip()
             ten_inst_hien_tai = "" if ten_inst_hien_tai == _NO_INST else ten_inst_hien_tai
             self._swap_to_detail(self.lv_modcf, self.dv_modcf, "curseforge", r,
                                   [], install_cb=_install_from_detail,
-                                  accent="#00ACC1", installed_info=self._lay_installed_info_day_du(
+                                  accent="#F9A825", installed_info=self._lay_installed_info_day_du(
                                       "mods", "curseforge", mid, ten_inst_hien_tai, r.get("name", "")),
                                   instance_ctl=make_instance_ctl(self.cbo_modcf_inst, _NO_INST),
                                   loai="mods")
@@ -515,42 +491,28 @@ class ForgeModMixin:
             if not ten_inst_check:
                 messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self)
                 return
-            self.cbo_modcf_ver.set("Dang tai phien ban...")
-            self.lbl_status.config(text="Đang tải phiên bản mod...", fg="#00ACC1")
-            def _t():
-                try:
-                    files = lay_phien_ban_curseforge(mid)
-                    self._modcf_files = files
-                    def _apply():
-                        self._filter_modcf_ver()
-                        self._giam_tac_vu()
-                        self._install_modcf()
-                    self.after(0, _apply)
-                except Exception as e:
-                    def _err(e=e):
-                        self._giam_tac_vu()
-                        self.lbl_status.config(text=f"Lỗi CF ver: {e}", fg="red")
-                        messagebox.showerror("Lỗi",
-                            f"Không tải được danh sách phiên bản mod từ CurseForge.\n{e}",
-                            parent=self)
-                    self.after(0, _err)
-            def _bat_dau():
-                self._tang_tac_vu()
-                threading.Thread(target=_t, daemon=True).start()
-            self._chay_hoac_xep_hang(f"Mod: {r.get('name', mid)}", _bat_dau,
-                                      item_id=("mods", "curseforge", mid))
-            return
-
+            self._tang_tac_vu()
         self.cbo_modcf_ver.set("Dang tai phien ban...")
-        self.lbl_status.config(text="Đang tải phiên bản mod...", fg="#00ACC1")
+        self.lbl_status.config(text="Đang tải phiên bản mod...", fg="#F9A825")
         def _t():
             try:
                 files = lay_phien_ban_curseforge(mid)
                 self._modcf_files = files
-                self.after(0, self._filter_modcf_ver)
+                def _apply():
+                    self._filter_modcf_ver()
+                    if install:
+                        started = self._install_modcf()
+                        if not started:
+                            self._giam_tac_vu()
+                self.after(0, _apply)
             except Exception as e:
                 def _err(e=e):
+                    if install:
+                        self._giam_tac_vu()
                     self.lbl_status.config(text=f"Lỗi CF ver: {e}", fg="red")
+                    messagebox.showerror("Lỗi",
+                        f"Không tải được danh sách phiên bản mod từ CurseForge.\n{e}",
+                        parent=self)
                 self.after(0, _err)
         threading.Thread(target=_t, daemon=True).start()
 
@@ -580,18 +542,8 @@ class ForgeModMixin:
         except Exception:
             fb_mc, fb_ld = mcv, loader
 
-        # QUAN TRONG: khi da chon 1 Instance cu the, BAT BUOC loc dung theo
-        # MC version + Loader THUC TE cua Instance do - khong cho phep gia
-        # tri "Tat ca" tu thanh loc duyet mod (fb_modcf) bo qua viec loc
-        # Loader (vd nguoi dung tu tay bam "Xoa" o thanh loc duyet mod).
-        if ten_inst:
-            use_mc = mcv or fb_mc
-            use_ld = loader or fb_ld
-            bo_qua_loc_loader = False
-        else:
-            use_mc = fb_mc or mcv
-            use_ld = fb_ld or loader
-            bo_qua_loc_loader = (not use_ld) or use_ld in ("Tất cả", "Vanilla")
+        use_mc = fb_mc or mcv
+        use_ld = fb_ld or loader
 
         if use_mc:
             cf_ver = _MC_TO_CF.get(use_mc, use_mc)
@@ -601,7 +553,7 @@ class ForgeModMixin:
                 gvs_lower = [g.lower() for g in gvs]
                 if cf_ver not in gvs and use_mc not in gvs:
                     continue
-                if not bo_qua_loc_loader and use_ld and use_ld.lower() not in gvs_lower:
+                if use_ld and use_ld not in ("Tất cả", "Vanilla") and use_ld.lower() not in gvs_lower:
                     continue
                 idxs.append(i)
         else:
@@ -619,19 +571,6 @@ class ForgeModMixin:
                     fg="gray")
             else:
                 self.lbl_status.config(text="Chọn phiên bản rồi nhấn Cài Mod.", fg="gray")
-        elif ten_inst and use_mc:
-            # Mod nay khong co phien ban nao tuong thich voi Instance dang
-            # chon - KHONG duoc fallback ve hien thi TAT CA phien ban. Bao
-            # loi ro rang thay vi am tham hien nham ban khong tuong thich.
-            self._modcf_ver_idx_map = []
-            self.cbo_modcf_ver.config(values=[])
-            self.cbo_modcf_ver.set("")
-            self.lbl_status.config(
-                text=f"Lỗi: Mod này không có phiên bản nào tương thích với Instance "
-                     f"'{ten_inst}' (MC {use_mc}"
-                     + (f", {use_ld}" if use_ld and use_ld not in ("Tất cả", "Vanilla") else "")
-                     + "). Không thể cài.",
-                fg="red")
         else:
             self._modcf_ver_idx_map = list(range(len(files)))
             self.cbo_modcf_ver.config(values=ds_all)
@@ -652,11 +591,6 @@ class ForgeModMixin:
                 f"Instance '{ten_inst}' dùng Vanilla (không có mod loader).\n"
                 "Hãy chọn instance dùng Fabric, Forge, Quilt hoặc NeoForge.", parent=self)
             return False
-        if not self._modcf_ver_idx_map:
-            messagebox.showerror("Lỗi",
-                f"Mod này không có phiên bản nào tương thích với Instance '{ten_inst}'.\n"
-                "Không thể cài.", parent=self)
-            return False
         iv = self.cbo_modcf_ver.current()
         if iv < 0 or not self._modcf_files:
             messagebox.showwarning("Chú ý",
@@ -666,26 +600,6 @@ class ForgeModMixin:
         if iv < len(self._modcf_ver_idx_map):
             iv = self._modcf_ver_idx_map[iv]
         fd  = self._modcf_files[iv]
-
-        # Kiem tra cuoi cung (phong ho): dam bao file duoc chon THUC SU
-        # tuong thich MC version + Loader cua Instance dang chon, du bo loc
-        # phia tren co the da bo qua vi ly do nao do.
-        mcv_chk, loader_chk = self._get_inst_mc_loader(ten_inst)
-        gvs_chk = fd.get("gameVersions", [])
-        gvs_chk_lower = [g.lower() for g in gvs_chk]
-        if mcv_chk:
-            cf_ver_chk = _MC_TO_CF.get(mcv_chk, mcv_chk)
-            if cf_ver_chk not in gvs_chk and mcv_chk not in gvs_chk:
-                messagebox.showerror("Lỗi",
-                    f"Phiên bản mod này không hỗ trợ Minecraft {mcv_chk} "
-                    f"(yêu cầu của Instance '{ten_inst}'). Không thể cài.", parent=self)
-                return False
-        if loader_chk and loader_chk.lower() not in gvs_chk_lower:
-            messagebox.showerror("Lỗi",
-                f"Phiên bản mod này không hỗ trợ Loader '{loader_chk}' "
-                f"(yêu cầu của Instance '{ten_inst}'). Không thể cài.", parent=self)
-            return False
-
         url = _cf_build_url(fd)
         if not url:
             messagebox.showerror("Lỗi",
@@ -693,8 +607,9 @@ class ForgeModMixin:
                 "Tải thủ công từ curseforge.com rồi dùng tab 'Cài từ File'.", parent=self)
             return False
         fname = fd.get("fileName", "mod.jar")
-        self.lbl_status.config(text="Đang tải Mod từ CurseForge...", fg="#00ACC1")
+        self.lbl_status.config(text="Đang tải Mod từ CurseForge...", fg="#F9A825")
 
+        self._tang_tac_vu()
         def _t():
             try:
                 tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
@@ -705,7 +620,7 @@ class ForgeModMixin:
                         raise TacVuBiHuy("Da huy tai mod")
                     pct = int(da / tong * 100)
                     self.after(0, lambda: self.lbl_status.config(
-                        text=f"Đang tải mod: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#00ACC1"))
+                        text=f"Đang tải mod: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#F9A825"))
                     self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
                 tai_file(url, pz, prog)
                 if self._cancel_event.is_set():
@@ -728,11 +643,7 @@ class ForgeModMixin:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi: {e}", fg="red"))
             finally:
                 self._giam_tac_vu()
-        def _bat_dau():
-            self._tang_tac_vu()
-            threading.Thread(target=_t, daemon=True).start()
-        self._chay_hoac_xep_hang(f"Mod: {fname}", _bat_dau,
-                                  item_id=("mods", "curseforge", fd.get("modId", "")))
+        threading.Thread(target=_t, daemon=True).start()
         return True
 
     def _build_rsp_cf_tab(self):
@@ -753,7 +664,7 @@ class ForgeModMixin:
         self.dv_rsp_cf = tk.Frame(f, bg=BG)
         lv = self.lv_rsp_cf
 
-        self.fb_rsp_cf = FilterBar(lv, self._search_rsp_cf, accent_color="#00ACC1", show_loader=False, show_category=True, bg=BG)
+        self.fb_rsp_cf = FilterBar(lv, self._search_rsp_cf, accent_color="#AB47BC", show_loader=False, show_category=True, bg=BG)
         self.fb_rsp_cf.pack(fill="x", padx=10, pady=(8, 4))
         self._load_categories_async(self.fb_rsp_cf, 12)
 
@@ -770,7 +681,7 @@ class ForgeModMixin:
 
         self.cbo_rsp_cf_inst.bind("<ButtonPress>", lambda e: self._sync_inst_cbo(self.cbo_rsp_cf_inst))
         tk.Button(bp, text="Cài RSP", font=("Arial", 9, "bold"),
-                  bg="#00ACC1", fg="white", activebackground="#00ACC1", activeforeground="white",
+                  bg="#AB47BC", fg="white", activebackground="#AB47BC", activeforeground="white",
                   width=14, pady=4, command=self._install_rsp_cf).grid(row=0, column=2, rowspan=2, padx=8)
 
         self.list_rsp_cf = ContentTableWidget(lv, "curseforge", self._select_rsp_cf,
@@ -779,19 +690,19 @@ class ForgeModMixin:
         self.cbo_rsp_cf_inst.bind("<<ComboboxSelected>>", lambda e: (
             self.list_rsp_cf.refresh_installed_states()), add="+")
 
-        self.pg_rsp_cf = PaginationBar(lv, self._goto_rsp_cf_page, accent_color="#00ACC1", bg=BG)
+        self.pg_rsp_cf = PaginationBar(lv, self._goto_rsp_cf_page, accent_color="#AB47BC", bg=BG)
         self.pg_rsp_cf.pack(fill="x", padx=10, pady=(2, 0))
 
     def _load_rsp_cf_top(self, page=1):
         self._rsp_cf_page    = page
         self._rsp_cf_last_kw = None
         try:
-            r, total = lay_curseforge_popular(class_id=12, limit=25, offset=(page - 1) * 25)
+            r, total = lay_curseforge_popular(class_id=12, limit=50, offset=(page - 1) * 50)
             self._rsp_cf_data  = r
             self._rsp_cf_total = total
             self.after(0, lambda: (
                 self.list_rsp_cf.load(r),
-                self.pg_rsp_cf.set_total(total, 25, page),
+                self.pg_rsp_cf.set_total(total, 50, page),
                 self.lbl_status.config(text=f"Top Resource Pack (CurseForge) - trang {page}", fg="#2b8c54"),
             ))
         except Exception as e:
@@ -802,16 +713,16 @@ class ForgeModMixin:
         mc, _, c = self.fb_rsp_cf.get()
         self._rsp_cf_page    = page
         self._rsp_cf_last_kw = (kw, mc, c)
-        self.lbl_status.config(text="Đang tìm RSP CurseForge...", fg="#00ACC1")
+        self.lbl_status.config(text="Đang tìm RSP CurseForge...", fg="#AB47BC")
         def _t():
             try:
-                r, total = tim_kiem_curseforge(kw, mc, "", limit=25, class_id=12,
-                                                offset=(page - 1) * 25, category_id=c)
+                r, total = tim_kiem_curseforge(kw, mc, "", limit=50, class_id=12,
+                                                offset=(page - 1) * 50, category_id=c)
                 self._rsp_cf_data  = r
                 self._rsp_cf_total = total
                 self.after(0, lambda: (
                     self.list_rsp_cf.load(r),
-                    self.pg_rsp_cf.set_total(total, 25, page),
+                    self.pg_rsp_cf.set_total(total, 50, page),
                     self.lbl_status.config(text=f"{total} resource pack - trang {page}", fg="#2b8c54"),
                 ))
             except Exception as e:
@@ -848,7 +759,8 @@ class ForgeModMixin:
                     messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self)
                     _finish()
                     return
-                self.lbl_status.config(text="Đang tải RSP từ CurseForge...", fg="#00ACC1")
+                self.lbl_status.config(text="Đang tải RSP từ CurseForge...", fg="#AB47BC")
+                self._tang_tac_vu()
                 def _t():
                     try:
                         tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
@@ -859,7 +771,7 @@ class ForgeModMixin:
                                 raise TacVuBiHuy("Da huy tai RSP")
                             pct = int(da / tong * 100)
                             self.after(0, lambda: self.lbl_status.config(
-                                text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#00ACC1"))
+                                text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#AB47BC"))
                             self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
                             if progress_cb:
                                 self.after(0, lambda: progress_cb(da, tong))
@@ -888,17 +800,13 @@ class ForgeModMixin:
                         _finish()
                     finally:
                         self._giam_tac_vu()
-                def _bat_dau():
-                    self._tang_tac_vu()
-                    threading.Thread(target=_t, daemon=True).start()
-                self._chay_hoac_xep_hang(f"Resource Pack: {fname}", _bat_dau,
-                                          item_id=("resourcepacks", "curseforge", mid))
+                threading.Thread(target=_t, daemon=True).start()
 
             ten_inst_hien_tai = self.cbo_rsp_cf_inst.get().strip()
             ten_inst_hien_tai = "" if ten_inst_hien_tai == _NO_INST else ten_inst_hien_tai
             self._swap_to_detail(self.lv_rsp_cf, self.dv_rsp_cf, "curseforge", r,
                                   [], install_cb=_install_from_detail,
-                                  accent="#00ACC1", installed_info=self._lay_installed_info_day_du(
+                                  accent="#AB47BC", installed_info=self._lay_installed_info_day_du(
                                       "resourcepacks", "curseforge", mid, ten_inst_hien_tai, r.get("name", "")),
                                   instance_ctl=make_instance_ctl(self.cbo_rsp_cf_inst, _NO_INST),
                                   loai="resourcepacks")
@@ -910,41 +818,29 @@ class ForgeModMixin:
             if not ten_inst_check:
                 messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self)
                 return
-            self.cbo_rsp_cf_ver.set("Dang tai phien ban...")
-            self.lbl_status.config(text="Đang tải phiên bản RSP...", fg="#00ACC1")
-            def _t():
-                try:
-                    files = lay_phien_ban_curseforge(mid)
-                    self._rsp_cf_files = files
-                    def _apply():
-                        self._filter_rsp_cf_ver()
-                        self._giam_tac_vu()
-                        self._install_rsp_cf()
-                    self.after(0, _apply)
-                except Exception as e:
-                    def _err(e=e):
-                        self._giam_tac_vu()
-                        self.lbl_status.config(text=f"Lỗi: {e}", fg="red")
-                        messagebox.showerror("Lỗi",
-                            f"Không tải được danh sách phiên bản Resource Pack từ CurseForge.\n{e}",
-                            parent=self)
-                    self.after(0, _err)
-            def _bat_dau():
-                self._tang_tac_vu()
-                threading.Thread(target=_t, daemon=True).start()
-            self._chay_hoac_xep_hang(f"Resource Pack: {r.get('name', mid)}", _bat_dau,
-                                      item_id=("resourcepacks", "curseforge", mid))
-            return
-
+            self._tang_tac_vu()
         self.cbo_rsp_cf_ver.set("Dang tai phien ban...")
-        self.lbl_status.config(text="Đang tải phiên bản RSP...", fg="#00ACC1")
+        self.lbl_status.config(text="Đang tải phiên bản RSP...", fg="#AB47BC")
         def _t():
             try:
                 files = lay_phien_ban_curseforge(mid)
                 self._rsp_cf_files = files
-                self.after(0, self._filter_rsp_cf_ver)
+                def _apply():
+                    self._filter_rsp_cf_ver()
+                    if install:
+                        started = self._install_rsp_cf()
+                        if not started:
+                            self._giam_tac_vu()
+                self.after(0, _apply)
             except Exception as e:
-                self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi: {e}", fg="red"))
+                def _err(e=e):
+                    if install:
+                        self._giam_tac_vu()
+                    self.lbl_status.config(text=f"Lỗi: {e}", fg="red")
+                    messagebox.showerror("Lỗi",
+                        f"Không tải được danh sách phiên bản Resource Pack từ CurseForge.\n{e}",
+                        parent=self)
+                self.after(0, _err)
         threading.Thread(target=_t, daemon=True).start()
 
     def _filter_rsp_cf_ver(self):
@@ -980,8 +876,9 @@ class ForgeModMixin:
                 "Tải thủ công từ curseforge.com rồi dùng tab 'Cài từ File'.", parent=self)
             return False
         fname = fd.get("fileName", "resourcepack.zip")
-        self.lbl_status.config(text="Đang tải RSP từ CurseForge...", fg="#00ACC1")
+        self.lbl_status.config(text="Đang tải RSP từ CurseForge...", fg="#AB47BC")
 
+        self._tang_tac_vu()
         def _t():
             try:
                 tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
@@ -992,7 +889,7 @@ class ForgeModMixin:
                         raise TacVuBiHuy("Da huy tai RSP")
                     pct = int(da / tong * 100)
                     self.after(0, lambda: self.lbl_status.config(
-                        text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#00ACC1"))
+                        text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#AB47BC"))
                     self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
                 tai_file(url, pz, prog)
                 if self._cancel_event.is_set():
@@ -1015,11 +912,7 @@ class ForgeModMixin:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi: {e}", fg="red"))
             finally:
                 self._giam_tac_vu()
-        def _bat_dau():
-            self._tang_tac_vu()
-            threading.Thread(target=_t, daemon=True).start()
-        self._chay_hoac_xep_hang(f"Resource Pack: {fname}", _bat_dau,
-                                  item_id=("resourcepacks", "curseforge", fd.get("modId", "")))
+        threading.Thread(target=_t, daemon=True).start()
         return True
 
     def _build_shader_cf_tab(self):
@@ -1040,7 +933,7 @@ class ForgeModMixin:
         self.dv_sh_cf = tk.Frame(f, bg=BG)
         lv = self.lv_sh_cf
 
-        self.fb_sh_cf = FilterBar(lv, self._search_sh_cf, accent_color="#00ACC1", show_loader=False, show_category=True, bg=BG)
+        self.fb_sh_cf = FilterBar(lv, self._search_sh_cf, accent_color="#FB8C00", show_loader=False, show_category=True, bg=BG)
         self.fb_sh_cf.pack(fill="x", padx=10, pady=(8, 4))
         self._load_categories_async(self.fb_sh_cf, 6552)
 
@@ -1057,7 +950,7 @@ class ForgeModMixin:
 
         self.cbo_sh_cf_inst.bind("<ButtonPress>", lambda e: self._sync_inst_cbo(self.cbo_sh_cf_inst))
         tk.Button(bp, text="Cài Shader", font=("Arial", 9, "bold"),
-                  bg="#00ACC1", fg="white", activebackground="#00ACC1", activeforeground="white",
+                  bg="#FB8C00", fg="white", activebackground="#FB8C00", activeforeground="white",
                   width=14, pady=4, command=self._install_sh_cf).grid(row=0, column=2, rowspan=2, padx=8)
 
         self.list_sh_cf = ContentTableWidget(lv, "curseforge", self._select_sh_cf,
@@ -1066,19 +959,19 @@ class ForgeModMixin:
         self.cbo_sh_cf_inst.bind("<<ComboboxSelected>>", lambda e: (
             self.list_sh_cf.refresh_installed_states()), add="+")
 
-        self.pg_sh_cf = PaginationBar(lv, self._goto_sh_cf_page, accent_color="#00ACC1", bg=BG)
+        self.pg_sh_cf = PaginationBar(lv, self._goto_sh_cf_page, accent_color="#FB8C00", bg=BG)
         self.pg_sh_cf.pack(fill="x", padx=10, pady=(2, 0))
 
     def _load_sh_cf_top(self, page=1):
         self._sh_cf_page    = page
         self._sh_cf_last_kw = None
         try:
-            r, total = lay_curseforge_popular(class_id=6552, limit=25, offset=(page - 1) * 25)
+            r, total = lay_curseforge_popular(class_id=6552, limit=50, offset=(page - 1) * 50)
             self._sh_cf_data  = r
             self._sh_cf_total = total
             self.after(0, lambda: (
                 self.list_sh_cf.load(r),
-                self.pg_sh_cf.set_total(total, 25, page),
+                self.pg_sh_cf.set_total(total, 50, page),
                 self.lbl_status.config(text=f"Top Shader (CurseForge) - trang {page}", fg="#2b8c54"),
             ))
         except Exception as e:
@@ -1089,16 +982,16 @@ class ForgeModMixin:
         mc, _, c = self.fb_sh_cf.get()
         self._sh_cf_page    = page
         self._sh_cf_last_kw = (kw, mc, c)
-        self.lbl_status.config(text="Đang tìm Shader CurseForge...", fg="#00ACC1")
+        self.lbl_status.config(text="Đang tìm Shader CurseForge...", fg="#FB8C00")
         def _t():
             try:
-                r, total = tim_kiem_curseforge(kw, mc, "", limit=25, class_id=6552,
-                                                offset=(page - 1) * 25, category_id=c)
+                r, total = tim_kiem_curseforge(kw, mc, "", limit=50, class_id=6552,
+                                                offset=(page - 1) * 50, category_id=c)
                 self._sh_cf_data  = r
                 self._sh_cf_total = total
                 self.after(0, lambda: (
                     self.list_sh_cf.load(r),
-                    self.pg_sh_cf.set_total(total, 25, page),
+                    self.pg_sh_cf.set_total(total, 50, page),
                     self.lbl_status.config(text=f"{total} shader - trang {page}", fg="#2b8c54"),
                 ))
             except Exception as e:
@@ -1135,7 +1028,8 @@ class ForgeModMixin:
                     messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self)
                     _finish()
                     return
-                self.lbl_status.config(text="Đang tải Shader từ CurseForge...", fg="#00ACC1")
+                self.lbl_status.config(text="Đang tải Shader từ CurseForge...", fg="#FB8C00")
+                self._tang_tac_vu()
                 def _t():
                     try:
                         tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
@@ -1146,7 +1040,7 @@ class ForgeModMixin:
                                 raise TacVuBiHuy("Da huy tai Shader")
                             pct = int(da / tong * 100)
                             self.after(0, lambda: self.lbl_status.config(
-                                text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#00ACC1"))
+                                text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#FB8C00"))
                             self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
                             if progress_cb:
                                 self.after(0, lambda: progress_cb(da, tong))
@@ -1175,17 +1069,13 @@ class ForgeModMixin:
                         _finish()
                     finally:
                         self._giam_tac_vu()
-                def _bat_dau():
-                    self._tang_tac_vu()
-                    threading.Thread(target=_t, daemon=True).start()
-                self._chay_hoac_xep_hang(f"Shader: {fname}", _bat_dau,
-                                          item_id=("shaderpacks", "curseforge", mid))
+                threading.Thread(target=_t, daemon=True).start()
 
             ten_inst_hien_tai = self.cbo_sh_cf_inst.get().strip()
             ten_inst_hien_tai = "" if ten_inst_hien_tai == _NO_INST else ten_inst_hien_tai
             self._swap_to_detail(self.lv_sh_cf, self.dv_sh_cf, "curseforge", r,
                                   [], install_cb=_install_from_detail,
-                                  accent="#00ACC1", installed_info=self._lay_installed_info_day_du(
+                                  accent="#FB8C00", installed_info=self._lay_installed_info_day_du(
                                       "shaderpacks", "curseforge", mid, ten_inst_hien_tai, r.get("name", "")),
                                   instance_ctl=make_instance_ctl(self.cbo_sh_cf_inst, _NO_INST),
                                   loai="shaderpacks")
@@ -1197,41 +1087,29 @@ class ForgeModMixin:
             if not ten_inst_check:
                 messagebox.showwarning("Chú ý", "Chọn Instance để cài vào!", parent=self)
                 return
-            self.cbo_sh_cf_ver.set("Dang tai phien ban...")
-            self.lbl_status.config(text="Đang tải phiên bản Shader...", fg="#00ACC1")
-            def _t():
-                try:
-                    files = lay_phien_ban_curseforge(mid)
-                    self._sh_cf_files = files
-                    def _apply():
-                        self._filter_sh_cf_ver()
-                        self._giam_tac_vu()
-                        self._install_sh_cf()
-                    self.after(0, _apply)
-                except Exception as e:
-                    def _err(e=e):
-                        self._giam_tac_vu()
-                        self.lbl_status.config(text=f"Lỗi: {e}", fg="red")
-                        messagebox.showerror("Lỗi",
-                            f"Không tải được danh sách phiên bản Shader từ CurseForge.\n{e}",
-                            parent=self)
-                    self.after(0, _err)
-            def _bat_dau():
-                self._tang_tac_vu()
-                threading.Thread(target=_t, daemon=True).start()
-            self._chay_hoac_xep_hang(f"Shader: {r.get('name', mid)}", _bat_dau,
-                                      item_id=("shaderpacks", "curseforge", mid))
-            return
-
+            self._tang_tac_vu()
         self.cbo_sh_cf_ver.set("Dang tai phien ban...")
-        self.lbl_status.config(text="Đang tải phiên bản Shader...", fg="#00ACC1")
+        self.lbl_status.config(text="Đang tải phiên bản Shader...", fg="#FB8C00")
         def _t():
             try:
                 files = lay_phien_ban_curseforge(mid)
                 self._sh_cf_files = files
-                self.after(0, self._filter_sh_cf_ver)
+                def _apply():
+                    self._filter_sh_cf_ver()
+                    if install:
+                        started = self._install_sh_cf()
+                        if not started:
+                            self._giam_tac_vu()
+                self.after(0, _apply)
             except Exception as e:
-                self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi: {e}", fg="red"))
+                def _err(e=e):
+                    if install:
+                        self._giam_tac_vu()
+                    self.lbl_status.config(text=f"Lỗi: {e}", fg="red")
+                    messagebox.showerror("Lỗi",
+                        f"Không tải được danh sách phiên bản Shader từ CurseForge.\n{e}",
+                        parent=self)
+                self.after(0, _err)
         threading.Thread(target=_t, daemon=True).start()
 
     def _filter_sh_cf_ver(self):
@@ -1267,8 +1145,9 @@ class ForgeModMixin:
                 "Tải thủ công từ curseforge.com rồi dùng tab 'Cài từ File'.", parent=self)
             return False
         fname = fd.get("fileName", "shader.zip")
-        self.lbl_status.config(text="Đang tải Shader từ CurseForge...", fg="#00ACC1")
+        self.lbl_status.config(text="Đang tải Shader từ CurseForge...", fg="#FB8C00")
 
+        self._tang_tac_vu()
         def _t():
             try:
                 tmp = os.path.join(config.current_config.get("thu_muc_game", ""), "_modpack_tmp")
@@ -1279,7 +1158,7 @@ class ForgeModMixin:
                         raise TacVuBiHuy("Da huy tai Shader")
                     pct = int(da / tong * 100)
                     self.after(0, lambda: self.lbl_status.config(
-                        text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#00ACC1"))
+                        text=f"Đang tải: {pct}%  ({da//1024}KB/{tong//1024}KB)", fg="#FB8C00"))
                     self.ghi_tien_do(pct, f"{da//1024}KB/{tong//1024}KB")
                 tai_file(url, pz, prog)
                 if self._cancel_event.is_set():
@@ -1302,9 +1181,5 @@ class ForgeModMixin:
                 self.after(0, lambda e=e: self.lbl_status.config(text=f"Lỗi: {e}", fg="red"))
             finally:
                 self._giam_tac_vu()
-        def _bat_dau():
-            self._tang_tac_vu()
-            threading.Thread(target=_t, daemon=True).start()
-        self._chay_hoac_xep_hang(f"Shader: {fname}", _bat_dau,
-                                  item_id=("shaderpacks", "curseforge", fd.get("modId", "")))
+        threading.Thread(target=_t, daemon=True).start()
         return True

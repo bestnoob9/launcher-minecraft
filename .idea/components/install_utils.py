@@ -151,31 +151,6 @@ _dang_cai_modpack = False
 def dang_cai_modpack():
     return _dang_cai_modpack
 
-# Ten cac Instance (ca ten hien thi goc lan ten folder da loc ky tu cam) dang
-# duoc cai dat modpack. InstanceFrame._sync_watcher() se doc tap nay de BO QUA,
-# khong tu dong "doan mo" loai loader/phien ban roi them vao config trong luc
-# modpack van con dang tai (truoc day no chi doi instance_info.json toi da 3s,
-# nhung file nay chi duoc ghi SAU KHI cai xong hoan toan nen voi modpack lon
-# se luon bi doan sai thanh "Vanilla"). Dung ca 2 dang ten vi ten hien thi va
-# ten folder (da loc ky tu cam nhu ':') co the khac nhau.
-_ten_dang_cai_instance = set()
-_lock_ten_dang_cai = threading.Lock()
-
-def _dang_ky_dang_cai(*ten_list):
-    with _lock_ten_dang_cai:
-        for t in ten_list:
-            if t:
-                _ten_dang_cai_instance.add(t)
-
-def _huy_dang_ky_dang_cai(*ten_list):
-    with _lock_ten_dang_cai:
-        for t in ten_list:
-            _ten_dang_cai_instance.discard(t)
-
-def instance_dang_duoc_cai(ten):
-    with _lock_ten_dang_cai:
-        return ten in _ten_dang_cai_instance
-
 def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=None,
                          cancel_event=None, progress_cb=None, callback_huy=None):
     thu_muc_game = config.current_config.get("thu_muc_game", "")
@@ -185,31 +160,14 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
     os.makedirs(thu_muc_instance, exist_ok=True)
 
     def _cap(text, mau="gray"):
-        def _thuc_thi():
-            # Kiem tra lai cancel_event ngay TAI THOI DIEM THUC THI (khong
-            # phai luc submit), vi callback nay co the da nam cho trong
-            # hang doi mainloop tu truoc khi nguoi dung bam Huy. Neu khong
-            # chan o day, cac luong tai dang chay do (toi da MAX_WORKERS
-            # luong) van hoan tat sau khi UI da duoc don dep/reset, khien
-            # trang thai "hoi sinh" va ket lai vinh vien.
-            if cancel_event and cancel_event.is_set():
-                return
-            try:
-                lbl_status.config(text=text, fg=mau)
-            except Exception:
-                pass
-        lbl_status.after(0, _thuc_thi)
+        lbl_status.after(0, lambda: lbl_status.config(text=text, fg=mau))
 
     def _bao_tien_do(da, tong):
         if progress_cb:
-            def _thuc_thi():
-                if cancel_event and cancel_event.is_set():
-                    return
-                try:
-                    progress_cb(da, tong)
-                except Exception:
-                    pass
-            lbl_status.after(0, _thuc_thi)
+            try:
+                lbl_status.after(0, lambda: progress_cb(da, tong))
+            except Exception:
+                pass
 
     def _don_dep_va_huy():
         try:
@@ -218,16 +176,8 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
         except Exception:
             pass
         try:
-            ds = config.current_config.get("danh_sach_instances", {})
-            da_xoa = False
-            # Xoa theo ca ten hien thi goc VA ten folder da loc ky tu cam, vi
-            # sync_watcher (instance_frame.py) co the da lo them nham entry
-            # bang ten folder truoc khi qua trinh cai nay kip dang ky "dang cai".
-            for ten in {ten_instance, ten_folder}:
-                if ten in ds:
-                    del ds[ten]
-                    da_xoa = True
-            if da_xoa:
+            if ten_instance in config.current_config.get("danh_sach_instances", {}):
+                del config.current_config["danh_sach_instances"][ten_instance]
                 config.luu_toan_bo_cau_hinh()
         except Exception:
             pass
@@ -240,7 +190,6 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
     def _chay():
         global _dang_cai_modpack
         _dang_cai_modpack = True
-        _dang_ky_dang_cai(ten_instance, ten_folder)
         try:
             _cap("Đang giải nén modpack...", "#1E88E5")
             loai_game, version_goc, version_mod = "Vanilla", "1.21.1", "Vanilla"
@@ -406,9 +355,6 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                                 return
                             continue
 
-                    if cancel_event and cancel_event.is_set():
-                        return
-
                     with lock:
                         da_tai[0] += 1
                         if thanh_cong:
@@ -425,23 +371,12 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                     while con_lai:
                         if cancel_event and cancel_event.is_set():
 
-                            # QUAN TRONG: phai wait=True o day. Neu wait=False,
-                            # ham nay tra ve trong khi toi da MAX_WORKERS luong
-                            # con dang tai do van chay ngam. Ben ngoai, code
-                            # nghi la da huy xong nen don dep UI/state (vi du
-                            # _giam_tac_vu() xoa cancel_event). Luc do neu mot
-                            # luong "tre" hoan tat, no se khong con thay
-                            # cancel_event dang bat nua va se bao cao tien do
-                            # nhu binh thuong -> trang thai "hoi sinh" va ket
-                            # lai vinh vien. Cac luong con lai deu tu kiem tra
-                            # cancel_event trong vong doc chunk nen se thoat
-                            # rat nhanh, wait=True o day khong lam treo lau.
                             try:
-                                pool.shutdown(wait=True, cancel_futures=True)
+                                pool.shutdown(wait=False, cancel_futures=True)
                             except TypeError:
+
                                 for f in con_lai:
                                     f.cancel()
-                                pool.shutdown(wait=True)
                             break
 
                         xong, con_lai = concurrent.futures.wait(
@@ -454,7 +389,7 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                                 pass
                 finally:
 
-                    pool.shutdown(wait=True)
+                    pool.shutdown(wait=False)
 
                 _check_huy()
                 if loi_tai:
@@ -525,9 +460,6 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                         if not os.path.exists(dest):
                             _tai_file_don_gian(dl_url, dest, cancel_event)
 
-                        if cancel_event and cancel_event.is_set():
-                            return
-
                         with lock_cf:
                             da_cf[0] += 1
                             _cap(f"OK: {ten_file}  ({da_cf[0]}/{tong_cf})", "#2b8c54")
@@ -549,15 +481,11 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                     con_lai_cf = set(futures_cf)
                     while con_lai_cf:
                         if cancel_event and cancel_event.is_set():
-                            # Xem giai thich chi tiet o nhanh Modrinth phia
-                            # tren: phai wait=True de dam bao khong con luong
-                            # nao "tre" bao cao tien do sau khi UI da reset.
                             try:
-                                pool_cf.shutdown(wait=True, cancel_futures=True)
+                                pool_cf.shutdown(wait=False, cancel_futures=True)
                             except TypeError:
                                 for f in con_lai_cf:
                                     f.cancel()
-                                pool_cf.shutdown(wait=True)
                             break
 
                         xong, con_lai_cf = concurrent.futures.wait(
@@ -569,7 +497,7 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                             except Exception:
                                 pass
                 finally:
-                    pool_cf.shutdown(wait=True)
+                    pool_cf.shutdown(wait=False)
 
                 _check_huy()
                 if loi_cf:
@@ -609,7 +537,6 @@ def cai_modpack_tu_file(duong_dan_zip, ten_instance, lbl_status, callback_xong=N
                 lbl_status.after(500, callback_xong)
         finally:
             _dang_cai_modpack = False
-            _huy_dang_ky_dang_cai(ten_instance, ten_folder)
 
     threading.Thread(target=_chay, daemon=True).start()
 
@@ -619,40 +546,17 @@ def _duong_dan_thu_muc_instance(ten_instance):
     thu_muc_game = config.current_config.get("thu_muc_game", "")
     return os.path.join(thu_muc_game, "Instances", ten_folder_an_toan(ten_instance))
 
-# ---------------------------------------------------------------------------
-# Cache index (.mcmgr_index.json) theo Instance, kem mtime cua file, giong
-# co che cache quet thu muc o tren. Ly do: doc_index_instance() bi goi RAT
-# NHIEU LAN lien tiep (vd refresh_installed_states() goi 1 lan/dong trong
-# danh sach dang hien, va voi tab Modpack con lap qua TAT CA Instance cho
-# moi dong) - neu khong cache, moi lan quay lai danh sach (dong tab chi
-# tiet) se doc + parse JSON tu o dia hang chuc lan mot cach thua thai, gay
-# giat/cham ro ret. Chi doc lai tu o dia khi file thuc su thay doi (mtime
-# khac cache), con lai dung thang ket qua da luu trong bo nho.
-# ---------------------------------------------------------------------------
-_cache_index_instance = {}   # ten_instance -> (mtime, data)
-
 def doc_index_instance(ten_instance):
     path = os.path.join(_duong_dan_thu_muc_instance(ten_instance), _TEN_FILE_INDEX)
     mac_dinh = {"modpack": None, "mods": {}, "resourcepacks": {}, "shaderpacks": {}}
-    try:
-        mtime = os.stat(path).st_mtime
-    except OSError:
-        return dict(mac_dinh)
-
-    cache = _cache_index_instance.get(ten_instance)
-    if cache is not None and cache[0] == mtime:
-        return cache[1]
-
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         for k, v in mac_dinh.items():
             data.setdefault(k, v)
+        return data
     except Exception:
-        data = dict(mac_dinh)
-
-    _cache_index_instance[ten_instance] = (mtime, data)
-    return data
+        return mac_dinh
 
 def ghi_index_instance(ten_instance, data):
     path = os.path.join(_duong_dan_thu_muc_instance(ten_instance), _TEN_FILE_INDEX)
@@ -660,14 +564,6 @@ def ghi_index_instance(ten_instance, data):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        # Cap nhat luon cache voi du lieu + mtime moi nhat, tranh phai doc lai
-        # tu o dia ngay sau khi vua ghi (vd cac lan refresh UI lien tiep sau
-        # khi cai xong 1 mod).
-        try:
-            mtime = os.stat(path).st_mtime
-            _cache_index_instance[ten_instance] = (mtime, data)
-        except OSError:
-            _cache_index_instance.pop(ten_instance, None)
     except Exception:
         pass
 

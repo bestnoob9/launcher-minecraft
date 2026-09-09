@@ -1,60 +1,32 @@
-# ============================================================================
-# GHI CHU TOI UU HOA PERFORMANCE (khong doi hanh vi UI / API public):
-#   1) _IconCache: gioi han so thread tai icon song song (worker pool co dinh,
-#      mac dinh 5 thread thay vi 1-thread-moi-url-khong-gioi-han), them LRU
-#      eviction (toi da ~110 anh trong cache) de tranh phinh memory khi danh
-#      sach dai / cuon qua nhieu mod, va kiem tra widget con ton tai
-#      (winfo_exists) truoc khi apply callback tranh TclError / cong viec thua.
-#   2) ContentTableWidget.load(): xay dung cac dong theo TUNG LO NHO (chunk),
-#      nhuong lai vong lap su kien Tk giua cac lo (self.after(1, ...)) thay vi
-#      tao het ~15-20 widget/dong cho toan bo 50-200 item trong 1 lan goi dong
-#      bo (nguyen nhan chinh gay "dung hinh"/giat khi doi filter hoac mo tab
-#      voi danh sach dai). Cac ham doc self._rows/self._data hien co (select,
-#      progress poll, refresh_installed_states...) da tu gioi han theo
-#      len(self._rows) nen van an toan khi dong con dang duoc xay dan.
-#   PHAN CHUA LAM (de lai cho buoc sau, ghi ro theo yeu cau): virtual/recycled
-#   row list day du (chi giu widget cho vung visible+buffer va tai su dung
-#   frame khi cuon) chua duoc trien khai trong lan nay vi rui ro pha vo dong
-#   bo progress_row / _installing_row / selection theo index rat chat che;
-#   hien tai list van la "toan bo dong deu ton tai" nhung duoc TAO DAN thay vi
-#   dong bo mot lan, cong voi icon/wrap van chi tinh cho vung visible (co san
-#   tu truoc). Neu can giam so luong widget thuc su cho danh sach >200 item,
-#   buoc tiep theo la them co che recycle frame dua tren _load_visible_icons.
-# ============================================================================
-
 import collections
 import io
 import queue
 import threading
 import time
 import urllib.request
-
 import tkinter as tk
 from tkinter import ttk
 from tkinter import font as tkfont
+from tkinter import filedialog
 import config
 import theme
-
+from components import perf
 try:
     from PIL import Image, ImageTk, ImageDraw
     _PIL_OK = True
 except Exception:
     _PIL_OK = False
-
 BG_DARK   = "#ffffff"
 BG_SEL    = "#cfe3fb"
 FG_TITLE  = "#1a1a1a"
 ICON_SIZE = 72
-
 ACCENT_MODRINTH   = "#00ACC1"
 ACCENT_CURSEFORGE = "#00ACC1"
-
 _LOADER_SLUGS = {"forge", "fabric", "quilt", "neoforge", "liteloader", "rift"}
 _CF_LOADER_MAP = {
     1: "Forge", 2: "Cauldron", 3: "LiteLoader", 4: "Fabric",
     5: "Quilt", 6: "NeoForge",
 }
-
 def _dinh_dang_so_luot(n):
     try:
         n = int(n)
@@ -65,7 +37,6 @@ def _dinh_dang_so_luot(n):
     if n >= 1_000:
         return f"{n / 1_000:.1f}K".replace(".0K", "K")
     return str(n)
-
 def _dinh_dang_dung_luong(so_byte):
     try:
         b = float(so_byte)
@@ -78,7 +49,6 @@ def _dinh_dang_dung_luong(so_byte):
     if b >= 1024:
         return f"{b / 1024:.1f} KB"
     return f"{int(b)} B"
-
 def _dinh_dang_ngay_tuong_doi(chuoi_iso):
     if not chuoi_iso:
         return ""
@@ -99,9 +69,115 @@ def _dinh_dang_ngay_tuong_doi(chuoi_iso):
         return f"{delta_ngay // 365} năm trước"
     except Exception:
         return ""
-
+_COVER_SEL_BORDER = "#1E88E5"
+class CoverPickerPanel(tk.Frame):
+    _THUMB = 52     
+    _PREVIEW = 80   
+    _COLS = 6
+    def __init__(self, parent, duong_dan_ban_dau=None, **kw):
+        c = theme.colors()
+        kw.setdefault("bg", c["bg_alt"])
+        super().__init__(parent, **kw)
+        self._duong_dan_chon = duong_dan_ban_dau
+        self._thumb_refs = []          
+        self._preview_ref = None
+        self._holder_theo_duong_dan = {}   
+        self._build()
+    def _build(self):
+        from components.instance_common import danh_sach_anh_instancefree
+        c = theme.colors()
+        tk.Label(self, text="Ảnh bìa (không bắt buộc):", font=("Arial", 10, "bold"),
+                 bg=c["bg_alt"], fg=c["fg_title"], anchor="w").pack(fill="x", pady=(4, 4))
+        ds_anh = danh_sach_anh_instancefree()
+        if ds_anh:
+            grid_holder = tk.Frame(self, bg=c["bg_alt"])
+            grid_holder.pack(fill="x")
+            for idx, duong_dan in enumerate(ds_anh):
+                r, col = divmod(idx, self._COLS)
+                holder = tk.Frame(grid_holder, bg=c["icon_bg"],
+                                   width=self._THUMB + 8, height=self._THUMB + 8,
+                                   highlightthickness=2, highlightbackground=c["icon_bg"])
+                holder.grid(row=r, column=col, padx=3, pady=3)
+                holder.grid_propagate(False)
+                lbl = tk.Label(holder, bg=c["icon_bg"], cursor="hand2")
+                photo = self._doc_anh(duong_dan, self._THUMB)
+                if photo is not None:
+                    lbl.configure(image=photo)
+                    self._thumb_refs.append(photo)
+                else:
+                    lbl.configure(text="?", font=("Arial", 10, "bold"), fg=c["fg_title"])
+                lbl.place(relx=0.5, rely=0.5, anchor="center")
+                holder.bind("<Button-1>", lambda e, p=duong_dan: self._chon(p))
+                lbl.bind("<Button-1>", lambda e, p=duong_dan: self._chon(p))
+                self._holder_theo_duong_dan[duong_dan] = holder
+        else:
+            tk.Label(self, text="(Chưa có ảnh mẫu trong assets/iconinstance/instancefree/)",
+                     font=("Arial", 8, "italic"), bg=c["bg_alt"], fg=c["fg_desc"],
+                     anchor="w", wraplength=380, justify="left").pack(fill="x")
+        row_duoi = tk.Frame(self, bg=c["bg_alt"])
+        row_duoi.pack(fill="x", pady=(8, 0))
+        self._preview_holder = tk.Frame(row_duoi, bg=c["icon_bg"],
+                                         width=self._PREVIEW, height=self._PREVIEW)
+        self._preview_holder.pack(side="left")
+        self._preview_holder.pack_propagate(False)
+        self._lbl_preview = tk.Label(self._preview_holder, bg=c["icon_bg"],
+                                      font=("Arial", 14, "bold"), fg=c["fg_title"])
+        self._lbl_preview.place(relx=0.5, rely=0.5, anchor="center")
+        btns = tk.Frame(row_duoi, bg=c["bg_alt"])
+        btns.pack(side="left", padx=(10, 0), fill="x", expand=True)
+        tk.Button(btns, text="📁 Chọn ảnh từ máy...", font=("Arial", 9),
+                  bg=c["icon_bg"], fg=c["fg_title"], relief="flat", padx=8, pady=5,
+                  cursor="hand2", command=self._chon_tu_may).pack(side="left")
+        tk.Button(btns, text="✕ Bỏ chọn", font=("Arial", 9),
+                  bg=c["icon_bg"], fg=c["fg_desc"], relief="flat", padx=8, pady=5,
+                  cursor="hand2", command=self._bo_chon).pack(side="left", padx=(6, 0))
+        self._cap_nhat_highlight()
+        self._cap_nhat_preview()
+    def _doc_anh(self, duong_dan, size):
+        if not _PIL_OK:
+            return None
+        try:
+            img = Image.open(duong_dan).convert("RGBA").resize((size, size), Image.LANCZOS)
+            return ImageTk.PhotoImage(img)
+        except Exception:
+            return None
+    def _chon(self, duong_dan):
+        self._duong_dan_chon = duong_dan
+        self._cap_nhat_highlight()
+        self._cap_nhat_preview()
+    def _chon_tu_may(self):
+        duong_dan = filedialog.askopenfilename(
+            title="Chọn ảnh bìa",
+            filetypes=[("Ảnh", "*.png *.jpg *.jpeg *.webp *.gif"),
+                       ("Tất cả file", "*.*")])
+        if duong_dan:
+            self._duong_dan_chon = duong_dan
+            self._cap_nhat_highlight()
+            self._cap_nhat_preview()
+    def _bo_chon(self):
+        self._duong_dan_chon = None
+        self._cap_nhat_highlight()
+        self._cap_nhat_preview()
+    def _cap_nhat_highlight(self):
+        c = theme.colors()
+        for duong_dan, holder in self._holder_theo_duong_dan.items():
+            try:
+                dang_chon = (duong_dan == self._duong_dan_chon)
+                holder.configure(highlightbackground=(_COVER_SEL_BORDER if dang_chon else c["icon_bg"]))
+            except Exception:
+                pass
+    def _cap_nhat_preview(self):
+        if self._duong_dan_chon:
+            photo = self._doc_anh(self._duong_dan_chon, self._PREVIEW)
+            if photo is not None:
+                self._preview_ref = photo
+                self._lbl_preview.configure(image=photo, text="")
+                return
+        self._preview_ref = None
+        self._lbl_preview.configure(image="", text="Aa")
+    def get_duong_dan(self):
+        return self._duong_dan_chon
 class _CategoryMultiSelect(tk.Frame):
-
     def __init__(self, parent, bg, on_change):
         super().__init__(parent, bg=bg)
         self._on_change = on_change
@@ -109,40 +185,32 @@ class _CategoryMultiSelect(tk.Frame):
         self._checked = set()
         self._popup = None
         self._vars = {}
-
         self.btn = tk.Button(
             self, text="Loại: Tất cả", font=("Arial", 9), anchor="w",
             relief="groove", bd=1, padx=6, pady=1, bg="white",
             command=self._toggle_popup)
         self.btn.pack(side="left")
-
     def set_items(self, items):
         self._items = items or []
         valid_names = {i["name"] for i in self._items}
         self._checked &= valid_names
         self._refresh_btn_text()
-
     def get_selected(self):
         return list(self._checked)
-
     def reset(self):
         self._checked = set()
         for v in self._vars.values():
             v.set(False)
         self._refresh_btn_text()
-
     def _refresh_btn_text(self):
         n = len(self._checked)
         self.btn.configure(text="Loại: Tất cả" if n == 0 else f"Loại: {n} đã chọn")
-
     def _toggle_popup(self):
         if self._popup is not None and self._popup.winfo_exists():
             self._close_popup()
             return
         self._open_popup()
-
     def _open_popup(self):
-
         c = theme.colors()
         dark = theme.is_dark()
         pop_bg     = c["bg_alt"]
@@ -151,7 +219,6 @@ class _CategoryMultiSelect(tk.Frame):
         fg_muted   = c["fg_author"]
         border_col = c["icon_border"]
         btn_bg     = "#455A64" if dark else "#78909C"
-
         top = tk.Toplevel(self)
         top.wm_overrideredirect(True)
         top.attributes("-topmost", True)
@@ -160,12 +227,10 @@ class _CategoryMultiSelect(tk.Frame):
         y = self.btn.winfo_rooty() + self.btn.winfo_height()
         top.geometry(f"+{x}+{y}")
         self._popup = top
-
         outer = tk.Frame(top, bg=border_col)
         outer.pack()
         frame = tk.Frame(outer, bg=item_bg)
         frame.pack(padx=1, pady=1)
-
         canvas = tk.Canvas(frame, width=210, height=260, bg=item_bg, highlightthickness=0)
         vsb = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
         inner = tk.Frame(canvas, bg=item_bg)
@@ -174,7 +239,6 @@ class _CategoryMultiSelect(tk.Frame):
         canvas.configure(yscrollcommand=vsb.set)
         canvas.pack(side="left", fill="both", expand=True)
         vsb.pack(side="right", fill="y")
-
         self._vars = {}
         last_header = None
         if not self._items:
@@ -197,7 +261,6 @@ class _CategoryMultiSelect(tk.Frame):
                 highlightthickness=0, anchor="w", font=("Arial", 9),
                 command=lambda n=name, v=var: self._on_check(n, v)
             ).pack(anchor="w", fill="x", padx=4)
-
         btns = tk.Frame(outer, bg=item_bg)
         btns.pack(fill="x")
         tk.Button(btns, text="Xóa lọc", font=("Arial", 8), bg=btn_bg, fg="white",
@@ -206,10 +269,8 @@ class _CategoryMultiSelect(tk.Frame):
         tk.Button(btns, text="Đóng", font=("Arial", 8), bg=btn_bg, fg="white",
                   activebackground=btn_bg, activeforeground="white",
                   relief="flat", command=self._close_popup).pack(side="right", padx=4, pady=4)
-
         top.bind("<FocusOut>", lambda e: self._close_popup())
         top.focus_force()
-
     def _on_check(self, name, var):
         if var.get():
             self._checked.add(name)
@@ -217,14 +278,12 @@ class _CategoryMultiSelect(tk.Frame):
             self._checked.discard(name)
         self._refresh_btn_text()
         self._on_change()
-
     def _clear_all(self):
         self._checked.clear()
         for v in self._vars.values():
             v.set(False)
         self._refresh_btn_text()
         self._on_change()
-
     def _close_popup(self):
         if self._popup is not None:
             try:
@@ -232,7 +291,6 @@ class _CategoryMultiSelect(tk.Frame):
             except Exception:
                 pass
             self._popup = None
-
 class FilterBar(tk.Frame):
     LOADERS = ["Tất cả", "Fabric", "Forge", "Quilt", "NeoForge"]
     CATEGORIES = [
@@ -242,7 +300,6 @@ class FilterBar(tk.Frame):
         "Quests", "Realistic", "RPG", "Simulation", "Social",
         "Storage", "Technology", "Transportation", "Utility", "Worldgen",
     ]
-
     _MC_FALLBACK = [
         "26.3","26.2", "26.1",
         "1.21.5", "1.21.4", "1.21.3", "1.21.2", "1.21.1", "1.21",
@@ -254,11 +311,9 @@ class FilterBar(tk.Frame):
         "1.13.2", "1.13", "1.12.2", "1.12",
         "1.11.2", "1.10.2", "1.9.4", "1.8.9", "1.7.10",
     ]
-
     _ver_cache   = []
     _cache_ready = False
     _cache_busy  = False
-
     @classmethod
     def _load_versions_async(cls, on_done=None):
         if cls._cache_ready:
@@ -284,29 +339,24 @@ class FilterBar(tk.Frame):
                 try: on_done()
                 except Exception: pass
         threading.Thread(target=_t, daemon=True).start()
-
     def __init__(self, parent, on_filter_callback, accent_color="#00ACC1",
                  show_loader=True, show_category=False, multi_category=False, **kwargs):
         super().__init__(parent, **kwargs)
         self._cb = on_filter_callback
         self._incl_snap = tk.BooleanVar(value=False)
         self._multi_category = multi_category
-
         tk.Label(self, text="MC Ver:", font=("Arial", 9), bg=self["bg"]).pack(side="left", padx=(0, 2))
         self.cbo_mc = ttk.Combobox(
             self, font=("Arial", 9), state="readonly", width=10, height=12)
         self.cbo_mc.set("Tất cả")
         self.cbo_mc.pack(side="left", padx=(0, 4))
         self.cbo_mc.bind("<<ComboboxSelected>>", lambda e: self._cb())
-
         self.ent_ver = self.cbo_mc
-
         tk.Checkbutton(
             self, text="Snapshot", font=("Arial", 8),
             variable=self._incl_snap, bg=self["bg"],
             command=self._rebuild_ver_list,
         ).pack(side="left", padx=(0, 8))
-
         if show_loader:
             tk.Label(self, text="Loader:", font=("Arial", 9), bg=self["bg"]).pack(side="left", padx=(0, 2))
             self.cbo_loader = ttk.Combobox(
@@ -316,11 +366,9 @@ class FilterBar(tk.Frame):
             self.cbo_loader.bind("<<ComboboxSelected>>", lambda e: self._cb())
         else:
             self.cbo_loader = None
-
         if show_category:
             tk.Label(self, text="Loại:", font=("Arial", 9), bg=self["bg"]).pack(side="left", padx=(0, 2))
             if multi_category:
-
                 self.cbo_category = _CategoryMultiSelect(self, bg=self["bg"], on_change=self._cb)
                 self.cbo_category.pack(side="left", padx=(0, 8))
             else:
@@ -331,19 +379,15 @@ class FilterBar(tk.Frame):
                 self.cbo_category.bind("<<ComboboxSelected>>", lambda e: self._cb())
         else:
             self.cbo_category = None
-
         self._category_id_map = {}
-
         tk.Button(self, text="Lọc", font=("Arial", 8, "bold"),
                   bg=accent_color, fg="white", activebackground=accent_color,
                   activeforeground="white", pady=1, command=self._cb).pack(side="left", padx=(0, 4))
         tk.Button(self, text="Xóa", font=("Arial", 8),
                   bg="#78909C", fg="white", activebackground="#78909C",
                   activeforeground="white", pady=1, command=self._reset).pack(side="left")
-
         self._rebuild_ver_list()
         FilterBar._load_versions_async(on_done=lambda: self.after(0, self._rebuild_ver_list))
-
     def _rebuild_ver_list(self):
         cur = self.cbo_mc.get()
         incl = self._incl_snap.get()
@@ -354,7 +398,6 @@ class FilterBar(tk.Frame):
             vers = ["Tất cả"] + list(self._MC_FALLBACK)
         self.cbo_mc.config(values=vers)
         self.cbo_mc.set(cur if cur in vers else "Tất cả")
-
     def set_categories(self, categories):
         if not self.cbo_category:
             return
@@ -365,9 +408,7 @@ class FilterBar(tk.Frame):
         self._category_id_map = {c["name"]: c["id"] for c in categories}
         cur = self.cbo_category.get()
         self.cbo_category.configure(values=names)
-
         self.cbo_category.set(cur if cur in names else "Tất cả")
-
     def get(self):
         ver_raw = self.cbo_mc.get().strip()
         ver     = "" if ver_raw in ("Tất cả", "") else ver_raw
@@ -385,7 +426,6 @@ class FilterBar(tk.Frame):
             else:
                 category = cat_ten
         return ver, loader, category
-
     def _reset(self):
         self._incl_snap.set(False)
         self._rebuild_ver_list()
@@ -398,26 +438,17 @@ class FilterBar(tk.Frame):
             else:
                 self.cbo_category.set("Tất cả")
         self._cb()
-
 class _IconCache:
-    # LRU: url -> PhotoImage. Gioi han kich thuoc de khong phinh memory khi
-    # nguoi dung cuon qua rat nhieu mod/modpack (khac nhau ve icon_url).
-    _MAX_CACHE = 110
     _cache = collections.OrderedDict()
     _cache_lock = threading.Lock()
-
-    # url -> list[(widget, on_ready)] dang cho ket qua tai ve.
     _pending = {}
     _pending_lock = threading.Lock()
-
-    # Worker pool co dinh (thay vi spawn 1 thread moi cho MOI url) de gioi han
-    # so ket noi mang song song toi da (mac dinh 5), tranh nghen CPU/mang khi
-    # nhieu dong cung luc lot vao vung visible (vd nhay cuon nhanh, resize).
-    _MAX_WORKERS = 5
     _queue = queue.Queue()
     _workers_started = False
     _workers_lock = threading.Lock()
-
+    @classmethod
+    def _tran_cache(cls):
+        return 64 if perf.get_perf()["profile"] == "weak" else 110
     @classmethod
     def _ensure_workers(cls):
         if cls._workers_started:
@@ -425,26 +456,25 @@ class _IconCache:
         with cls._workers_lock:
             if cls._workers_started:
                 return
-            for _ in range(cls._MAX_WORKERS):
+            so_worker = perf.get_perf().get("tai_icon", 3)
+            for _ in range(so_worker):
                 threading.Thread(target=cls._worker_loop, daemon=True).start()
             cls._workers_started = True
-
     @classmethod
     def _worker_loop(cls):
         while True:
             url = cls._queue.get()
             try:
+                if perf.dang_choi():
+                    with cls._pending_lock:
+                        cls._pending.pop(url, None)
+                    continue
                 cls._download(url)
             finally:
                 cls._queue.task_done()
-
     @classmethod
     def _download(cls, url):
         photo = None
-        # Modrinth co lich su hay bi gian doan/rate-limit ngan (xem
-        # status.modrinth.com) khien icon load 1 lan bi loi ngay ca khi
-        # ket noi mang binh thuong -> thu lai vai lan truoc khi bo cuoc,
-        # thay vi mat anh vinh vien chi vi 1 request bi loi thoang qua.
         for lan_thu in range(3):
             try:
                 req = urllib.request.Request(
@@ -460,21 +490,15 @@ class _IconCache:
                 photo = None
                 if lan_thu < 2:
                     time.sleep(0.6 * (lan_thu + 1))
-
         with cls._pending_lock:
             waiters = cls._pending.pop(url, [])
         for w, cb in waiters:
             try:
                 w.after(0, lambda cb=cb, photo=photo, w=w: cls._safe_invoke(w, cb, photo))
             except Exception:
-                # Widget/root co the da bi huy giua chung -> bo qua, khong lam gi them.
                 pass
-
     @classmethod
     def _safe_invoke(cls, widget, cb, photo):
-        # Chi apply callback neu widget van con ton tai, tranh TclError va
-        # cong viec thua khi dong da bi destroy (vd load() danh sach moi trong
-        # luc icon cu con dang tai).
         try:
             if not widget.winfo_exists():
                 return
@@ -484,21 +508,19 @@ class _IconCache:
             cb(photo)
         except tk.TclError:
             pass
-
     @classmethod
     def _store(cls, url, photo):
         with cls._cache_lock:
             cls._cache[url] = photo
             cls._cache.move_to_end(url)
-            while len(cls._cache) > cls._MAX_CACHE:
+            tran = cls._tran_cache()
+            while len(cls._cache) > tran:
                 cls._cache.popitem(last=False)
-
     @classmethod
     def get(cls, widget, url, on_ready):
         if not url or not _PIL_OK:
             on_ready(None)
             return
-
         with cls._cache_lock:
             photo = cls._cache.get(url)
             if photo is not None:
@@ -506,16 +528,13 @@ class _IconCache:
         if photo is not None:
             on_ready(photo)
             return
-
         with cls._pending_lock:
             if url in cls._pending:
                 cls._pending[url].append((widget, on_ready))
                 return
             cls._pending[url] = [(widget, on_ready)]
-
         cls._ensure_workers()
         cls._queue.put(url)
-
     @classmethod
     def placeholder(cls, widget):
         key = "__placeholder_" + theme.get_theme_name() + "__"
@@ -532,16 +551,10 @@ class _IconCache:
         d = ImageDraw.Draw(img)
         d.rectangle([0, 0, ICON_SIZE - 1, ICON_SIZE - 1], outline=c["icon_border"], width=1)
         photo = ImageTk.PhotoImage(img)
-        # placeholder duoc dung lai lien tuc cho moi dong -> dua vao cung LRU
-        # nhung move_to_end() moi lan get() (o tren) giup no gan nhu khong bi
-        # loai ra truoc cac icon that it dung hon.
         cls._store(key, photo)
         return photo
-
 class ContentTableWidget(tk.Frame):
-
     ROW_H = 118
-
     def __init__(self, parent, source, on_select_cb, style_name="Modpack.Treeview",
                  accent_color=None, is_installed_cb=None, **kwargs):
         self._c = theme.colors()
@@ -554,49 +567,32 @@ class ContentTableWidget(tk.Frame):
         self._selected = -1
         self._accent   = accent_color or (
             ACCENT_MODRINTH if source == "modrinth" else ACCENT_CURSEFORGE)
-
-        # is_installed_cb(d) -> bool: cho biet 1 item (dict du lieu tho tu API) da
-        # duoc cai vao Instance dang chon hay chua. Neu co, nut "Cai dat" cua dong
-        # tuong ung se doi thanh "Da cai dat" va bi vo hieu hoa (khong cho bam).
         self._is_installed_cb = is_installed_cb
-
         self._owner          = getattr(on_select_cb, "__self__", None)
         self._installing_row = None
         self._poll_after_id  = None
-
         self.canvas = tk.Canvas(self, bg=bg, highlightthickness=0, bd=0)
         sb = ttk.Scrollbar(self, orient="vertical", command=self._on_scrollbar)
         self.canvas.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self.canvas.pack(side="left", fill="both", expand=True)
-
         self.inner = tk.Frame(self.canvas, bg=bg)
         self._inner_id = self.canvas.create_window((0, 0), window=self.inner, anchor="nw")
-
         self.inner.bind("<Configure>", self._on_inner_configure)
         self.canvas.bind("<Configure>", self._on_canvas_configure)
         self._bind_scroll(self.canvas)
-
         self._visible_check_id = None
         self._wrap_after_id = None
         self._pending_canvas_width = None
         self._current_wrap_width = None
         self._font_name   = None
-
-        # Xay dong theo tung lo nho (xem load()/_build_rows_chunk) de tranh
-        # dung 1 nhip lien tuc khi danh sach dai (50-200 item).
         self._build_after_id = None
         self._load_gen = 0
-
     def _on_inner_configure(self, e):
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         self._schedule_visible_check()
-
     _WRAP_MIN_DELTA_PX = 24
-
     def _on_canvas_configure(self, e):
-        # Bo qua thay doi qua nho (rung tay / lam tron pixel) de giam so lan
-        # phai tinh lai wraplength khi dang keo resize lien tuc.
         last_w = self._pending_canvas_width
         if last_w is None:
             last_w = self._current_wrap_width
@@ -604,24 +600,19 @@ class ContentTableWidget(tk.Frame):
             return
         self._pending_canvas_width = e.width
         self._schedule_wrap_refresh()
-
     def _on_scrollbar(self, *args):
         self.canvas.yview(*args)
         self._schedule_visible_check()
-
     def _bind_scroll(self, widget):
         widget.bind("<MouseWheel>", self._on_mousewheel)
         widget.bind("<Button-4>", lambda e: self._scroll_units(-3))
         widget.bind("<Button-5>", lambda e: self._scroll_units(3))
-
     def _on_mousewheel(self, e):
         delta = -1 if e.delta > 0 else 1
         self._scroll_units(delta * 3)
-
     def _scroll_units(self, units):
         self.canvas.yview_scroll(units, "units")
         self._schedule_visible_check()
-
     def _schedule_visible_check(self):
         if self._visible_check_id is not None:
             try:
@@ -629,7 +620,6 @@ class ContentTableWidget(tk.Frame):
             except Exception:
                 pass
         self._visible_check_id = self.after(50, self._load_visible_icons)
-
     def _load_visible_icons(self):
         self._visible_check_id = None
         if not self._rows:
@@ -637,7 +627,6 @@ class ContentTableWidget(tk.Frame):
         top    = self.canvas.canvasy(0)
         bottom = top + self.canvas.winfo_height()
         buffer = self.ROW_H * 3
-
         for row in self._rows:
             y0 = row["y"]
             y1 = y0 + self.ROW_H
@@ -646,30 +635,16 @@ class ContentTableWidget(tk.Frame):
             if not row.get("icon_loaded"):
                 row["icon_loaded"] = True
                 _IconCache.get(self, row["icon_url"], row["on_icon_ready"])
-            # Chi tinh lai wrap/elide cho dong DANG THAY (+ buffer) khi be rong
-            # da doi ke tu lan tinh gan nhat cua chinh dong nay - tranh phai
-            # tinh lai cho ca ~50 dong moi lan resize/scroll (rat ton CPU, gay
-            # giat khi keo resize cua so).
             if (self._current_wrap_width is not None
                     and row.get("wrap_width") != self._current_wrap_width):
                 self._apply_row_wrap(row, self._current_wrap_width)
-
-    # So dong duoc tao trong 1 lo truoc khi nhuong lai vong lap su kien Tk.
-    # Gia tri nay du nho de moi lo khong gay khung hinh cam nhan duoc, va du
-    # lon de danh sach ngan (<= 1 lo) van hien day du gan nhu ngay lap tuc.
     _BUILD_CHUNK = 18
-
     def load(self, data_list):
         self._c         = theme.colors()
         self._data      = data_list
         self._selected  = -1
-
-        # Tang the he load() de huy bo (khong lam gi khi callback chay toi)
-        # bat ky lo (chunk) nao con dang cho tu lan load() truoc do, phong
-        # truong hop nguoi dung doi filter/tab lien tuc nhanh.
         self._load_gen += 1
         my_gen = self._load_gen
-
         if self._poll_after_id is not None:
             try:
                 self.after_cancel(self._poll_after_id)
@@ -677,48 +652,38 @@ class ContentTableWidget(tk.Frame):
                 pass
             self._poll_after_id = None
         self._installing_row = None
-
         if self._wrap_after_id is not None:
             try:
                 self.after_cancel(self._wrap_after_id)
             except Exception:
                 pass
             self._wrap_after_id = None
-
         if self._build_after_id is not None:
             try:
                 self.after_cancel(self._build_after_id)
             except Exception:
                 pass
             self._build_after_id = None
-
         for r in self._rows:
             try:
                 r["frame"].destroy()
             except Exception:
                 pass
         self._rows = []
-
         self.canvas.yview_moveto(0)
         self._build_rows_chunk(data_list, 0, my_gen)
-
     def _build_rows_chunk(self, data_list, start_idx, gen):
         if gen != self._load_gen:
-            # Da co load() moi hon duoc goi trong luc lo nay cho toi luot ->
-            # bo qua, khong tao them dong cho du lieu cu.
             return
         end_idx = min(start_idx + self._BUILD_CHUNK, len(data_list))
         for i in range(start_idx, end_idx):
             self._build_row(i, data_list[i])
-
         self._schedule_visible_check()
-
         if end_idx < len(data_list):
             self._build_after_id = self.after(
                 1, lambda: self._build_rows_chunk(data_list, end_idx, gen))
         else:
             self._build_after_id = None
-
     def _extract(self, d):
         size_str = None
         updated_str = ""
@@ -730,13 +695,11 @@ class ContentTableWidget(tk.Frame):
             mc_ver    = versions[-1] if versions else ""
             desc      = d.get("description", "")
             icon_url  = d.get("icon_url", "")
-
             cats   = d.get("display_categories") or d.get("categories") or []
             cats   = [str(c) for c in cats]
             loader = next((c.title() for c in cats if c.lower() in _LOADER_SLUGS), "")
             tags   = [c.title() for c in cats if c.lower() not in _LOADER_SLUGS]
             updated_str = _dinh_dang_ngay_tuong_doi(d.get("date_modified", ""))
-
         else:
             name      = d.get("name", "")
             authors   = d.get("authors", [])
@@ -749,25 +712,20 @@ class ContentTableWidget(tk.Frame):
             desc      = d.get("summary", "")
             logo      = d.get("logo") or {}
             icon_url  = logo.get("thumbnailUrl", "") or logo.get("url", "")
-
             tags = [c.get("name", "") for c in d.get("categories", []) if c.get("name")]
             updated_str = _dinh_dang_ngay_tuong_doi(d.get("dateModified", ""))
-
             latest_files = d.get("latestFiles") or []
             if latest_files:
                 size_str = _dinh_dang_dung_luong(latest_files[0].get("fileLength"))
-
         desc_short = (desc or "").replace("\n", " ").strip()
         if len(desc_short) > 100:
             desc_short = desc_short[:97].rstrip() + "..."
-
         return {
             "name": name, "author": author, "downloads": int(downloads or 0),
             "mc_ver": mc_ver, "loader": loader, "desc": desc_short,
             "icon_url": icon_url, "tags": [t for t in tags if t],
             "updated": updated_str, "size": size_str,
         }
-
     def _build_row(self, i, d):
         info = self._extract(d)
         name, author   = info["name"], info["author"]
@@ -777,24 +735,17 @@ class ContentTableWidget(tk.Frame):
         tags, updated, size = info["tags"], info["updated"], info["size"]
         c      = self._c
         accent = self._accent
-
-        # GOM widget/dong: bo icon_holder rieng (icon_lbl pack thang vao row),
-        # bo sep Frame rieng (dung highlightthickness tren chinh row lam
-        # duong ke phan cach) de giam so widget con phai quan ly khi
-        # resize/scroll - xem ghi chu dau file.
         row = tk.Frame(self.inner, bg=c["row_bg"], height=self.ROW_H,
                         highlightthickness=1, highlightbackground=c["row_sep"],
                         highlightcolor=c["row_sep"])
         row.pack(fill="x")
         row.pack_propagate(False)
-
         ph = _IconCache.placeholder(self)
         icon_lbl = tk.Label(row, bg=c["row_bg"], bd=0)
         if ph is not None:
             icon_lbl.configure(image=ph)
             icon_lbl.image = ph
         icon_lbl.pack(side="left", fill="y", padx=(10, 10), pady=10)
-
         def _on_icon_ready(photo, lbl=icon_lbl):
             if photo is None:
                 return
@@ -803,47 +754,34 @@ class ContentTableWidget(tk.Frame):
                 lbl.image = photo
             except tk.TclError:
                 pass
-
         text_col = tk.Frame(row, bg=c["row_bg"])
         text_col.pack(side="left", fill="both", expand=True, pady=(10, 8))
-
         header_row = tk.Frame(text_col, bg=c["row_bg"])
         header_row.pack(fill="x", anchor="w")
-
-        # GOP name + author thanh 1 Label duy nhat (thay vi head_left chua
-        # lbl_name + lbl_author rieng) - giam 2 widget/dong.
         title_full = f"{name}  ·  của {author}" if author else name
         lbl_title = tk.Label(header_row, text=title_full, font=("Arial", 12, "bold"),
                               fg=c["fg_title"], bg=c["row_bg"], anchor="w", justify="left")
         lbl_title.pack(side="left", fill="x", expand=True)
-
         installed = False
         if self._is_installed_cb:
             try:
                 installed = bool(self._is_installed_cb(d))
             except Exception:
                 installed = False
-
         btn_install = tk.Button(
             header_row, text=("Đã cài đặt" if installed else "Cài đặt"),
             font=("Arial", 9, "bold"),
             bg=("#9e9e9e" if installed else accent), fg="white",
             activebackground=("#9e9e9e" if installed else accent), activeforeground="white",
             disabledforeground="white",
-            relief="flat", bd=0, padx=12, pady=3,
+            relief="flat", bd=0, padx=12, pady=3, highlightthickness=0,
             cursor=("arrow" if installed else "hand2"),
             state=(tk.DISABLED if installed else tk.NORMAL),
             command=lambda idx=i: self._on_btn_install_click(idx))
         btn_install.pack(side="right", padx=(8, 4))
-
         lbl_desc = tk.Label(text_col, text=desc, font=("Arial", 9),
                              fg=c["fg_desc"], bg=c["row_bg"], anchor="w", justify="left")
         lbl_desc.pack(fill="x", anchor="w", pady=(3, 4))
-
-        # GOP tags + downloads + updated + size + mc_ver/loader thanh 1 Label
-        # phang duy nhat (thay vi footer_row chua tags_box + stats_box voi
-        # chip Label rieng cho tung tag) - mat style "pill" mau nhung giam
-        # rat nhieu widget/dong (N chip -> 0).
         footer_bits = []
         shown_tags = tags[:3]
         if shown_tags:
@@ -859,20 +797,16 @@ class ContentTableWidget(tk.Frame):
         if ver_bit:
             footer_bits.append(ver_bit)
         footer_full = "   |   ".join(footer_bits)
-
         lbl_footer = tk.Label(text_col, text=footer_full, font=("Arial", 9),
                                fg=c["fg_stat"], bg=c["row_bg"], anchor="w", justify="left")
         lbl_footer.pack(fill="x", anchor="w")
-
         text_col.bind("<Configure>", lambda e: self._schedule_wrap_refresh())
-
         widgets = [row, icon_lbl, text_col, header_row,
                    lbl_title, lbl_desc, lbl_footer]
         for w in widgets:
             w.bind("<Button-1>", lambda e, idx=i: self._select(idx))
             w.bind("<Double-1>", lambda e, idx=i: self._on_row_double_click(idx))
             self._bind_scroll(w)
-
         self._rows.append({
             "frame": row, "widgets": widgets,
             "text_col": text_col, "header_row": header_row,
@@ -883,30 +817,19 @@ class ContentTableWidget(tk.Frame):
             "icon_url": icon_url, "on_icon_ready": _on_icon_ready,
             "icon_loaded": False, "y": i * self.ROW_H,
             "wrap_width": None,
-            # Khoi "dang cai dat..." CHI duoc tao khi thuc su can hien (xem
-            # _show_row_progress) thay vi tao san roi an - tiet kiem ~5 widget
-            # cho MOI dong khi idle (da so thoi gian).
             "progress_row": None,
             "progress_widgets": None,
             "progress_shown": False,
         })
-
     def _schedule_wrap_refresh(self):
         if getattr(self, "_wrap_after_id", None) is not None:
             try:
                 self.after_cancel(self._wrap_after_id)
             except Exception:
                 pass
-        # Debounce dai hon (thay vi 70ms) de trong luc dang keo chuot lien tuc
-        # de resize, viec tinh lai layout (itemconfig width -> Tk phai relayout
-        # toan bo cay widget cua danh sach) it bi kich hoat giua chung - day la
-        # nguyen nhan chinh gay giat, vi no la chi phi cua chinh Tk khi relayout
-        # hang tram/nghin widget, khong phai do code Python tinh toan cham.
         self._wrap_after_id = self.after(180, self._refresh_wraps)
-
     def _refresh_wraps(self):
         self._wrap_after_id = None
-
         if self._pending_canvas_width is not None:
             try:
                 self.canvas.itemconfig(self._inner_id, width=self._pending_canvas_width)
@@ -914,33 +837,17 @@ class ContentTableWidget(tk.Frame):
                 pass
             self._current_wrap_width = self._pending_canvas_width
             self._pending_canvas_width = None
-            # QUAN TRONG: sau khi doi width cua canvas item, Tk CHUA lap tuc ap
-            # dung lai kich thuoc cho cac widget con (can 1 vong "idle" de
-            # geometry manager thuc su chay). Neu do winfo_width() ngay sau day
-            # se ra gia tri CU -> tinh wraplength sai -> chu bi wrap/dong cum
-            # sai (dot dong). update_idletasks() ep Tk xu ly xong truoc khi do.
             try:
                 self.update_idletasks()
             except tk.TclError:
                 pass
-
         if self._current_wrap_width is None:
             return
-
-        # Chi xu ly cac dong dang nam trong khung nhin (+ buffer) NGAY, giong
-        # cach load icon lazy - cac dong con lai (dang cuon ngoai man hinh) se
-        # duoc "bat kip" wrap moi ngay khi nguoi dung cuon toi (xem
-        # _load_visible_icons), thay vi tinh lai toan bo ~50 dong moi lan
-        # resize (nguyen nhan chinh gay giat/khung khi keo to cua so).
         self._load_visible_icons()
-
     def _get_font_name(self):
-        # Dung chung 1 font-object cho viec do do rong cua lbl_title (name +
-        # author da GOP lam 1 Label - xem _elide_name_author).
         if self._font_name is None:
             self._font_name = tkfont.Font(font=("Arial", 12, "bold"))
         return self._font_name
-
     def _apply_row_wrap(self, row, canvas_width):
         text_col = row.get("text_col")
         if text_col is None:
@@ -948,33 +855,22 @@ class ContentTableWidget(tk.Frame):
         try:
             w_full = max(text_col.winfo_width() - 4, 60)
             row["lbl_desc"].configure(wraplength=w_full)
-            # lbl_footer la 1 dong text phang duy nhat - de wraplength de no
-            # tu xuong dong khi hep thay vi bi cat/tran, don gian hon nhieu
-            # so voi elide rieng tung chip nhu truoc.
             row["lbl_footer"].configure(wraplength=w_full)
             self._elide_name_author(row, w_full)
             row["wrap_width"] = canvas_width
         except tk.TclError:
             pass
-
     def _elide_name_author(self, row, w_full):
-        # Chi con 1 Label (lbl_title) gop ca ten + tac gia -> elide don gian:
-        # cat bot ky tu cuoi + "..." neu vuot qua be rong cho phep, khong can
-        # binary-search chia ngan sach giua 2 Label rieng nhu truoc nua.
         lbl_title = row.get("lbl_title")
         if lbl_title is None:
             return
-
         title_full = row.get("title_full", "")
         lbl_title.configure(wraplength=0)
-
-        max_w = max(w_full - 90, 80)  # chua cho o ben phai cho btn_install
+        max_w = max(w_full - 90, 80)  
         font_title = self._get_font_name()
-
         if font_title.measure(title_full) <= max_w:
             lbl_title.configure(text=title_full)
             return
-
         lo, hi = 0, len(title_full)
         best = title_full[:1] + "..."
         while lo <= hi:
@@ -986,15 +882,12 @@ class ContentTableWidget(tk.Frame):
             else:
                 hi = mid - 1
         lbl_title.configure(text=best)
-
     def _on_row_double_click(self, idx):
         self._select(idx, install=False, view=True)
-
     def _on_btn_install_click(self, idx):
         if idx < 0 or idx >= len(self._rows):
             return
         if self._rows[idx].get("installed"):
-            # Da cai dat roi, khong cho bam de cai lai tu danh sach.
             return
         if self._installing_row == idx:
             if self._owner is not None and hasattr(self._owner, "_huy_tac_vu"):
@@ -1003,21 +896,17 @@ class ContentTableWidget(tk.Frame):
                 except Exception:
                     pass
             return
-
         self._select(idx, install=True)
         self._set_btn_install_state(idx, installing=True)
         self._installing_row = idx
         self._show_row_progress(idx, True)
         self._update_row_progress(idx)
         self._schedule_poll_busy()
-
     def _set_btn_install_state(self, idx, installing):
         if idx < 0 or idx >= len(self._rows):
             return
         row = self._rows[idx]
         if row.get("installed") and not installing:
-            # Da cai dat roi thi giu nguyen trang thai "Da cai dat", khong doi lai
-            # thanh "Cai dat".
             return
         btn = row.get("btn_install")
         if btn is None:
@@ -1032,64 +921,54 @@ class ContentTableWidget(tk.Frame):
                                state=tk.NORMAL, cursor="hand2")
         except tk.TclError:
             pass
-
+    _PROGRESS_STYLE = "AppRowInstall.Horizontal.TProgressbar"
     def _build_progress_row(self, row, idx):
-        """Tao LAZY khoi 'Dang cai dat... / thanh tien trinh / xx%' - chi goi
-        khi _show_row_progress(idx, True) va dong chua co san, thay vi tao san
-        progress_row + Progressbar cho MOI dong ngay tu _build_row (ton phan
-        lon widget/dong trong luc idle vi hau het dong khong dang cai gi ca)."""
         text_col = row["text_col"]
         c = self._c
         accent = row.get("accent", self._accent)
-
-        progress_row = tk.Frame(text_col, bg=c["row_bg"])
-
+        try:
+            style = ttk.Style(self)
+            style.configure(
+                self._PROGRESS_STYLE,
+                troughcolor=c.get("row_sep", c["row_bg"]),
+                background=accent, bordercolor=c["row_bg"],
+                lightcolor=accent, darkcolor=accent, borderwidth=0)
+        except Exception:
+            pass
+        progress_row = tk.Frame(text_col, bg=c["row_bg"], highlightthickness=0)
         lbl_installing = tk.Label(
             progress_row, text="Đang cài đặt...", font=("Arial", 9, "bold"),
-            fg=accent, bg=c["row_bg"], anchor="w")
+            fg=accent, bg=c["row_bg"], anchor="w", highlightthickness=0)
         lbl_installing.pack(fill="x", anchor="w", pady=(2, 1))
-
         lbl_installing_sub = tk.Label(
             progress_row, text="", font=("Arial", 8), fg=c["fg_desc"],
-            bg=c["row_bg"], anchor="w")
+            bg=c["row_bg"], anchor="w", highlightthickness=0)
         lbl_installing_sub.pack(fill="x", anchor="w", pady=(0, 4))
-
-        pb_bar_row = tk.Frame(progress_row, bg=c["row_bg"])
+        pb_bar_row = tk.Frame(progress_row, bg=c["row_bg"], highlightthickness=0)
         pb_bar_row.pack(fill="x", anchor="w")
-
         progress_var = tk.DoubleVar(value=0)
         pb_install = ttk.Progressbar(
             pb_bar_row, orient="horizontal", mode="determinate",
-            variable=progress_var, maximum=100)
+            variable=progress_var, maximum=100, style=self._PROGRESS_STYLE)
         pb_install.pack(side="left", fill="x", expand=True)
-
         lbl_installing_pct = tk.Label(
             pb_bar_row, text="0%", font=("Arial", 8, "bold"),
-            fg=c["fg_desc"], bg=c["row_bg"], width=5, anchor="e")
+            fg=c["fg_desc"], bg=c["row_bg"], width=5, anchor="e",
+            highlightthickness=0)
         lbl_installing_pct.pack(side="left", padx=(8, 0))
-
-        # Cac widget progress moi tao cung phai an theo cung logic
-        # select/scroll nhu cac widget khac cua dong (them vao row["widgets"]
-        # de _set_row_bg to sang mau chon dung, va bind click/scroll dong bo).
         new_widgets = [progress_row, lbl_installing, lbl_installing_sub,
                        pb_bar_row, lbl_installing_pct]
         for w in new_widgets:
-            w.bind("<Button-1>", lambda e, i=idx: self._select(i))
+            w.bind("<Button-1>", lambda e, i=idx: self._select(i, install=True))
             w.bind("<Double-1>", lambda e, i=idx: self._on_row_double_click(i))
             self._bind_scroll(w)
         row["widgets"].extend(new_widgets)
-
         row["progress_row"] = progress_row
         row["progress_widgets"] = new_widgets
         row["lbl_installing_sub"] = lbl_installing_sub
         row["progress_var"] = progress_var
         row["lbl_installing_pct"] = lbl_installing_pct
-
     def _destroy_progress_row(self, row):
-        """Huy cac widget progress (progress_row va toan bo con cua no), bo
-        chung khoi row["widgets"] va xoa reference trong _rows[idx] - tranh
-        giu con tro toi widget da bi huy (vd _set_row_bg lap qua
-        row["widgets"] sau nay se gap TclError neu con sot lai)."""
         progress_row = row.get("progress_row")
         if progress_row is None:
             return
@@ -1104,14 +983,7 @@ class ContentTableWidget(tk.Frame):
         row["lbl_installing_sub"] = None
         row["progress_var"] = None
         row["lbl_installing_pct"] = None
-
     def _show_row_progress(self, idx, show):
-        """An/hien khoi 'Dang cai dat... / thanh tien trinh / xx%' trong dong,
-        thay the cho phan mo ta + footer trong luc dong do dang duoc cai.
-        Dong bo voi ModDetailWindow: ca hai deu doc tu cung nguon du lieu
-        (owner._last_progress_pct / owner._last_progress_label). Khoi progress
-        duoc TAO/HUY lazy (xem _build_progress_row/_destroy_progress_row) thay
-        vi luon ton tai an san, de giam widget/dong khi idle."""
         if idx < 0 or idx >= len(self._rows):
             return
         row = self._rows[idx]
@@ -1133,7 +1005,6 @@ class ContentTableWidget(tk.Frame):
             row["progress_shown"] = show
         except tk.TclError:
             pass
-
     def _update_row_progress(self, idx):
         if idx < 0 or idx >= len(self._rows):
             return
@@ -1160,12 +1031,7 @@ class ContentTableWidget(tk.Frame):
                 row["lbl_installing_sub"].configure(text=f"Đang xử lý: {ten}")
         except tk.TclError:
             pass
-
     def refresh_installed_states(self):
-        """Tinh lai trang thai 'da cai dat' cho tung dong (vd sau khi doi Instance
-        dang chon, hoac sau khi cai xong 1 mod) va cap nhat lai nut Cai dat tuong ung.
-        Khong lam gi neu ContentTableWidget nay khong duoc truyen is_installed_cb
-        (danh cho cac tab khong can kiem tra da cai hay chua, vd Modpack)."""
         if not self._is_installed_cb:
             return
         for i, row in enumerate(self._rows):
@@ -1193,7 +1059,6 @@ class ContentTableWidget(tk.Frame):
                                   state=tk.NORMAL, cursor="hand2")
             except tk.TclError:
                 pass
-
     def _schedule_poll_busy(self):
         if self._poll_after_id is not None:
             try:
@@ -1201,7 +1066,6 @@ class ContentTableWidget(tk.Frame):
             except Exception:
                 pass
         self._poll_after_id = self.after(400, self._poll_busy)
-
     def _poll_busy(self):
         self._poll_after_id = None
         idx = self._installing_row
@@ -1221,7 +1085,6 @@ class ContentTableWidget(tk.Frame):
             return
         self._update_row_progress(idx)
         self._schedule_poll_busy()
-
     def sync_installing_state(self):
         if self._owner is None or not hasattr(self._owner, "_dang_co_tac_vu"):
             return
@@ -1229,14 +1092,14 @@ class ContentTableWidget(tk.Frame):
             dang_ban = bool(self._owner._dang_co_tac_vu())
         except Exception:
             dang_ban = False
-
         if dang_ban:
-
             if self._selected != -1 and self._installing_row != self._selected:
                 if self._installing_row is not None:
                     self._set_btn_install_state(self._installing_row, installing=False)
                     self._show_row_progress(self._installing_row, False)
                 self._installing_row = self._selected
+                self._c = theme.colors()
+                self._set_row_bg(self._selected, self._c["row_bg"])
                 self._set_btn_install_state(self._selected, installing=True)
                 self._show_row_progress(self._selected, True)
                 self._update_row_progress(self._selected)
@@ -1253,18 +1116,18 @@ class ContentTableWidget(tk.Frame):
                     pass
                 self._poll_after_id = None
         self.refresh_installed_states()
-
     def _select(self, idx, install=False, view=False):
         if idx < 0 or idx >= len(self._rows):
             return
-
         self._c = theme.colors()
         if self._selected != -1 and self._selected < len(self._rows):
             self._set_row_bg(self._selected, self._c["row_bg"])
         self._selected = idx
-        self._set_row_bg(idx, self._c["row_sel"])
+        if install:
+            self._set_row_bg(idx, self._c["row_bg"])
+        else:
+            self._set_row_bg(idx, self._c["row_sel"])
         self._cb(idx, install=install, view=view)
-
     def _set_row_bg(self, idx, color):
         row = self._rows[idx]
         for w in row["widgets"]:
@@ -1273,38 +1136,26 @@ class ContentTableWidget(tk.Frame):
                     w.configure(bg=color)
                 except tk.TclError:
                     pass
-
     def get_selected(self):
         return self._selected
-
 def make_instance_ctl(combo, no_inst_label):
-    """
-    Tao dict instance_ctl de truyen vao ModDetailWindow, cho phep man hinh chi tiet
-    doc/ghi truc tiep vao combobox chon Instance o man hinh danh sach (combo).
-    Nho vay, chon Instance ngay trong man hinh chi tiet se dong bo nguoc lai voi
-    combobox goc, va cac ham cai dat (doc combo.get()) van hoat dong binh thuong.
-    """
     def _get_list():
         return list(config.current_config.get("danh_sach_instances", {}).keys())
-
     def _get():
         try:
             v = combo.get().strip()
         except tk.TclError:
             return ""
         return "" if v == no_inst_label else v
-
     def _set(v):
         try:
             combo.set(v if v else no_inst_label)
         except tk.TclError:
             pass
-
     def _get_mc_loader():
         ten = _get()
         if not ten:
             return "", ""
         info = config.current_config.get("danh_sach_instances", {}).get(ten, {})
         return info.get("version_goc", ""), info.get("loai_game", "")
-
     return {"get_list": _get_list, "get": _get, "set": _set, "get_mc_loader": _get_mc_loader}

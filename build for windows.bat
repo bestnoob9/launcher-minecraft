@@ -32,6 +32,19 @@ if not exist "assets\icon.ico" (
 echo [OK] Tim thay assets\icon.ico
 echo.
 
+if not exist "assets\iconinstance\notfind\resourcepack.png" (
+    echo [CANH BAO] Thieu assets\iconinstance\notfind\resourcepack.png
+    echo Anh fallback "khong tim thay icon" cho tab Resource Pack se
+    echo khong hien dung - build van tiep tuc.
+    echo.
+)
+
+if not exist "assets\iconinstance\instancefree" (
+    echo [CANH BAO] Khong thay thu muc assets\iconinstance\instancefree\
+    echo Picker chon anh bia luc tao/sua instance se rong - build van tiep tuc.
+    echo.
+)
+
 if not exist "run_app.py" (
     echo [LOI] Khong tim thay run_app.py
     echo.

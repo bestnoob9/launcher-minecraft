@@ -2,7 +2,6 @@ import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import config
-
 def _duong_dan_hop_le(path: str) -> bool:
     if not path or not path.strip():
         return False
@@ -11,32 +10,25 @@ def _duong_dan_hop_le(path: str) -> bool:
         return True
     except Exception:
         return False
-
 def kiem_tra_va_chay_wizard(root) -> bool:
     thu_muc_hien_tai = config.current_config.get("thu_muc_game", "").strip()
-
     duong_dan_mac_dinh = os.path.normpath(os.path.join(os.getcwd(), ".MinecraftFile"))
     da_cau_hinh = (
         thu_muc_hien_tai
         and thu_muc_hien_tai != duong_dan_mac_dinh
         and os.path.exists(thu_muc_hien_tai)
     )
-
     if da_cau_hinh:
         return True
-
     return _mo_cua_so_wizard(root)
-
 def _mo_cua_so_wizard(root) -> bool:
     ket_qua = {"ok": False}
-
     win = tk.Toplevel(root)
     win.title("⚙️ Thiết lập ban đầu — Chọn thư mục lưu game")
     win.geometry("520x280")
     win.resizable(False, False)
     win.grab_set()
     win.protocol("WM_DELETE_WINDOW", lambda: _dong_cua_so(win, ket_qua, root))
-
     lbl_title = tk.Label(
         win,
         text="Chào mừng đến với Minecraft Launcher!",
@@ -44,7 +36,6 @@ def _mo_cua_so_wizard(root) -> bool:
         fg="#1E88E5",
     )
     lbl_title.pack(pady=(22, 4))
-
     lbl_intro = tk.Label(
         win,
         text="Vui lòng chọn thư mục để lưu dữ liệu game.\n"
@@ -54,15 +45,11 @@ def _mo_cua_so_wizard(root) -> bool:
         justify="center",
     )
     lbl_intro.pack(pady=(0, 16))
-
     frame_path = tk.Frame(win)
     frame_path.pack(padx=28, fill="x")
-
     var_path = tk.StringVar(value=os.path.normpath(os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), ".Minecraftfile")))
-
     ent_path = tk.Entry(frame_path, textvariable=var_path, font=("Arial", 10), width=42)
     ent_path.pack(side="left", ipady=4)
-
     def chon_thu_muc():
         duong_dan = filedialog.askdirectory(
             title="Chọn thư mục lưu game",
@@ -70,7 +57,6 @@ def _mo_cua_so_wizard(root) -> bool:
         )
         if duong_dan:
             var_path.set(config.chuan_hoa_duong_dan_thu_muc(duong_dan))
-
     tk.Button(
         frame_path,
         text="📂",
@@ -80,10 +66,8 @@ def _mo_cua_so_wizard(root) -> bool:
         padx=6,
         command=chon_thu_muc,
     ).pack(side="left", padx=(6, 0))
-
     lbl_loi = tk.Label(win, text="", font=("Arial", 9), fg="red")
     lbl_loi.pack(pady=(10, 0))
-
     def xac_nhan():
         duong_dan = config.chuan_hoa_duong_dan_thu_muc(var_path.get().strip())
         if not duong_dan:
@@ -111,11 +95,9 @@ def _mo_cua_so_wizard(root) -> bool:
             config.current_config["thu_muc_game"] = duong_dan
             config.cap_nhat_duong_dan_config(duong_dan)
             config.luu_toan_bo_cau_hinh()
-
         ket_qua["ok"] = True
         win.grab_release()
         win.destroy()
-
     tk.Button(
         win,
         text="✅  Xác nhận & Bắt đầu",
@@ -126,10 +108,8 @@ def _mo_cua_so_wizard(root) -> bool:
         pady=6,
         command=xac_nhan,
     ).pack(pady=(18, 0))
-
     root.wait_window(win)
     return ket_qua["ok"]
-
 def _dong_cua_so(win, ket_qua, root):
     if messagebox.askyesno(
         "Thoát?",

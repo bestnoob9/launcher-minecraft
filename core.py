@@ -8,17 +8,40 @@ import sys
 import hashlib
 import uuid
 from components.install_utils import ten_folder_an_toan
-
 def offline_uuid(username: str) -> str:
     data = f"OfflinePlayer:{username}".encode("utf-8")
     digest = bytearray(hashlib.md5(data).digest())
     digest[6] = (digest[6] & 0x0F) | 0x30
     digest[8] = (digest[8] & 0x3F) | 0x80
     return str(uuid.UUID(bytes=bytes(digest)))
-
+class MicrosoftLoginRequired(Exception):
+    pass
+def lam_moi_phien_microsoft(tai_khoan_dict: dict) -> dict:
+    import config as _config
+    refresh_token = (tai_khoan_dict.get("refresh_token") or "").strip()
+    if not refresh_token:
+        raise MicrosoftLoginRequired(
+            "Tài khoản Microsoft chưa có refresh token, vui lòng đăng nhập lại.")
+    if not (_config.MICROSOFT_CLIENT_ID or "").strip():
+        raise MicrosoftLoginRequired("Chưa cấu hình Microsoft Client ID.")
+    try:
+        profile = minecraft_launcher_lib.microsoft_account.complete_refresh(
+            _config.MICROSOFT_CLIENT_ID, None, None, refresh_token)
+    except minecraft_launcher_lib.microsoft_account.InvalidRefreshToken:
+        raise MicrosoftLoginRequired(
+            "Phiên đăng nhập Microsoft đã hết hạn, vui lòng đăng nhập lại.")
+    except minecraft_launcher_lib.microsoft_account.AccountNotOwnMinecraft:
+        raise MicrosoftLoginRequired("Tài khoản Microsoft này không sở hữu Minecraft.")
+    tai_khoan_dict["refresh_token"] = profile["refresh_token"]
+    tai_khoan_dict["uuid"] = profile["id"]
+    _config.luu_toan_bo_cau_hinh()
+    return {
+        "username": profile["name"],
+        "uuid": profile["id"],
+        "access_token": profile["access_token"],
+    }
 if sys.platform == "win32":
     _popen_init_goc = subprocess.Popen.__init__
-
     def _popen_init_an_cmd(self, *args, **kwargs):
         if kwargs.get("startupinfo") is None:
             si = subprocess.STARTUPINFO()
@@ -27,16 +50,13 @@ if sys.platform == "win32":
             kwargs["startupinfo"] = si
         kwargs["creationflags"] = kwargs.get("creationflags", 0) | subprocess.CREATE_NO_WINDOW
         _popen_init_goc(self, *args, **kwargs)
-
     subprocess.Popen.__init__ = _popen_init_an_cmd
-
 def lay_danh_sach_phien_ban_chinh():
     try:
         all_versions = minecraft_launcher_lib.utils.get_version_list()
         return [v["id"] for v in all_versions if v["type"] == "release"]
     except:
         return ["1.21.1", "1.20.1", "1.16.5"]
-
 def tai_danh_sach_mod(loai_game, version_goc):
     try:
         if loai_game == "Fabric":
@@ -45,21 +65,18 @@ def tai_danh_sach_mod(loai_game, version_goc):
             with urllib.request.urlopen(req, timeout=5) as response:
                 data = json.loads(response.read().decode())
                 return [item["version"] for item in data]
-
         elif loai_game == "Quilt":
             url = "https://meta.quiltmc.org/v3/versions/loader"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=5) as response:
                 data = json.loads(response.read().decode())
                 return [item["version"] for item in data]
-
         elif loai_game == "NeoForge":
             url = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=10) as response:
                 data = json.loads(response.read().decode())
                 tat_ca_versions = data.get("versions", [])
-
                 parts = version_goc.split('.')
                 if parts and parts[0] == "1":
                     sub_ver = parts[1] if len(parts) > 1 else ""
@@ -74,22 +91,17 @@ def tai_danh_sach_mod(loai_game, version_goc):
                         return list(map(int, s.split('.')))
                     except:
                         return [0]
-
                 ds_loader.sort(key=safe_sort_key, reverse=True)
-
                 if ds_loader:
                     return ds_loader
                 ds_loader = list(tat_ca_versions)
                 ds_loader.sort(key=safe_sort_key, reverse=True)
                 return ds_loader[:20]
-
         elif loai_game == "Forge":
             forge_list = minecraft_launcher_lib.forge.list_forge_versions()
             return [f for f in forge_list if _khop_chinh_xac_version(str(version_goc), str(f))][::-1]
-
     except Exception as e:
         print(f"Lỗi tải API Mod cho {loai_game}: {e}")
-
     if loai_game == "NeoForge":
         parts = version_goc.split('.')
         if parts and parts[0] == "1":
@@ -99,30 +111,23 @@ def tai_danh_sach_mod(loai_game, version_goc):
             sub_ver = parts[0] if len(parts) > 0 else "21"
             patch_ver = parts[1] if len(parts) > 1 else "0"
         return [f"{sub_ver}.{patch_ver}.70", f"{sub_ver}.{patch_ver}.0"]
-
     return []
-
 def cap_nhat_va_quet_instances(thu_muc_game):
     thu_muc_instances_goc = os.path.join(thu_muc_game, "Instances")
     if not os.path.exists(thu_muc_instances_goc):
         os.makedirs(thu_muc_instances_goc, exist_ok=True)
         return []
-
     ds_instance_thuc_te = []
-
     for ten_folder in os.listdir(thu_muc_instances_goc):
         duong_dan_folder = os.path.join(thu_muc_instances_goc, ten_folder)
-
         if os.path.isdir(duong_dan_folder):
             file_info = os.path.join(duong_dan_folder, "instance_info.json")
-
             if not os.path.exists(file_info):
                 data_tu_sinh = {
                     "loai_game": "Vanilla",
                     "version_goc": "1.21.1",
                     "version_mod": ""
                 }
-
                 ten_folder_lower = ten_folder.lower()
                 if "fabric" in ten_folder_lower:
                     data_tu_sinh["loai_game"] = "Fabric"
@@ -132,23 +137,18 @@ def cap_nhat_va_quet_instances(thu_muc_game):
                     data_tu_sinh["loai_game"] = "Forge"
                 elif "quilt" in ten_folder_lower:
                     data_tu_sinh["loai_game"] = "Quilt"
-
                 for x in ["1.21.1", "1.20.1", "1.16.5", "1.12.2"]:
                     if x in ten_folder:
                         data_tu_sinh["version_goc"] = x
                         break
-
                 try:
                     with open(file_info, "w", encoding="utf-8") as f:
                         json.dump(data_tu_sinh, f, indent=4, ensure_ascii=False)
                 except Exception as e:
                     print(f"Lỗi tạo file info tự động cho {ten_folder}: {e}")
                     continue
-
             ds_instance_thuc_te.append(ten_folder)
-
     return ds_instance_thuc_te
-
 def get_all_jvm_presets():
     return {
         "aikar_optimized": [
@@ -180,17 +180,10 @@ def get_all_jvm_presets():
             "-XX:ShenandoahGCHeuristics=adaptive", "-XX:+AlwaysPreTouch", "-XX:+UseNUMA"
         ]
     }
-
 def build_jvm_arguments(current_config, ram_min, ram_max, version_goc=None):
     final_args = []
     final_args.append(f"-Xms{ram_min}")
     final_args.append(f"-Xmx{ram_max}")
-    #if str(version_goc).strip() in ("1.16.5", "1.16.4"):
-        #final_args.append("-Dminecraft.api.auth.enabled=false")
-        #final_args.append("-Dminecraft.api.auth.host=https://nope.invalid")
-        #final_args.append("-Dminecraft.api.account.host=https://nope.invalid")
-        #final_args.append("-Dminecraft.api.session.host=https://nope.invalid")
-        #final_args.append("-Dminecraft.api.services.host=https://nope.invalid")
     final_args.extend([
         "-Dminecraft.api.auth.enabled=false",
         "-Dminecraft.api.auth.host=https://nope.invalid",
@@ -198,7 +191,6 @@ def build_jvm_arguments(current_config, ram_min, ram_max, version_goc=None):
         "-Dminecraft.api.session.host=https://nope.invalid",
         "-Dminecraft.api.services.host=https://nope.invalid",
     ])
-
     mode = current_config.get("jvm_mode", "default")
     if mode == "preset":
         preset_name = current_config.get("preset_jvm_args", "aikar_optimized")
@@ -208,16 +200,13 @@ def build_jvm_arguments(current_config, ram_min, ram_max, version_goc=None):
         custom_str = current_config.get("custom_jvm_args", "")
         parsed_custom = [arg for arg in custom_str.split(" ") if arg.strip()]
         final_args.extend(parsed_custom)
-
     return final_args
-
 def _da_cai_minecraft_co_ban(thu_muc_game, version_id):
     vdir = os.path.join(thu_muc_game, "versions", version_id)
     return (
         os.path.exists(os.path.join(vdir, f"{version_id}.json"))
         and os.path.exists(os.path.join(vdir, f"{version_id}.jar"))
     )
-
 def _tim_phien_ban_loader_da_cai(thu_muc_versions, tu_khoa, dieu_kien_phu=None):
     if not os.path.exists(thu_muc_versions):
         return None
@@ -231,7 +220,6 @@ def _tim_phien_ban_loader_da_cai(thu_muc_versions, tu_khoa, dieu_kien_phu=None):
             continue
         return folder
     return None
-
 def _khop_chinh_xac_version(ver, text):
     if not ver:
         return False
@@ -242,12 +230,7 @@ def _khop_chinh_xac_version(ver, text):
         if truoc_ok and sau_ok:
             return True
     return False
-
 def _khop_forge_folder(version_goc, version_mod, folder):
-    # minecraft_launcher_lib cai Forge vao folder dang "{version_goc}-forge-{loader_ver}"
-    # (vd "1.19.2-43.5.1" -> "1.19.2-forge-43.5.1"), KHONG phai nguyen van chuoi version_mod.
-    # Neu so khop ca chuoi "1.19.2-43.5.1" thi se khong bao gio trung, nen phai tach rieng
-    # phan so hieu loader ("43.5.1") ra de so khop.
     if not _khop_chinh_xac_version(version_goc, folder):
         return False
     loader_part = version_mod
@@ -256,48 +239,39 @@ def _khop_forge_folder(version_goc, version_mod, folder):
     if not loader_part:
         return True
     return _khop_chinh_xac_version(loader_part, folder)
-
-def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_muc_game, ten_instance, options, callback_progress=None, should_cancel=None):
+def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_muc_game, ten_instance, options, callback_progress=None, should_cancel=None, giu_nguyen_msa=False):
     thu_muc_instance_rieng = os.path.join(thu_muc_game, "Instances", ten_instance)
     os.makedirs(thu_muc_instance_rieng, exist_ok=True)
     options["gameDirectory"] = thu_muc_instance_rieng
-    
     _max = [100]  
-
     def _set_max(val):
         if val and val > 0:
             _max[0] = val
-
     def _set_progress(val):
         if should_cancel and should_cancel():
             raise InterruptedError("Nguoi dung huy tai xuong")
         if callback_progress and _max[0] > 0:
             phan_tram = min(99.0, val / _max[0] * 100)
             callback_progress(phan_tram, "")
-
     def _set_status(msg):
         if callback_progress:
             callback_progress(None, str(msg))
-
     _callbacks = {
         "setStatus":   _set_status,
         "setProgress": _set_progress,
         "setMax":      _set_max,
     }
-
     if _da_cai_minecraft_co_ban(thu_muc_game, version_goc):
         _set_status(f"Da co Minecraft {version_goc}, bo qua kiem tra lai...")
     else:
         minecraft_launcher_lib.install.install_minecraft_version(version_goc, thu_muc_game, _callbacks)
     id_phien_ban_chay = version_goc
     thu_muc_versions = os.path.join(thu_muc_game, "versions")
-
     _BAN_DO_LOAI_GAME = {
         "fabric": "Fabric", "quilt": "Quilt",
         "neoforge": "NeoForge", "forge": "Forge", "vanilla": "Vanilla",
     }
     loai_game = _BAN_DO_LOAI_GAME.get(str(loai_game).strip().lower(), loai_game)
-
     if loai_game == "Fabric" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
         da_cai = _tim_phien_ban_loader_da_cai(
             thu_muc_versions, "fabric",
@@ -320,7 +294,6 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
                             best = folder
                 if id_phien_ban_chay == version_goc and best:
                     id_phien_ban_chay = best
-
     elif loai_game == "Quilt" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
         da_cai = _tim_phien_ban_loader_da_cai(
             thu_muc_versions, "quilt",
@@ -343,7 +316,6 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
                             best = folder
                 if id_phien_ban_chay == version_goc and best:
                     id_phien_ban_chay = best
-
     elif loai_game == "NeoForge" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
         da_cai = _tim_phien_ban_loader_da_cai(
             thu_muc_versions, "neoforge",
@@ -374,7 +346,6 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
                             break
             else:
                 raise Exception("NeoForge chưa được hỗ trợ. Hãy đợi thg làm launcher cập nhập")
-
     elif loai_game == "Forge" and version_mod_da_chon and version_mod_da_chon != "Vanilla":
         da_cai = _tim_phien_ban_loader_da_cai(
             thu_muc_versions, "forge",
@@ -397,19 +368,16 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
                             best = folder
                 if id_phien_ban_chay == version_goc and best:
                     id_phien_ban_chay = best
-
     file_info = os.path.join(thu_muc_instance_rieng, "instance_info.json")
     if not os.path.exists(file_info):
         data_ghi = {"loai_game": loai_game, "version_goc": version_goc, "version_mod": version_mod_da_chon}
         with open(file_info, "w", encoding="utf-8") as f:
             json.dump(data_ghi, f, indent=4, ensure_ascii=False)
-
     lenh_goc = minecraft_launcher_lib.command.get_minecraft_command(
         id_phien_ban_chay, thu_muc_game, options
     )
-
-    # Offline: userType legacy + accessToken không rỗng
-    # (tránh Invalid session khi vào bằng IP:port / Add Server)
+    if giu_nguyen_msa:
+        return lenh_goc
     _token_dummy = (options.get("token") or "").strip() or ("0" * 32)
     for _i, _arg in enumerate(lenh_goc):
         if _arg == "--userType" and _i + 1 < len(lenh_goc):
@@ -419,37 +387,33 @@ def cai_dat_va_lay_lenh_chay(loai_game, version_goc, version_mod_da_chon, thu_mu
                 lenh_goc[_i + 1] = _token_dummy
         elif _arg == "msa":
             lenh_goc[_i] = "legacy"
-
     return lenh_goc
-
 def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callback_progress=None, should_cancel=None):
     import config
-
+    if isinstance(tai_khoan, dict):
+        _loai_tk = tai_khoan.get("type", "offline")
+        _ten_tk = tai_khoan.get("name", "")
+    else:
+        _loai_tk = "offline"
+        _ten_tk = tai_khoan
     if not ten_instance:
         lbl_status.after(0, lambda: lbl_status.config(text="Lỗi: Vui lòng chọn hoặc tạo 1 Instance!", fg="red"))
         return
-
     ten_folder_instance = ten_folder_an_toan(ten_instance)
     thu_muc_instance_rieng = os.path.join(thu_muc_game, "Instances", ten_folder_instance)
-    
     os.makedirs(thu_muc_instance_rieng, exist_ok=True)
-
     file_thong_tin = os.path.join(thu_muc_instance_rieng, "instance_info.json")
-
     if not os.path.exists(file_thong_tin):
         ds_instances = config.current_config.get("danh_sach_instances", {})
         data_instance = ds_instances.get(ten_instance) or ds_instances.get(ten_folder_instance)
-
         if not data_instance:
             data_instance = {"loai_game": "Vanilla", "version_goc": "1.21.1", "version_mod": "Vanilla"}
-
         try:
             with open(file_thong_tin, "w", encoding="utf-8") as f:
                 json.dump(data_instance, f, indent=4, ensure_ascii=False)
         except Exception as e:
             lbl_status.after(0, lambda: lbl_status.config(text=f"Lỗi tạo file cấu hình: {e}", fg="red"))
             return
-
     if ten_instance == "Latest Version":
         ds_instances = config.current_config.get("danh_sach_instances", {})
         data_latest = ds_instances.get("Latest Version")
@@ -459,14 +423,12 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
                     json.dump(data_latest, f, indent=4, ensure_ascii=False)
             except Exception:
                 pass  
-
     try:
         with open(file_thong_tin, "r", encoding="utf-8") as f:
             thong_tin_instance = json.load(f)
     except Exception:
         lbl_status.after(0, lambda: lbl_status.config(text="Lỗi: Không thể đọc cấu hình Instance!", fg="red"))
         return
-
     def _parse_ram(val, default):
         import re as _re
         val = str(val).strip().upper().replace(" ", "")
@@ -484,20 +446,31 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
         return default
     ram_min = _parse_ram(config.current_config.get("ram_min", "2GB"), "2G")
     ram_max = _parse_ram(config.current_config.get("ram_max", "4GB"), "4G")
-
     do_phan_giai = config.current_config.get("do_phan_giai", "854x480")
     match = re.search(r"(\d+)\s*x\s*(\d+)", do_phan_giai)
     rong, cao = (match.group(1), match.group(2)) if match else ("854", "480")
-
     danh_sach_jvm_args = build_jvm_arguments(
         config.current_config, ram_min, ram_max,
         version_goc=thong_tin_instance.get("version_goc")
     )
-
-    _username = tai_khoan
-    _uuid_str = config.lay_hoac_luu_uuid(tai_khoan, thu_muc_game)
-    _token = "0" * 32  # dummy, không rỗng
-
+    _giu_nguyen_msa = False
+    if _loai_tk == "microsoft":
+        lbl_status.after(0, lambda: lbl_status.config(
+            text="Đang làm mới phiên Microsoft…", fg="#1E88E5"))
+        try:
+            _phien = lam_moi_phien_microsoft(tai_khoan)
+        except MicrosoftLoginRequired as e:
+            _loi = str(e)
+            lbl_status.after(0, lambda: lbl_status.config(text=_loi, fg="red"))
+            return None
+        _username = _phien["username"]
+        _uuid_str = _phien["uuid"]
+        _token = _phien["access_token"]
+        _giu_nguyen_msa = True
+    else:
+        _username = _ten_tk
+        _uuid_str = config.lay_hoac_luu_uuid(_ten_tk, thu_muc_game)
+        _token = "0" * 32  
     options = {
         "username": _username,
         "uuid": _uuid_str,
@@ -507,13 +480,10 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
         "resolutionWidth": rong,
         "resolutionHeight": cao,
     }
-
     java_path = config.current_config.get("java_path", "").strip()
     if java_path and os.path.isfile(java_path):
         options["executablePath"] = java_path
-
     lbl_status.after(0, lambda: lbl_status.config(text="Đang tải và cài đặt game...", fg="#1E88E5"))
-
     try:
         lenh = cai_dat_va_lay_lenh_chay(
             thong_tin_instance["loai_game"],
@@ -523,14 +493,13 @@ def chay_game_minecraft(tai_khoan, ten_instance, thu_muc_game, lbl_status, callb
             ten_folder_instance,
             options,
             callback_progress,
-            should_cancel
+            should_cancel,
+            giu_nguyen_msa=_giu_nguyen_msa,
         )
         lbl_status.after(0, lambda: lbl_status.config(text="Đang khởi động Minecraft...", fg="#2b8c54"))
         if callback_progress:
             callback_progress(100.0, "Hoàn tất!")
-
         thu_muc_instance_rieng = os.path.join(thu_muc_game, "Instances", ten_folder_instance)
-
         import sys as _sys
         _startupinfo = None
         _creationflags = 0

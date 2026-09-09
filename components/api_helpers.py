@@ -2,11 +2,8 @@ import urllib.request
 import urllib.parse
 import urllib.error
 import json
-
 CURSEFORGE_PROXY_BASE = "https://dark-thunder-4c52.vubest2009.workers.dev"
-
 MODRINTH_USER_AGENT = "MinecraftLauncher/1.0 (github.com/user/mc-launcher)"
-
 def _request_json(url, headers=None):
     req_headers = {"User-Agent": MODRINTH_USER_AGENT, "Accept": "application/json"}
     if headers:
@@ -17,13 +14,11 @@ def _request_json(url, headers=None):
             v.encode("latin-1"); safe_headers[k] = v
         except UnicodeEncodeError:
             safe_headers[k] = v.encode("utf-8").decode("latin-1", errors="replace")
-
     class _NR(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, hr, newurl):
             r2 = urllib.request.Request(newurl, headers=req.headers)
             r2.get_method = req.get_method
             return r2
-
     opener = urllib.request.build_opener(_NR())
     req = urllib.request.Request(url, headers=safe_headers)
     try:
@@ -34,7 +29,21 @@ def _request_json(url, headers=None):
         try: body = e.read().decode(errors="replace")
         except Exception: pass
         raise Exception(f"HTTP {e.code} {e.reason} — {body[:200]}")
-
+def _request_json_post(url, body, headers=None):
+    req_headers = {"User-Agent": MODRINTH_USER_AGENT, "Accept": "application/json",
+                   "Content-Type": "application/json"}
+    if headers:
+        req_headers.update(headers)
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers=req_headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        err_body = ""
+        try: err_body = e.read().decode(errors="replace")
+        except Exception: pass
+        raise Exception(f"HTTP {e.code} {e.reason} — {err_body[:200]}")
 def _fetch_image_bytes(url):
     try:
         req = urllib.request.Request(url, headers={"User-Agent": MODRINTH_USER_AGENT})
@@ -42,7 +51,6 @@ def _fetch_image_bytes(url):
             return resp.read()
     except Exception:
         return None
-
 def _modrinth_search(project_type, tu_khoa="", mc_version="", loader="", category="", limit=50, offset=0):
     facets = [[f"project_type:{project_type}"]]
     if mc_version:
@@ -50,11 +58,9 @@ def _modrinth_search(project_type, tu_khoa="", mc_version="", loader="", categor
     if loader and loader not in ("Tất cả", ""):
         facets.append([f"categories:{loader.lower()}"])
     if category:
-
         cats = category if isinstance(category, (list, tuple, set)) else [category]
         cats = [c for c in cats if c and c not in ("Tất cả", "")]
         if cats:
-
             facets.append([f"categories:{c.lower()}" for c in cats])
     params = urllib.parse.urlencode({
         "query": tu_khoa,
@@ -65,10 +71,8 @@ def _modrinth_search(project_type, tu_khoa="", mc_version="", loader="", categor
     })
     data = _request_json(f"https://api.modrinth.com/v2/search?{params}")
     return data.get("hits", []), data.get("total_hits", 0)
-
 def lay_modrinth_popular(project_type="modpack", limit=50, offset=0):
     return _modrinth_search(project_type, limit=limit, offset=offset)
-
 def lay_category_modrinth(project_type="modpack"):
     data = _request_json("https://api.modrinth.com/v2/tag/category")
     out = []
@@ -78,23 +82,77 @@ def lay_category_modrinth(project_type="modpack"):
         if project_type in pts:
             out.append({"name": c.get("name", ""), "header": c.get("header", "") or "categories"})
     return out
-
 def tim_kiem_modrinth(project_type, tu_khoa, mc_version="", loader="", category="", limit=50, offset=0):
     return _modrinth_search(project_type, tu_khoa, mc_version, loader, category, limit, offset)
-
 def lay_phien_ban_modrinth(project_id):
     return _request_json(f"https://api.modrinth.com/v2/project/{project_id}/version")
-
+def lay_version_theo_hash_modrinth(file_hash, algorithm="sha1"):
+    try:
+        params = urllib.parse.urlencode({"algorithm": algorithm})
+        return _request_json(f"https://api.modrinth.com/v2/version_file/{file_hash}?{params}")
+    except Exception:
+        return None
+def lay_team_modrinth(team_id):
+    if not team_id:
+        return []
+    try:
+        data = _request_json(f"https://api.modrinth.com/v2/team/{team_id}/members")
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
 def lay_version_modrinth_theo_id(version_id):
-    """Lay 1 phien ban Modrinth CU THE theo version_id (khac lay_phien_ban_modrinth
-    - ham do lay TAT CA phien ban cua 1 project). Dung khi giai quyet dependency
-    tro thang toi 1 phien ban cu the (dependency.version_id) thay vi tro toi ca
-    project (dependency.project_id)."""
     return _request_json(f"https://api.modrinth.com/v2/version/{version_id}")
-
 def lay_project_modrinth(project_id):
-    return _request_json(f"https://api.modrinth.com/v2/project/{project_id}")
-
+    try:
+        return _request_json(f"https://api.modrinth.com/v2/project/{project_id}")
+    except Exception:
+        return None
+def lay_nhieu_team_modrinth(team_ids):
+    ids = [str(t) for t in (team_ids or []) if t]
+    if not ids:
+        return {}
+    try:
+        params = urllib.parse.urlencode({"ids": json.dumps(ids)})
+        data = _request_json(f"https://api.modrinth.com/v2/teams?{params}")
+    except Exception:
+        return {}
+    out = {}
+    if isinstance(data, list):
+        for i, thanh_vien in enumerate(data):
+            if i < len(ids) and isinstance(thanh_vien, list):
+                out[ids[i]] = thanh_vien
+    return out
+def lay_version_files_modrinth(hashes, algorithm="sha1"):
+    hs = [h for h in (hashes or []) if h]
+    if not hs:
+        return {}
+    try:
+        data = _request_json_post("https://api.modrinth.com/v2/version_files",
+                                   {"hashes": hs, "algorithm": algorithm})
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+def lay_nhieu_project_modrinth(project_ids):
+    ids = [str(pid) for pid in (project_ids or []) if pid]
+    if not ids:
+        return []
+    params = urllib.parse.urlencode({"ids": json.dumps(ids)})
+    data = _request_json(f"https://api.modrinth.com/v2/projects?{params}")
+    return data if isinstance(data, list) else []
+def lay_nhieu_mod_curseforge(mod_ids):
+    ids = []
+    for i in dict.fromkeys(mod_ids or []):
+        try:
+            ids.append(int(i))
+        except (TypeError, ValueError):
+            continue
+    if not ids:
+        return []
+    try:
+        data = _request_json_post(f"{CURSEFORGE_PROXY_BASE}/v1/mods", {"modIds": ids})
+        return data.get("data", []) if isinstance(data, dict) else []
+    except Exception:
+        return []
 def lay_curseforge_popular(class_id=4471, limit=50, offset=0):
     params = urllib.parse.urlencode({
         "gameId": 432, "classId": class_id,
@@ -103,18 +161,15 @@ def lay_curseforge_popular(class_id=4471, limit=50, offset=0):
     data = _request_json(f"{CURSEFORGE_PROXY_BASE}/v1/mods/search?{params}")
     total = data.get("pagination", {}).get("totalCount", 0)
     return data.get("data", []), total
-
 def lay_category_curseforge(class_id=4471):
     params = urllib.parse.urlencode({"gameId": 432, "classId": class_id})
     data = _request_json(f"{CURSEFORGE_PROXY_BASE}/v1/categories?{params}")
     cats = data.get("data", [])
-
     return sorted(
         [{"id": c.get("id"), "name": c.get("name", "")} for c in cats
          if c.get("classId") == class_id],
         key=lambda c: c["name"]
     )
-
 def tim_kiem_curseforge(tu_khoa, mc_version="", loader="", limit=50, class_id=4471,
                          offset=0, category_id=None):
     p = {"gameId": 432, "classId": class_id, "searchFilter": tu_khoa,
@@ -130,16 +185,9 @@ def tim_kiem_curseforge(tu_khoa, mc_version="", loader="", limit=50, class_id=44
     data = _request_json(f"{CURSEFORGE_PROXY_BASE}/v1/mods/search?{urllib.parse.urlencode(p)}")
     total = data.get("pagination", {}).get("totalCount", 0)
     return data.get("data", []), total
-
 def lay_phien_ban_curseforge(mod_id):
     data = _request_json(f"{CURSEFORGE_PROXY_BASE}/v1/mods/{mod_id}/files?pageSize=30")
     return data.get("data", [])
-
 def lay_mo_ta_curseforge(mod_id):
-    """Lay mo ta DAY DU (HTML) cua 1 mod CurseForge. Khac voi field 'summary'
-    tra ve san trong Mod object (chi la 1-2 cau tom tat ngan) - API CurseForge
-    KHONG co field 'description' trong Mod object nhu code cu tung gia dinh,
-    ma phai goi rieng endpoint nay (GET /v1/mods/{modId}/description) moi lay
-    duoc noi dung day du."""
     data = _request_json(f"{CURSEFORGE_PROXY_BASE}/v1/mods/{mod_id}/description")
     return data.get("data", "") or ""
